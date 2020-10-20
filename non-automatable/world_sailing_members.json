@@ -1,0 +1,550 @@
+{ 'Algeria - ALG':
+   { country: 'Algeria - ALG',
+     email: 'favoile.alg@gmail.com',
+     website: 'http://www.favoile.dz/' },
+  'Angola - ANG':
+   { country: 'Angola - ANG',
+     email: 'vela@faden-angola.com',
+     website: '' },
+  'Botswana - BOT':
+   { country: 'Botswana - BOT',
+     email: 'botswanayachtracing@gmail.com',
+     website: '' },
+  'Djibouti - DJI':
+   { country: 'Djibouti - DJI',
+     email: 'f.voile_djibouti@yahoo.fr',
+     website: '' },
+  'Egypt - EGY':
+   { country: 'Egypt - EGY', email: 'office@eswf.eg', website: '' },
+  'Kenya - KEN':
+   { country: 'Kenya - KEN', email: 'tom@co2.org', website: '' },
+  'Libya - LBA':
+   { country: 'Libya - LBA',
+     email: 'lswsf.lby@gmail.com',
+     website: '' },
+  'Madagascar - MAD':
+   { country: 'Madagascar - MAD',
+     email: 'layvoylakanamalagasy@aol.co.uk',
+     website: '' },
+  'Mauritius - MRI':
+   { country: 'Mauritius - MRI',
+     email: ' danny-mya@hotmail.com',
+     website: 'http://www.mauritiussailingfederation.mu/' },
+  'Morocco - MAR':
+   { country: 'Morocco - MAR',
+     email: 'frmyvoile@yahoo.fr',
+     website: 'http://www.frmyv.ma/' },
+  'Mozambique - MOZ':
+   { country: 'Mozambique - MOZ',
+     email: 'fm.velaecanoagem@gmail.com',
+     website: '' },
+  'Namibia - NAM':
+   { country: 'Namibia - NAM',
+     email: 'namibiansailingassociation@gmail.com',
+     website: '' },
+  'Nigeria - NGR':
+   { country: 'Nigeria - NGR',
+     email: 'nigyfed01@gmail.com',
+     website: '' },
+  'Senegal - SEN':
+   { country: 'Senegal - SEN',
+     email: 'voilesenegal@gmail.com',
+     website: 'http://www.fsvoile.sn/' },
+  'Seychelles - SEY':
+   { country: 'Seychelles - SEY',
+     email: 'seychellesyachtingassociation@gmail.com',
+     website: '' },
+  'South Africa - RSA':
+   { country: 'South Africa - RSA',
+     email: 'lucydf@sailing.org.za',
+     website: 'http://www.sailing.org.za/' },
+  'Sudan - SUD':
+   { country: 'Sudan - SUD',
+     email: 's_sailing@hotmail.co.uk',
+     website: '' },
+  'Tanzania - TAN':
+   { country: 'Tanzania - TAN',
+     email: 'tzsailingassociation@gmail.com',
+     website: 'http://http//tanzaniasailingassociation.webs.com' },
+  'Tunisia - TUN':
+   { country: 'Tunisia - TUN',
+     email: 'ftv@ftv.org.tn',
+     website: 'http://www.ftv.org.tn/' },
+  'Uganda - UGA':
+   { country: 'Uganda - UGA',
+     email: 'slugemwaluswata@gmail.com',
+     website: '' },
+  'Zimbabwe - ZIM':
+   { country: 'Zimbabwe - ZIM',
+     email: 'sailingzimbabwe@gmail.com',
+     website: '' },
+  'Azerbaijan - AZE':
+   { country: 'Azerbaijan - AZE',
+     email: 'info@sailing.az',
+     website: 'http://www.sailing.az/' },
+  'Bahrain - BRN':
+   { country: 'Bahrain - BRN',
+     email: 'bahrainSailing@yahoo.com',
+     website: 'http://www.bhsailing.com/' },
+  'China, People\'s Republic of - CHN':
+   { country: 'China, People\'s Republic of - CHN',
+     email: 'chinasailing@sina.com',
+     website: 'http://http//chinasailing.org.cn/' },
+  'Chinese Taipei - TPE':
+   { country: 'Chinese Taipei - TPE',
+     email: 'tpesailing@ct-sailing.org.tw',
+     website: 'http://http//www.ct-sailing.org.tw/' },
+  'Hong Kong, China - HKG':
+   { country: 'Hong Kong, China - HKG',
+     email: 'hksf@sailing.org.hk',
+     website: 'http://www.sailing.org.hk/' },
+  'India - IND':
+   { country: 'India - IND',
+     email: 'yaiindia1@gmail.com',
+     website: 'http://www.yai.org.in/' },
+  'Indonesia - INA':
+   { country: 'Indonesia - INA',
+     email: 'info@indonesiansailing.org',
+     website: 'http://www.indonesiansailing.org/' },
+  'Iran - IRI':
+   { country: 'Iran - IRI',
+     email: 'crsf@msy.gov.ir',
+     website: 'http://www.icf.ir/' },
+  'Japan - JPN':
+   { country: 'Japan - JPN',
+     email: 'jimukyoku@jsaf.or.jp',
+     website: 'http://www.jsaf.or.jp/' },
+  'Kazakhstan - KAZ':
+   { country: 'Kazakhstan - KAZ',
+     email: 'o.kulivatskiy@mail.ru',
+     website: '' },
+  'Korea, Republic of - KOR':
+   { country: 'Korea, Republic of - KOR',
+     email: 'ksaf@sports.or.kr',
+     website: 'http://www.ksaf.org/' },
+  'Korea, Democratic People\'s Republic of - PRK':
+   { country: 'Korea, Democratic People\'s Republic of - PRK',
+     email: 'prk@star-co.net.kp',
+     website: '' },
+  'Kuwait - KUW':
+   { country: 'Kuwait - KUW',
+     email: 'kssclub22@yahoo.com',
+     website: 'http://www.kssclub.com%20or%20http//www.q8sailing.org' },
+  'Kyrgyzstan - KGZ':
+   { country: 'Kyrgyzstan - KGZ',
+     email: 'fpskr@mail.ru',
+     website: '' },
+  'Lebanon - LIB':
+   { country: 'Lebanon - LIB',
+     email: 'info@lebaneseyachtingfederation.org ',
+     website: 'http://www.lebaneseyachtingfederation.org/' },
+  'Malaysia - MAS':
+   { country: 'Malaysia - MAS',
+     email: 'sailmalaysia@gmail.com',
+     website: 'http://www.sailmalaysia.org/' },
+  'Myanmar - MYA':
+   { country: 'Myanmar - MYA',
+     email: 'info@myanmarsailing.org',
+     website: 'http://www.myanmarsailing.org/' },
+  'Oman - OMA':
+   { country: 'Oman - OMA',
+     email: 'omansailing@gmail.com',
+     website: '' },
+  'Pakistan - PAK':
+   { country: 'Pakistan - PAK',
+     email: 'paksailing1969@gmail.com',
+     website: '' },
+  'Palestine - PLE':
+   { country: 'Palestine - PLE',
+     email: 'palsailing@hotmail.com',
+     website: 'http://http//geocities.com/palsailing/blog.html' },
+  'Philippines - PHI':
+   { country: 'Philippines - PHI',
+     email: 'eechauz@standard-insurance.com',
+     website: 'http://www.philsailing.com/' },
+  'Qatar - QAT':
+   { country: 'Qatar - QAT',
+     email: 'qatarsailing@yahoo.com',
+     website: 'http://www.qsmf.org.qa/' },
+  'Saudi Arabia - KSA':
+   { country: 'Saudi Arabia - KSA',
+     email: 'info@samsf.sa',
+     website: 'http://www.samsf.net/' },
+  'Singapore - SIN':
+   { country: 'Singapore - SIN',
+     email: 'info@singaporesailing.org.sg',
+     website: 'http://www.sailing.org.sg/' },
+  'Sri Lanka - SRI':
+   { country: 'Sri Lanka - SRI',
+     email: 'sskuragama@yahoo.com',
+     website: 'http://www.yasl.info/' },
+  'Thailand - THA':
+   { country: 'Thailand - THA',
+     email: 'nimancg@gmail.com',
+     website: 'http://www.yrat.or.th/' },
+  'United Arab Emirates - UAE':
+   { country: 'United Arab Emirates - UAE',
+     email: 'info@sarf.ae ',
+     website: 'http://www.uaesarf.ae/' },
+  'Vietnam - VIE':
+   { country: 'Vietnam - VIE', email: 'vcrsf@vnn.vn', website: '' },
+  'Andorra - AND':
+   { country: 'Andorra - AND',
+     email: 'federacioandvela@andorra.ad',
+     website: 'http://www.andorravela.com/' },
+  'Armenia - ARM':
+   { country: 'Armenia - ARM', email: 'arm470@bk.ru', website: '' },
+  'Austria - AUT':
+   { country: 'Austria - AUT',
+     email: 'office@segelverband.at',
+     website: 'http://www.segelverband.at/' },
+  'Belarus - BLR':
+   { country: 'Belarus - BLR',
+     email: 'info@yachting.by',
+     website: 'http://www.yachting.by/' },
+  'Belgium - BEL':
+   { country: 'Belgium - BEL',
+     email: ' info@belgiansailing.be',
+     website: 'http://www.belgiansailing.be/' },
+  'Bulgaria - BUL':
+   { country: 'Bulgaria - BUL',
+     email: 'secretarybulsaf@gmail.com',
+     website: 'http://www.bulsaf.bg/' },
+  'Croatia - CRO':
+   { country: 'Croatia - CRO',
+     email: 'hjs@hjs.hr',
+     website: 'http://www.hjs.hr/' },
+  'Cyprus - CYP':
+   { country: 'Cyprus - CYP',
+     email: 'cyacyp@cytanet.com.cy',
+     website: 'http://www.cysaf.org.cy/' },
+  'Czech Republic - CZE':
+   { country: 'Czech Republic - CZE',
+     email: 'sailing@sailing.cz',
+     website: 'http://www.sailing.cz/' },
+  'Denmark - DEN':
+   { country: 'Denmark - DEN',
+     email: 'ds@sejlsport.dk',
+     website: 'http://www.sejlsport.dk/' },
+  'Estonia - EST':
+   { country: 'Estonia - EST',
+     email: 'puri@puri.ee',
+     website: 'http://www.puri.ee/' },
+  'Finland - FIN':
+   { country: 'Finland - FIN',
+     email: 'jan.thorstrom@spv.fi',
+     website: 'http://www.spv.fi/' },
+  'France - FRA':
+   { country: 'France - FRA',
+     email: 'international@ffvoile.fr',
+     website: 'http://www.ffvoile.fr/' },
+  'Macedonia, Former Yugoslav Republic of - MKD':
+   { country: 'Macedonia, Former Yugoslav Republic of - MKD',
+     email: 'macedoniansailingfederation@gmail.com',
+     website: '' },
+  'Georgia - GEO':
+   { country: 'Georgia - GEO',
+     email: 'info@gsaf.ge',
+     website: 'http://www.gsaf.ge/' },
+  'Germany - GER':
+   { country: 'Germany - GER',
+     email: ' info@dsv.org',
+     website: 'http://www.dsv.org/' },
+  'Great Britain - GBR':
+   { country: 'Great Britain - GBR',
+     email: 'racing@rya.org.uk',
+     website: 'http://www.rya.org.uk/' },
+  'Greece - GRE':
+   { country: 'Greece - GRE',
+     email: 'secretariat@eio.gr',
+     website: 'http://www.eio.gr/' },
+  'Hungary - HUN':
+   { country: 'Hungary - HUN',
+     email: 'hunsail@hunsail.hu',
+     website: 'http://www.hunsail.hu/' },
+  'Iceland - ISL':
+   { country: 'Iceland - ISL',
+     email: 'sil@isisport.is',
+     website: 'http://www.silsport.is/' },
+  'Ireland - IRL':
+   { country: 'Ireland - IRL',
+     email: 'harry@sailing.ie',
+     website: 'http://www.sailing.ie/' },
+  'Israel - ISR':
+   { country: 'Israel - ISR',
+     email: 'isrsa@sailing.org.il',
+     website: 'http://www.sailing.org.il/' },
+  'Italy - ITA':
+   { country: 'Italy - ITA',
+     email: 'segretariogenerale@federvela.it; presidenza@federv',
+     website: 'http://www.federvela.it/' },
+  'Kosovo - KOS':
+   { country: 'Kosovo - KOS',
+     email: 'arber.reci@kosovosailing.org',
+     website: '' },
+  'Latvia - LAT':
+   { country: 'Latvia - LAT',
+     email: 'oskars.kruze@sailinglatvia.lv',
+     website: 'http://www.sailinglatvia.lv/' },
+  'Liechtenstein - LIE':
+   { country: 'Liechtenstein - LIE',
+     email: 'frick@hofag.com',
+     website: '' },
+  'Lithuania - LTU':
+   { country: 'Lithuania - LTU',
+     email: 'info@lbs.lt',
+     website: 'http://www.lbs.lt/' },
+  'Luxembourg - LUX':
+   { country: 'Luxembourg - LUX',
+     email: 'secretaire@flv.lu',
+     website: 'http://www.flv.lu/' },
+  'Malta - MLT':
+   { country: 'Malta - MLT',
+     email: 'mikejmifsud@gmail.com',
+     website: '' },
+  'Moldova - MDA':
+   { country: 'Moldova - MDA',
+     email: 'moldsailing@starnet.md',
+     website: '' },
+  'Monaco - MON':
+   { country: 'Monaco - MON',
+     email: 'b.dalessandri@yacht-club-monaco.mc',
+     website: 'http://www.yacht-club-monaco.mc/' },
+  'Montenegro - MNE':
+   { country: 'Montenegro - MNE',
+     email: 'cgjs@t-com.me',
+     website: 'http://www.cgjs.me/' },
+  'Netherlands - NED':
+   { country: 'Netherlands - NED',
+     email: 'info@watersportverbond.nl',
+     website: 'http://www.watersportverbond.nl/' },
+  'Norway - NOR':
+   { country: 'Norway - NOR',
+     email: 'seiling@nif.idrett.no',
+     website: 'http://www.seiling.no/' },
+  'Poland - POL':
+   { country: 'Poland - POL',
+     email: 'pyabiuro@pya.org.pl',
+     website: 'http://www.pya.org.pl/' },
+  'Portugal - POR':
+   { country: 'Portugal - POR',
+     email: 'fpvela@fpvela.pt',
+     website: 'http://www.fpvela.pt/' },
+  'Romania - ROU':
+   { country: 'Romania - ROU',
+     email: 'office@fry.ro',
+     website: 'http://www.fry.ro/' },
+  'Russia - RUS':
+   { country: 'Russia - RUS',
+     email: 'info@vfps.ru',
+     website: 'http://www.rusyf.ru/' },
+  'San Marino - SMR':
+   { country: 'San Marino - SMR',
+     email: 'mfattori@legalenotarile.com',
+     website: '' },
+  'Serbia - SRB':
+   { country: 'Serbia - SRB',
+     email: 'jssrbije@sbb.rs',
+     website: 'http://http//www.sailing.org.rs' },
+  'Slovakia - SVK':
+   { country: 'Slovakia - SVK',
+     email: 'szj@sailing.sk',
+     website: 'http://www.sailing.sk/' },
+  'Slovenia - SLO':
+   { country: 'Slovenia - SLO',
+     email: 'info@jzs.si',
+     website: 'http://www.jzs.si/' },
+  'Spain - ESP':
+   { country: 'Spain - ESP',
+     email: 'info@rfev.es',
+     website: 'http://www.rfev.es/' },
+  'Sweden - SWE':
+   { country: 'Sweden - SWE',
+     email: 'ssf@ssf.se',
+     website: 'http://www.svensksegling.se/' },
+  'Switzerland - SUI':
+   { country: 'Switzerland - SUI',
+     email: 'admin@swiss-sailing.ch',
+     website: 'http://www.swiss-sailing.ch/' },
+  'Turkey - TUR':
+   { country: 'Turkey - TUR',
+     email: 'info@tyf.org.tr',
+     website: 'http://www.tyf.org.tr/' },
+  'Ukraine - UKR':
+   { country: 'Ukraine - UKR',
+     email: 'sfu@sfu.com.ua',
+     website: 'http://www.sfu.com.ua/' },
+  'Antigua - ANT':
+   { country: 'Antigua - ANT',
+     email: 'geoffrey@geoffreypidduck.com              ',
+     website: 'http://www.antiguasailingassociation.com/' },
+  'Aruba - ARU':
+   { country: 'Aruba - ARU',
+     email: 'arubasailingassociation@outlook.com',
+     website: 'http://www.arubasailingassociation.org/' },
+  'Bahamas - BAH':
+   { country: 'Bahamas - BAH',
+     email: 'BAHAMASSAILING.PRESIDENT@GMAIL.COM',
+     website: 'http://www.bahsailing.org/' },
+  'Barbados - BAR':
+   { country: 'Barbados - BAR',
+     email: 'sailfast@caribsurf.com',
+     website: 'http://www.sailbarbados.com/' },
+  'Bermuda - BER':
+   { country: 'Bermuda - BER',
+     email: 'secretary@sailing.bm',
+     website: 'http://www.sailing.bm/' },
+  'British Virgin Islands - IVB':
+   { country: 'British Virgin Islands - IVB',
+     email: 'admin@royalbviyc.org',
+     website: 'http://www.royalbviyc.org/' },
+  'Canada - CAN':
+   { country: 'Canada - CAN',
+     email: 'don@sailing.ca',
+     website: 'http://www.sailing.ca/' },
+  'Cayman Islands - CAY':
+   { country: 'Cayman Islands - CAY',
+     email: 'admin@sailing.ky',
+     website: 'http://www.sailing.ky/' },
+  'Cuba - CUB':
+   { country: 'Cuba - CUB', email: 'vela@inder.cu', website: '' },
+  'Dominican Republic - DOM':
+   { country: 'Dominican Republic - DOM',
+     email: 'fdveladom@gmail.com',
+     website: 'http://www.fdvela.org/' },
+  'El Salvador - ESA':
+   { country: 'El Salvador - ESA',
+     email: 'fesavela.gerencia@gmail.com',
+     website: '' },
+  'Grenada - GRN':
+   { country: 'Grenada - GRN',
+     email: 'info@grenadasailing.org',
+     website: 'http://www.grenadasailingassociation.org/' },
+  'Guatemala - GUA':
+   { country: 'Guatemala - GUA',
+     email: 'jemaegli@grupotecun.com',
+     website: 'http://www.velaguate.com/' },
+  'Jamaica - JAM':
+   { country: 'Jamaica - JAM',
+     email: 'stephenfacey@panjam.com',
+     website: '' },
+  'Antilles, Netherlands - AHO':
+   { country: 'Antilles, Netherlands - AHO',
+     email: 'AHOsailing@gmail.com',
+     website: 'http://www.ahosailing.org/' },
+  'Puerto Rico - PUR':
+   { country: 'Puerto Rico - PUR',
+     email: 'pirulgon@yahoo.com',
+     website: 'http://www.sailingpur.org/' },
+  'St Kitts and Nevis - SKN':
+   { country: 'St Kitts and Nevis - SKN',
+     email: 'info@sknsa.org',
+     website: 'http://www.skyachtclub.com/' },
+  'St Lucia - LCA':
+   { country: 'St Lucia - LCA',
+     email: 'ulrichmeixner1@gmail.com',
+     website: 'http://www.stluciayachtclub.com/' },
+  'Trinidad and Tobago - TTO':
+   { country: 'Trinidad and Tobago - TTO',
+     email: 'setsail@ttsailing.org',
+     website: 'http://www.ttsailing.org/' },
+  'US Virgin Islands - ISV':
+   { country: 'US Virgin Islands - ISV',
+     email: 'canfieldvi@gmail.com',
+     website: '' },
+  'United States of America - USA':
+   { country: 'United States of America - USA',
+     email: 'info@ussailing.org',
+     website: 'http://www.ussailing.org/' },
+  'Argentina - ARG':
+   { country: 'Argentina - ARG',
+     email: 'fay@fay.org',
+     website: 'http://www.fay.org/' },
+  'Belize - BIZ':
+   { country: 'Belize - BIZ',
+     email: 'BelizeSailingAssociation@gmail.com',
+     website: '' },
+  'Brazil - BRA':
+   { country: 'Brazil - BRA',
+     email: ' cbvela@cbvela.org.br',
+     website: 'http://www.cbvela.org.br/' },
+  'Chile - CHI':
+   { country: 'Chile - CHI',
+     email: 'presidente@fedevela.cl; ',
+     website: 'http://www.fedevela.cl/' },
+  'Colombia - COL':
+   { country: 'Colombia - COL',
+     email: 'presidencia@fedevelacolombia.org ',
+     website: 'http://www.fedevelacolombia.org/' },
+  'Ecuador - ECU':
+   { country: 'Ecuador - ECU',
+     email: 'feyecuador@gmail.com',
+     website: 'http://www.fevelaecuador.org/' },
+  'Mexico - MEX':
+   { country: 'Mexico - MEX',
+     email: 'femevela@hotmail.com',
+     website: 'http://www.fmvela.mx/' },
+  'Panama - PAN':
+   { country: 'Panama - PAN',
+     email: 'apavelassecre@hotmail.com',
+     website: '' },
+  'Paraguay - PAR':
+   { country: 'Paraguay - PAR',
+     email: 'fepave@fepave.org.py',
+     website: 'http://www.fepave.org.py/' },
+  'Peru - PER':
+   { country: 'Peru - PER',
+     email: 'oficinafpv@fepevela.com',
+     website: 'http://www.sailperu.com/' },
+  'Uruguay - URU':
+   { country: 'Uruguay - URU',
+     email: 'secretaria@ycu.org.uy',
+     website: 'http://www.ycu.org.uy/' },
+  'Venezuela - VEN':
+   { country: 'Venezuela - VEN',
+     email: 'federacionvenezolanadevela@gmail.com',
+     website: '' },
+  'American Samoa - ASA':
+   { country: 'American Samoa - ASA',
+     email: 'americansamoappyc@gmail.com',
+     website: '' },
+  'Australia - AUS':
+   { country: 'Australia - AUS',
+     email: 'office@sailing.org.au',
+     website: 'http://www.sailing.org.au/' },
+  'Cook Islands - COK':
+   { country: 'Cook Islands - COK',
+     email: 'john@jta.co.ck',
+     website: 'http://%20@sailingcookislands/' },
+  'Fiji - FIJ':
+   { country: 'Fiji - FIJ',
+     email: 'secretary@sailing.org.fj',
+     website: '' },
+  'Guam - GUM':
+   { country: 'Guam - GUM',
+     email: 'kellymyc@outlook.com',
+     website: '' },
+  'New Zealand - NZL':
+   { country: 'New Zealand - NZL',
+     email: 'reception@yachtingnz.org.nz',
+     website: 'http://www.yachtingnz.org.nz/' },
+  'Papua New Guinea - PNG':
+   { country: 'Papua New Guinea - PNG',
+     email: 'sailingpng.inc@gmail.com',
+     website: '' },
+  'Samoa - SAM':
+   { country: 'Samoa - SAM',
+     email: 'raemavonreiche@gmail.com',
+     website: '' },
+  'Solomon Islands - SOL.':
+   { country: 'Solomon Islands - SOL.',
+     email: 'fmanioru2012@gmail.com',
+     website: '' },
+  'Tahiti - TAH':
+   { country: 'Tahiti - TAH',
+     email: 'ftv@tahiti-sailing.org',
+     website: 'http://http//www.tahiti-sailing.org' },
+  'Vanuatu - VAN':
+   { country: 'Vanuatu - VAN',
+     email: 'vsa@sailing.vu',
+     website: '' } }
