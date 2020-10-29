@@ -1,5 +1,5 @@
-const {Georacing, sequelize, connect} = require('../tracker-schema/schema.js')
-const {axios, uuidv4} = require('../tracker-schema/utils.js')
+const {Georacing, sequelize, connect} = require('../../tracker-schema/schema.js')
+const {axios, uuidv4} = require('../../tracker-schema/utils.js')
 const puppeteer = require('puppeteer');
 const { get } = require('request');
 
@@ -1069,31 +1069,249 @@ function peekUint8(bytes) {
                     await page.waitForFunction(loaded_test2, {timeout: 300000});
 
                     // EXAMPLE RACE: http://player.georacing.com/?event=101837&race=97390&name=Course%205%20-%20Cancelled&location=Saint-Brieuc
-                    var allRequest = await axios.get('https://player.georacing.com/datas/'+ currentEventSave.original_id + '/' + race.id + '/' + 'all.json')
-                    console.log(' VERSION 4 ' + race.player_name)
+                    var dataUrl = 'https://player.georacing.com/datas/'+ currentEventSave.original_id + '/' + race.id + '/'
+                    var allRequest = await axios.get(dataUrl + 'all.json')
+                    try{
+                      var virtualitiesRequest = await axios.get( dataUrl + 'virtualities.json')
+                      console.log(virtualitiesRequest.data)
+                    }catch(err){
+                      // TODO: hendle this
+                    }
+                    
 
-                    console.log(allRequest.data)
+                  /**
+                   * 
+                   * /" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/weathers.json",
+                        news.json
+                        "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/splittimes.json",
+                        "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/courses.json",
+                        "/" + CURRENT_EVENT.id + "/categories.json",
+                        "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/categories.json",
+                                done: function(json) {
+
+                        "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/race.json",
+                        "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/options.json",
+                        \pyxt + "/" + CURRENT_EVENT.id + "/event.json",
+
+                        event.json"]["update_date"] = new Date();
+                            jxwu["race.json"]["update_date"] = new Date();
+                            jxwu["categories.json"]["update_date"] = new Date();
+                            jxwu["actors.json"]["update_date"] = new Date();
+                            jxwu["courses.json"]["update_date"] = new Date();
+                            jxwu["splittimes.json"]["update_date"] = new Date();
+                            jxwu["weathers.json"]["update_date"] = new Date();
+                            jxwu["meteo.json"]["update_date"] = new Date();
+                            jxwu["states.json"]["update_date"] = new Date();
+                            jxwu["message.json"]["update_date"] = new Date();
+                            jxwu["news.json"]["update_date"] = new Date();
+                        /positions/positions__r.json",
+http://player.georacing.com/raw_datas"
+                        hcun + "/" + CURRENT_EVENT.id + "/" + gmrk.id + "/positions/" + index + "__r.json",
+                        pyxt + "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/track_prod.xml",
+
+                   */
                     var binaryUrls = await page.evaluate(()=>{
                         return Object.keys(URL_BIN_LOADED)
                     })
                     
-                    console.log(binaryUrls)
-                    for(posIndex in binaryUrls){
-                        var posUrl = 'http://player.georacing.com/datas/'+ currentEventSave.original_id + '/' + race.id + '/positions/' + binaryUrls[posIndex]
-                        console.log(posUrl)
-                        try{
-                            var posFileRequest = await axios({
-                                method: 'get',
-                                responseType: 'arraybuffer',
-                                url: posUrl
-                            })
-                            var bytes = new Uint8Array(posFileRequest.data);
-                            console.log(getPositionsFromBinary(bytes, { available_time: race.available_time, filename: binaryUrls[posIndex] }))
-                        }catch(err){
-                            // TODO: Why do some of these fail?
-                        }
-                        
-                    }
+                    // console.log('states')
+                    // console.log(allRequest.data.states)
+
+                    // console.log('message')
+                    // console.log(allRequest.data.message)
+
+                    // console.log('news')
+                    // console.log(allRequest.data.news)
+
+                    // console.log('options')
+                    // console.log(allRequest.data.options)
+
+                    // console.log('weathers')
+                    // console.log(allRequest.data.weathers)
+                    /**
+                     * { wind_direction: 260,
+                        wind_strength: null,
+                        wind_strength_unit: null,
+                        temperature: null,
+                        temperature_unit: null,
+                        type: 'none',
+                        time: '2020-09-03T22:04:46Z' }
+                     */
+
+                    // console.log('splittimes')
+                    // console.log(allRequest.data.splittimes)
+
+                    /**
+                     * [ { id: 280393,
+                          name: 'Départ',
+                          short_name: '',
+                          splittimes_visible: 0,
+                          hide_on_timeline: 0,
+                          lap_number: 0,
+                          role: 'start',
+                          splittimes: [ [Object], [Object], [Object], [Object], [Object] ] },
+                        { id: 280394,
+                          name: 'Bouée 1 (1)',
+                          short_name: '',
+                          splittimes_visible: 1,
+                          hide_on_timeline: 0,
+                          lap_number: 0,
+                          role: 'none',
+                          splittimes: [ [Object], [Object], [Object], [Object], [Object] ] },
+                     */
+                    // console.log('categories')
+                    // console.log(allRequest.data.categories)
+                    //console.log(allRequest.data.courses)
+                    /** allRequest.data has keys
+                     * 'states',
+                        'message',
+                        'news',
+                        'race',
+                        'options',
+                        'actors',
+                        'courses',
+                        'weathers',
+                        'splittimes',
+                        'track',
+                        'event',
+                        'categories'
+                     * 
+                     */
+                    /**
+                     * allRequest.data.actors is array with each element has keys:
+                     * 
+                     * 'id',
+                      'tracker_id',
+                      'tracker2_id',
+                      'id_provider_actor',
+                      'race_id',
+                      'event_id',
+                      'team_id',
+                      'profile_id',
+                      'start_number',
+                      'first_name',
+                      'middle_name',
+                      'last_name',
+                      'name',
+                      'big_name',
+                      'short_name',
+                      'members',
+                      'color',
+                      'color1',
+                      'color2',
+                      'color3',
+                      'logo1',
+                      'logo2',
+                      'logo3',
+                      'logo4',
+                      'active',
+                      'visible',
+                      'photo',
+                      'orientation_angle',
+                      'start_time',
+                      'battery_percent_lost_minute',
+                      'battery_note',
+                      'has_penality',
+                      'sponsor_url',
+                      'sponsor_image',
+                      'start_order',
+                      'rating',
+                      'penality',
+                      'penality_time',
+                      'is_recording',
+                      'capital1',
+                      'capital2',
+                      'is_security',
+                      'full_name',
+                      'categories',
+                      'categories_name',
+                      'all_info',
+                      'nationality',
+                      'model',
+                      'size',
+                      'team',
+                      'type',
+                      'orientation_mode',
+                      'id_provider_tracker',
+                      'id_provider_tracker2',
+                      'states',
+                      'person'
+                     * 
+                     */
+
+
+
+                    /**
+                     * Courses is array of
+                     * 
+                     *  id: 120257,
+                        name: 'Parcours',
+                        active: 1,
+                        has_track: 0,
+                        url: null,
+                        course_type: null,
+                        course_objects:[]
+                     * 
+                     * 
+                     */
+                    /**
+                     * Course Objects is array of
+                     * { id: 280398,
+                          name: 'Bouée 2 (2)',
+                          short_name: '',
+                          order: 6,
+                          raise_event: 1,
+                          show_layline: 0,
+                          is_image_reverse: 0,
+                          altitude_max: -999,
+                          altitude_min: -999,
+                          circle_size: -1,
+                          splittimes_visible: 0,
+                          hide_on_timeline: 0,
+                          lap_number: 0,
+                          distance: 0,
+                          type: 'mark',
+                          role: 'none',
+                          rounding: 'port',
+                          headline_orientation: 'leg',
+                          course_elements: [ [Object] ] }
+                     */
+                    /** Course Elements is array of 
+                     * { id: 1063667,
+                          name: 'S1',
+                          visible: 1,
+                          distance: 0,
+                          color: '#ff8700',
+                          logo1: null,
+                          logo2: null,
+                          orientation_angle: 0,
+                          type: 'course_element',
+                          course_element_type: 'fixed_latitude_longitude',
+                          model: 'BoueeGonflable',
+                          size: 1.52,
+                          orientation_mode: 'Fixed',
+                          longitude: 8.7594294548035,
+                          latitude: 42.566214372864,
+                          altitude: null },
+                     */
+                    // console.log(allRequest.data.track)
+                    // console.log(allRequest.data.categories)
+                    // for(posIndex in binaryUrls){
+                    //     var posUrl = 'http://player.georacing.com/datas/'+ currentEventSave.original_id + '/' + race.id + '/positions/' + binaryUrls[posIndex]
+                    //     try{
+                    //         var posFileRequest = await axios({
+                    //             method: 'get',
+                    //             responseType: 'arraybuffer',
+                    //             url: posUrl
+                    //         })
+                    //         var bytes = new Uint8Array(posFileRequest.data);
+                    //         // Positions are keyed by boat id and valued by a list of positions
+                    //         var positionsData = getPositionsFromBinary(bytes, { available_time: race.available_time, filename: binaryUrls[posIndex] })
+                    //     }catch(err){
+                    //         // TODO: Why do some of these fail?
+                    //     }
+                    // }
+
                 }else if(playerVersion === 3){
                     // EXAMPLE RACE: https://player.georacing.com/player_tjv/index.html
                     var dataUrl = await page.evaluate(()=>{
