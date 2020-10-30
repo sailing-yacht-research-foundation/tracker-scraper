@@ -104,9 +104,12 @@ const { get } = require('request');
                                                    
                   return {tracks_data, reports_data}
             }, base_url)
+
+
             let raw_tracks = JSON.parse(raw_data.tracks_data)
             let raw_reports = JSON.parse(raw_data.reports_data)
 
+            
             console.log("Getting mu.")
             let mu = await page.evaluate(()=>{
                     return µ
