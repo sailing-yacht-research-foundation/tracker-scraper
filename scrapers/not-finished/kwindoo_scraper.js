@@ -60,7 +60,7 @@ const { get } = require('request');
                 homeportState.obj.regatta_original_id = newOrExistingRegatta.original_id
                 await Kwindoo.HomeportLocation.create(homeportState.obj)
                 
-                // Running group?
+               
 
                 newOrExistingRegatta.owner = ownerState.obj.id
                 newOrExistingRegatta.owner_original_id = ownerState.obj.original_id
@@ -83,9 +83,9 @@ const { get } = require('request');
             })
 
             let regattaDetails = detailsRequest.data.response.regatta
-        
+       
             if(regattaIsNew){
-                console.log('Creating new POIs and Video Streams.')
+                console.log('Creating new POIs, Running Groups and Video Streams.')
                 for(poiIndex in regattaDetails.pois){
                     let poi = regattaDetails.pois[poiIndex]
                     Kwindoo.POI.create({id:uuidv4(), original_id:poi.id, regatta: newOrExistingRegatta.id, regatta_original_id: newOrExistingRegatta.original_id, 
@@ -96,10 +96,20 @@ const { get } = require('request');
                     Kwindoo.VideoStream.create({id:uuidv4(), original_id:stream.id, regatta:newOrExistingRegatta.id, regatta_original_id:newOrExistingRegatta.original_id,
                     source:stream.source, video_id: stream.video_id, start_time: stream.start_time, end_time: stream.end_time, start_timestamp: stream.start_timestamp, end_timestamp:stream.end_timestamp})
                 }
+               
+                for(runningGroupIndex in currentRegatta.running_groups){
+                    let rg = currentRegatta.running_groups[runningGroupIndex]
+                    await Kwindoo.RunningGroup.create({id:uuidv4(), original_id: rg.id, regatta:newOrExistingRegatta.id, regatta_original_id:newOrExistingRegatta.original_id,
+                    name: rg.name, description:rg.description})
+                }
+               
                 newOrExistingRegatta.name_slug = regattaDetails.name_slug
                 newOrExistingRegatta.featured_background_path = regattaDetails.featured_background_path
                 newOrExistingRegatta.sponsor_logo_path = regattaDetails.sponsor_logo_path
                 await Kwindoo.Regatta.create(newOrExistingRegatta)
+
+
+                
             }
                 
             console.log('Going through all races... ')
@@ -144,7 +154,7 @@ const { get } = require('request');
                     let boatDetails = boatDataRequest.data.response.users
                 
                     boatDetails.forEach(boat => {
-                        let b = instantiateOrReturnExisting(existingObjects, Kwindoo.Boat, boat.id)
+                        let b = instantiateOrReturnExisting(existingObjects, Kwindoo.Boat, boat.id).obj
                         b.regatta = newOrExistingRegatta.id,
                         b.regatta_original_id = newOrExistingRegatta.original_id,
                         b.race = newRace.id,
@@ -165,7 +175,9 @@ const { get } = require('request');
                         b.boat_type_alias = boat.boat_data.boat_type.alias,
                         b.class = boat.boat_data.class
                         
-                        newBoatObjects.push(b)
+                        if(b.shouldSave){
+                            newBoatObjects.push(b)
+                        }
                     })
 
 
@@ -311,8 +323,8 @@ const { get } = require('request');
                                 i: position.i,
                                 u: position.u,
                                 t: position.t,
-                                lat: position.lat,
-                                lon: position.lon,
+                                lat: position.l,
+                                lon: position.o,
                                 b: position.b,
                                 a: position.a,
                                 d: position.d,
@@ -323,29 +335,23 @@ const { get } = require('request');
                         })
                     })
 
-                    let newBoatObjects = []
-                    let newPOIObjects = []
-                    let newMIAObjects = []
-                    let newWaypointObjects = []
-                    let newCommentObjects = []
-                    let newMarkerObjects = []
-                    let newPositionsObjects = []
-                    let newObjectsToSave = {
-                        [Kwindoo.Race]: [newRace],
-                        [Kwindoo.Boat]: newBoatObjects,
-                        [Kwindoo.POI]: newPOIObjects,
-                        [Kwindoo.MIA]: newMIAObjects,
-                        [Kwindoo.Waypoint]: newWaypointObjects,
-                        [Kwindoo.Comment]: newCommentObjects,
-                        [Kwindoo.Marker]: newMarkerObjects,
-                        [Kwindoo.Position]: newPositionsObjects
-                    }
+                    
+                    let newObjectsToSave = [
+                        { objectType:Kwindoo.Race, objects:[newRace]},
+                        { objectType:Kwindoo.Boat, objects:newBoatObjects},
+                        { objectType:Kwindoo.POI, objects:newPOIObjects},
+                        { objectType:Kwindoo.MIA, objects:newMIAObjects},
+                        { objectType:Kwindoo.Waypoint, objects:newWaypointObjects},
+                        { objectType:Kwindoo.Comment, objects:newCommentObjects},
+                        { objectType:Kwindoo.Marker, objects:newMarkerObjects},
+                        { objectType:Kwindoo.Position, objects: newPositionsObjects}]
                     console.log('Bulk saving objects.')
-                    await bulkSave(newObjectsToSave, Kwindoo.FailedUrl, url)
+              //      await bulkSave(newObjectsToSave, Kwindoo.FailedUrl, url)
                     console.log('Finished saving race. On to the next one.')
                 }catch(err){
                     console.log('Error downloading data.')
-                    await Kwindoo.FailedUrl.create({id:uuidv4(), url: url, error: err})
+                    console.log(err)
+                    await Kwindoo.FailedUrl.create({id:uuidv4(), url: url, error: err.toString()})
                 }
                 
                 
