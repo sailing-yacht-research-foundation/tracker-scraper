@@ -3,9 +3,8 @@ const {axios, uuidv4} = require('../tracker-schema/utils.js')
 const puppeteer = require('puppeteer');
 const { get } = require('request');
 
-
 ( async () => {
-    connect()
+    await connect()
     var existingObjects = await findExistingObjects(Kwindoo)
   
     var regattaListRequest = await axios({
@@ -152,35 +151,35 @@ const { get } = require('request');
                         url:'https://api.kwindoo.com/api/regatta/get-boat-data?raceId=' + newRace.original_id
                     })
                     let boatDetails = boatDataRequest.data.response.users
-                
-                    boatDetails.forEach(boat => {
-                        let b = instantiateOrReturnExisting(existingObjects, Kwindoo.Boat, boat.id).obj
-                        b.regatta = newOrExistingRegatta.id,
-                        b.regatta_original_id = newOrExistingRegatta.original_id,
-                        b.race = newRace.id,
-                        b.race_original_id = newRace.original_id,
-                        b.first_name = boat.first_name,
-                        b.last_name = boat.last_name,
-                        b.email = boat.email,
-                        b.boat_name = boat.boat_data.boat_name,
-                        b.sail_number = boat.boat_data.sail_number,
-                        b.race_number = boat.boat_data.race_number,
-                        b.handycap = boat.boat_data.handycap,
-                        b.helmsman = boat.boat_data.helmsman,
-                        b.owner_name = boat.boat_data.owner_name,
-                        b.registry_number = boat.boat_data.registry_number,
-                        b.not_racer = boat.boat_data.not_racer,
-                        b.homeport = boat.boat_data.homeport,
-                        b.boat_type_name = boat.boat_data.boat_type.name,
-                        b.boat_type_alias = boat.boat_data.boat_type.alias,
-                        b.class = boat.boat_data.class
-                        
-                        if(b.shouldSave){
-                            newBoatObjects.push(b)
-                        }
-                    })
-
-
+                    if(boatDetails !== null){
+                        boatDetails.forEach(boat => {
+                            let b = instantiateOrReturnExisting(existingObjects, Kwindoo.Boat, boat.id).obj
+                            b.regatta = newOrExistingRegatta.id,
+                            b.regatta_original_id = newOrExistingRegatta.original_id,
+                            b.race = newRace.id,
+                            b.race_original_id = newRace.original_id,
+                            b.first_name = boat.first_name,
+                            b.last_name = boat.last_name,
+                            b.email = boat.email,
+                            b.boat_name = (boat.boat_data === null)? null : boat.boat_data.boat_name,
+                            b.sail_number = (boat.boat_data === null)? null : boat.boat_data.sail_number,
+                            b.race_number = (boat.boat_data === null)? null : boat.boat_data.race_number,
+                            b.handycap = (boat.boat_data === null)? null : boat.boat_data.handycap,
+                            b.helmsman = (boat.boat_data === null)? null : boat.boat_data.helmsman,
+                            b.owner_name = (boat.boat_data === null)? null : boat.boat_data.owner_name,
+                            b.registry_number = (boat.boat_data === null)? null : boat.boat_data.registry_number,
+                            b.not_racer = (boat.boat_data === null)? null : boat.boat_data.not_racer,
+                            b.homeport = (boat.boat_data === null)? null : boat.boat_data.homeport,
+                            b.boat_type_name = (boat.boat_data === null)? null : boat.boat_data.boat_type.name,
+                            b.boat_type_alias = (boat.boat_data === null)? null : boat.boat_data.boat_type.alias,
+                            b.class =  (boat.boat_data === null)? null : boat.boat_data.class
+                            
+                            if(b.shouldSave){
+                                newBoatObjects.push(b)
+                            }
+                        })    
+                    }
+                    
                     console.log('Getting markers.')
                     let markersRequest =  await axios({
                         method:'get',
@@ -335,7 +334,6 @@ const { get } = require('request');
                         })
                     })
 
-                    
                     let newObjectsToSave = [
                         { objectType:Kwindoo.Race, objects:[newRace]},
                         { objectType:Kwindoo.Boat, objects:newBoatObjects},

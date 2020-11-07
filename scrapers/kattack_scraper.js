@@ -13,7 +13,7 @@ var parser = require('xml2json');
 
 // TODO: Do everything in a transaction.
 ( async() => {
-    var CONNECTED_TO_DB = connect()
+    var CONNECTED_TO_DB = await connect()
     
 
     if(CONNECTED_TO_DB){
@@ -440,8 +440,6 @@ var parser = require('xml2json');
                         await Kattack.KattackFailedUrl.create({id:uuidv4(), url: raceUrl, error: err.toString()}, {fields:['id','url', 'error']})
                     }
                 }
-               
-
                 console.log('Finished scraping race.')
             }catch(err){
                 if( !Object.keys(existingFailures).includes(raceUrl)){

@@ -8,9 +8,7 @@ const exec = require('sync-exec');
 const {gzip, ungzip} = require('node-gzip');
 var parser = require('xml2json');
 
-
 // BUG! Why are almost no regattas saved?
-
 
 // https://tacktracker.com/cloud/home/OshkoshYachtClub/races/
 ( async () => {

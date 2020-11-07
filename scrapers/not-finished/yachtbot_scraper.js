@@ -4,7 +4,6 @@ const xml2json = require('xml2json');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const axiosRetry = require('axios-retry');
-const { json2xml } = require('xml-js');
 
 ( async () => {
  
@@ -12,9 +11,9 @@ const { json2xml } = require('xml-js');
     const page = await browser.newPage();
     axiosRetry(axios, { retryDelay: axiosRetry.exponentialDelay, retries: 10});
 
-    //var idx = 8597
+    var idx = 8597
 
-    var idx = 17300
+    //var idx = 17300
  
     while(idx < 17316){
         page_url = 'http://www.yacht-bot.com/races/' + idx 
@@ -30,14 +29,27 @@ const { json2xml } = require('xml-js');
             var session = await axios.get("https://www.igtimi.com/api/v1/sessions/" + idx + "?access_token=" + token)
             var start_time = session.data.session.start_time
             var end_time = session.data.session.end_time
-                    //     end_time = meta.session.end_time
+            /** session.data.session 
+             * name: 'Akaroa Snippets',
+                start_time: 1443832204000,
+                end_time: 1443839412000,
+                owner_id: 2550,
+                session_group_id: 22729,
+                admin_session_group_id: 22730,
+                parent_session_id: null,
+                ou: null,
+                permissions: { read: true, modify: false },
+                blob: true
+             */
             var race_info = await axios.get("https://www.igtimi.com/api/v1/sessions/" + idx + "/logs?access_token=" + token)
             var current_time = new Date().getTime()
-   
+           
             var windows = await axios.get("https://www.igtimi.com/api/v1/devices/data_access_windows?start_time=" + start_time + "&end_time=" + current_time + "&types%5B%5D=read&types%5B%5D=modify&access_token=" + token )
     
             var permissionsUrl = "https://www.igtimi.com/api/v1//resources?permission=read&start_time=" + start_time + "&end_time=" + end_time
             var resources = JSON.parse(xml2json.toJson(race_info.data))
+            //resources.session.content.log.type
+            console.log(JSON.stringify(resources.session.content.log.log_entry))
             resources['session']['content']['log']['log_entry'].forEach(entry => {
                     // console.log(entry['data']['device'])
                     // console.log(entry['data'])
@@ -53,9 +65,9 @@ const { json2xml } = require('xml-js');
             var devicesUrl = 'https://www.igtimi.com/api/v1/devices'
             var data_5 = "_method=GET"
             windows.data["data_access_windows"].forEach( data_access_window => {
-                    data_5 = command_5 + "&serial_numbers%5B%5D=" 
+                    data_5 = data_5 + "&serial_numbers%5B%5D=" 
                     serial_number = data_access_window["data_access_window"].device_serial_number
-                    data_5 = command_5 + "&serial_numbers%5B%5D=" + serial_number
+                    data_5 = data_5 + "&serial_numbers%5B%5D=" + serial_number
                 })
             data_5 = data_5 + "&access_token=" + token 
             
@@ -64,7 +76,7 @@ const { json2xml } = require('xml-js');
                 url: devicesUrl,
                 data: data_5
             })
-    
+            console.log(JSON.stringify(devicesRequest.data))
             // http://support.igtimi.com/support/solutions/articles/8000009993-api-communication-fundamentals
             var data_6 = "start_time=" + start_time + "&end_time=" + end_time + "types%5B1%5D=0&types%5B2%5D=0&types%5B3%5D=0&types%5B4%5D=0&types%5B5%5D=0&types%5B6%5D=0&types%5B7%5D=0&types%5B8%5D=0&types%5B9%5D=0&types%5B10%5D=0&types%5B11%5D=0&types%5B12%5D=0&types%5B13%5D=0&types%5B14%5D=0&types%5B15%5D=0&types%5B16%5D=0&types%5B17%5D=0&types%5B18%5D=0&types%5B19%5D=0&types%5B20%5D=0&types%5B21%5D=0&types%5B22%5D=0&types%5B23%5D=0&types%5B24%5D=0&types%5B25%5D=0&types%5B26%5D=0&types%5B27%5D=0&types%5B28%5D=0&types%5B29%5D=0&types%5B30%5D=0&types%5B31%5D=0&types%5B32%5D=0&types%5B33%5D=0&types%5B34%5D=0&types%5B35%5D=0&types%5B36%5D=0&types%5B37%5D=0&types%5B38%5D=0&types%5B39%5D=0&types%5B40%5D=0&types%5B41%5D=0&types%5B42%5D=0&types%5B43%5D=0&types%5B44%5D=0&types%5B45%5D=0&types%5B46%5D=0&types%5B47%5D=0&types%5B48%5D=0&types%5B49%5D=0&types%5B50%5D=0&types%5B51%5D=0&types%5B52%5D=0&types%5B53%5D=0&types%5B54%5D=0&types%5B55%5D=0&types%5B56%5D=0&types%5B57%5D=0&types%5B23%5D=0&restore_archives=true"
             resources['session']['content']['log']['log_entry'].forEach(entry => {
@@ -83,8 +95,10 @@ const { json2xml } = require('xml-js');
                 data: data_6
             })
     
-            console.log(positionsRequest.data)
+           console.log(positionsRequest.data)
             
+        }else{
+            console.log('Should not continue so going to next race.')
         }
         idx++
 
