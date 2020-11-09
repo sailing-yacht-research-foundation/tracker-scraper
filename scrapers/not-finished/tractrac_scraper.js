@@ -68,7 +68,6 @@ const axiosRetry = require('axios-retry');
 
                 }
                 
-                
                 await page.goto(raceMeta.url_html, {waitUntil: "networkidle2"});
 
                 await page.waitForSelector('#time-control-play')
