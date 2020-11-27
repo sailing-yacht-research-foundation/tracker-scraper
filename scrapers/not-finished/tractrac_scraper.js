@@ -15,6 +15,7 @@ const axiosRetry = require('axios-retry');
 
     var parseRace =  async function(race) { 
         let raceMeta = race
+      
         /**
                  * race:
                  *  params_url:
@@ -44,7 +45,9 @@ const axiosRetry = require('axios-retry');
   results_url: '',
   rerun: '',
   has_replay: false,
-  metadata: '' }
+  metadata: '' 
+   CLUB RACES HAVE LON LAT
+}
                  */
 
                 let start_date = new Date(raceMeta.tracking_starttime.split(' ')[0]).getTime()
@@ -55,17 +58,84 @@ const axiosRetry = require('axios-retry');
                     return
                 }
 
+
                 // If raceMeta.has_club then the event_id is actually the club? original id.
 
                 // params_json could be null and replaced with params_url. In that case, it may be a .txt file.
                 // sample http://club.tractrac.com/events/event_20140410_TarifaSurf/1f149da0-26cd-0136-d122-10bf48d758ce.txt
-                console.log(raceMeta)
-                if(raceMeta.params_json !== undefined){
-                    var raceParamsRequest = await axios.get(raceMeta.params_json)
-                    // This is HUGE
-                    //  console.log(raceParamsRequest.data)
-                }else{
+                //console.log(raceMeta)
+                // url_html is the race url to view.
 
+
+                if(raceMeta.params_json !== undefined){
+                    let raceParamsRequest = await axios.get(raceMeta.params_json)
+                    // This is HUGE
+                    //console.log(Object.keys(raceParamsRequest.data))
+
+                    /**
+                     * [ 'parameters',
+                        'dataservers',
+                        'maps',
+                        'classes',
+                        'teams',
+                        'competitors',
+                        'controlPoints',
+                        'routes',
+                        'splits',
+                        'eventId',
+                        'eventName',
+                        'eventAnalyticsName',
+                        'eventDb',
+                        'eventStartTime',
+                        'eventEndTime',
+                        'eventType',
+                        'enableNotifier',
+                        'notifierClient',
+                        'eventTimezone',
+                        'generateKmls',
+                        'dbReplicaEnabled',
+                        'highLoadEnabled',
+                        'multipleDataservers',
+                        'event_key',
+                        'eventJSON',
+                        'webId',
+                        'raceId',
+                        'raceName',
+                        'raceStartTime',
+                        'raceTrackingStartTime',
+                        'raceTrackingEndTime',
+                        'initialized',
+                        'raceDefaultRouteUUID',
+                        'raceHandicapSystem',
+                        'onlineStatus',
+                        'status',
+                        'course_area',
+                        'raceTimeZone' ]
+                     */
+                }else{
+                    let raceParamsRequest = await axios.get(raceMeta.params_url)
+                    
+                    // TODO: Do I need this?
+                    let lines = raceParamsRequest.data.split('\n')
+                    let values = {}
+                    lines.forEach(l => {
+                        let kv = l.split(':')
+                        if(kv.length > 0){
+                            values[kv[0]] = kv[1]
+                            
+                        }
+                    })
+
+                    //console.log(Object.keys(values))
+
+                    // Red herring.
+                    // let jsonUrl = lines[lines.length-2].split('EventJSON:')[1]
+                    
+                    // let raceJsonRequest = await axios.get(jsonUrl)
+                    // // [ 'event', 'races', 'banners' ]
+                    // console.log(Object.keys(raceJsonRequest.data.races[0]))
+                    //console.log(raceParamsRequest.data.split('\n'))
+                    //console.log(raceParamsRequest.data)
                 }
                 
                 await page.goto(raceMeta.url_html, {waitUntil: "networkidle2"});
@@ -73,8 +143,8 @@ const axiosRetry = require('axios-retry');
                 await page.waitForSelector('#time-control-play')
                 await page.click('#time-control-play')
                 await page.waitForSelector('#contTop > div > section.race')
-                var wait_for_fully_loaded = 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"'
-                var skip = false;
+                let wait_for_fully_loaded = 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"'
+                let skip = false;
                 await page.waitForFunction(wait_for_fully_loaded, {timeout:60000} ).catch(e => {
                     
                     // TODO: save as failed race
@@ -84,53 +154,73 @@ const axiosRetry = require('axios-retry');
 
                 if(!skip){
                     console.log('Loaded race, beginning to parse from website.')
-                    var race_details = await page.evaluate(() => {
-                        var context = document.querySelector("#contTop > div > section.race")[Object.keys(document.querySelector("#contTop > div > section.race"))[0]][Object.keys(document.querySelector("#contTop > div > section.race")[Object.keys(document.querySelector("#contTop > div > section.race"))[0]])[0]]["context"]
-                        var race = context["$component"]["raceData"]["race"]
-                        var name = race["name"]
-                        var original_id = race["id"]
-                        var calculated_start_time = race["calculatedStartTime"]
-                        var start_time = race["raceStartTime"]
-                        var end_time = race["raceEndTime"]
-                        var tracking_start_time = race["trackingStartTime"]
-                        var tracking_end_time = race["trackingEndTime"]
-                        var extent = race["extent"]
-                        var time_zone = race["parameterSet"]["parameters"]["eventTimezone"]
-                        var race_date_s = race["readableDate"]
-                        var race_date_timestamp = race["notReadableDate"]
-                        var classes = race["parameterSet"]["parameters"]["classes"]
-                        var params = race["parameterSet"]["parameters"]["parameters"]
-                        var routes = race["parameterSet"]["parameters"]["routes"]
-                        var control_points = race["parameterSet"]["parameters"]["controlPoints"]
-                        var p_event_id = race["parameterSet"]["parameters"]["eventId"]
-                        var p_event_st = race["parameterSet"]["parameters"]["eventStartTime"]
-                        var p_event_et = race["parameterSet"]["parameters"]["eventEndTime"]
-                        var p_web_id = race["parameterSet"]["parameters"]["webId"]
-                        var p_course_area = race["parameterSet"]["parameters"]["course_area"]
+                    let race_details = await page.evaluate(() => {
+                       let context = document.querySelector("#contTop > div > section.race")[Object.keys(document.querySelector("#contTop > div > section.race"))[0]][Object.keys(document.querySelector("#contTop > div > section.race")[Object.keys(document.querySelector("#contTop > div > section.race"))[0]])[0]]["context"]
+                       let race = context["$component"]["raceData"]["race"]
+                  
+                    //    let result_lists = context["$component"]["raceData"]["resultLists"]
 
-                        var assorted = {params, classes, routes, control_points, extent, p_event_id, p_event_st, p_event_et, p_web_id, p_course_area}
 
-                        var competitors_params = race["parameterSet"]["parameters"]["competitors"]
-                        var competitors_race = Object.keys(Object.values(race["raceCompetitors"])[0])
-                        var competitors_event = Object.keys(Object.values(race["event"]["competitors"])[0])
+                       let name = race["name"]
+                       let original_id = race["id"]
+                       let calculated_start_time = race["calculatedStartTime"]
+                       let start_time = race["raceStartTime"]
+                       let end_time = race["raceEndTime"]
+                       let tracking_start_time = race["trackingStartTime"]
+                       let tracking_end_time = race["trackingEndTime"]
+                       let extent = race["extent"]
+                       let time_zone = race["parameterSet"]["parameters"]["eventTimezone"]
+                       let race_date_s = race["readableDate"]
+                       let race_date_timestamp = race["notReadableDate"]
+                       let classes = race["parameterSet"]["parameters"]["classes"]
+                       let params = race["parameterSet"]["parameters"]["parameters"]
+                       let routes = race["parameterSet"]["parameters"]["routes"]
+                       let control_points = race["parameterSet"]["parameters"]["controlPoints"]
+                       let p_event_id = race["parameterSet"]["parameters"]["eventId"]
+                       let p_event_st = race["parameterSet"]["parameters"]["eventStartTime"]
+                       let p_event_et = race["parameterSet"]["parameters"]["eventEndTime"]
+                       let p_web_id = race["parameterSet"]["parameters"]["webId"]
+                       let p_course_area = race["parameterSet"]["parameters"]["course_area"]
 
-                        var team_position_data = Object.values(context["$component"]["raceData"]["resultItems"]).map( resultItem => {
+                       let assorted = {params, classes, routes, control_points, extent, p_event_id, p_event_st, p_event_et, p_web_id, p_course_area}
 
-                                var positions = resultItem["positions"]["positions"]
-                                var team = resultItem["team"]["id"]
-                                var short_name = resultItem["shortName"]
-                                var time_elapsed = resultItem["timeElapsed"]
-                                var start_time = resultItem["startTime"]
-                                var stop_time = resultItem["stopTime"]
-                                var finish_time = resultItem["finishTime"]
-                                var status = resultItem["status"]
-                                return {positions, team, short_name, time_elapsed, start_time, stop_time, finish_time, status}
+                       let competitors_params = race["parameterSet"]["parameters"]["competitors"]
+
+                        let competitors_race = []
+                        Object.values(race["raceCompetitors"]).forEach(c =>{
+                            competitors_race.push({'classId':c.competitorClass.id, 'className':c.competitorClass.name, 'description':c.description, 
+                            'finishTime':c.finishTime, 'firstName':c.firstName, 'handicapToD':c.handicapToD, 'handicapToT':c.handicapToT,
+                            'id':c.id, 'lastName':c.lastName, 'name':c.name, 'nameAlias':c.nameAlias, 'nationality':c.nationality, 'nonCompeting':c.nonCompeting,
+                            'boatName':c.properties.boatName, 'boatId':c.properties.boatId, 'shortAlias':c.shortAlias, 'shortName':c.shortName, 
+                            'standingPos':c.standingPos, 'startTime':c.startTime, 'statusId':c.status.id, 'statusCodePointAt':c.statusCodePointAt, 
+                            'statusName':c.statusName, 'statusDescription':c.statusDesc, 'statusFull':c.status.full, 'statusTime':c.statusTime, 'stopTime':c.stopTime
+                            })
+                        });
+
+                       let team_position_data = Object.values(context["$component"]["raceData"]["resultItems"]).map( resultItem => {
+
+                               let positions = resultItem["positions"]["positions"]
+                               let team = resultItem["team"]["id"]
+                               let short_name = resultItem["shortName"]
+                               let time_elapsed = resultItem["timeElapsed"]
+                               let start_time = resultItem["startTime"]
+                               let stop_time = resultItem["stopTime"]
+                               let finish_time = resultItem["finishTime"]
+                               let status = resultItem["status"]
+
+                               let passings = resultItem["controlPassings"].map(p => { return {controlId:p.control.id, passingTime:p.passingTime, realPassingTime:p.realPassingTime, pos:p.pos, timeFromStart:p.timeFromStart}})
+                               let id = resultItem["id"]
+                               let group_leader = resultItem["groupLeader"]
+                               let course_time_handicap = resultItem["courseTimeHandicap"]
+                               let start_line_analysis = resultItem["startLineAnalysis"]
+
+
+                                return {id, group_leader, course_time_handicap, start_line_analysis, positions, team, short_name, time_elapsed, start_time, stop_time, finish_time, status, passings}
 
                         });
 
                         return {competitors_params, 
                             competitors_race,
-                            competitors_event,
                             team_position_data, 
                             assorted, 
                             race_date_timestamp, 
@@ -145,8 +235,7 @@ const axiosRetry = require('axios-retry');
                             race_date_s, 
                             race_date_timestamp}
                     })
-                    
-                     //   console.log(race_details.team_position_data[0].positions[0])
+  
                     
                     // TODO: Go through race_details object and other objects and save them to DB in a transaction. 1 Transaction per race.
                     // TODO: wrap in try catch.
@@ -155,82 +244,150 @@ const axiosRetry = require('axios-retry');
     }
 
 
-    var allEventsRequest = await axios.get('http://live.tractrac.com/rest-api/events.json')
-    var allEvents = allEventsRequest.data.events
-
-    var allClubsRequest = await axios.get('http://live.tractrac.com/rest-api/clubs.json')
-    var allClubs = allClubsRequest.data.events
+    // Events and clubs are basically the same in this schema. So we need to check all races associated with an event or a club.
+   let allEventsRequest = await axios.get('http://live.tractrac.com/rest-api/events.json')
+   let allEvents = allEventsRequest.data.events
+   
+   let allClubsRequest = await axios.get('http://live.tractrac.com/rest-api/clubs.json')
+   let allClubs = allClubsRequest.data.events
    
     
-    for(clubIndex in allClubs){
-        var clubObject = allClubs[clubIndex]
-        //TODO: check if club exists.
-        clubObject.original_id = clubObject.id
-        clubObject.id = uuidv4()
-       
-        clubObject.email = clubObject.races_url.split('user=')[1]
+//     for(clubIndex in allClubs){
+//        let clubObject = allClubs[clubIndex]
       
-        try{
-            var clubRacesRequest = await axios.get(clubObject.races_url)
-        }catch(err){
-            console.log(err)
-            console.log(clubObject)
-            // TODO: log failed url
-        }
+//         //TODO: check if club exists.
+
+
+//         /**Club object
+//          * 
+//          * { id: '27',
+//             races_url:
+//             'https://club.tractrac.com/tracms/client/jsonserviceclubs.php?user=boyan.zlatarev@icloud.com',
+//             name: '1 Tarifa Sportlink/ Surfski Center',
+//             logo:
+//             'images/clubs/4ba84810-a2bc-0131-f55f-10bf48d758ce_small.PNG',
+//             type: 'Sailing',
+//             country: 'ESP',
+//             city: 'Tarifa',
+//             token_url: null }
+//          */
+//         clubObject.original_id = clubObject.id
+//         clubObject.id = uuidv4()
+       
+//         clubObject.email = clubObject.races_url.split('user=')[1]
+      
+//         try{
+//            var clubRacesRequest = await axios.get(clubObject.races_url)
+//         }catch(err){
+//             console.log(err)
+//             console.log(clubObject)
+//             // TODO: log failed url
+//         }
         
-        // TODO Save club
+//         // TODO Save email
 
        
+//         for(raceIndex in clubRacesRequest.data.races){
+//            let raceObject = clubRacesRequest.data.races[raceIndex]
+//            /**
+//             * 
+//             * Race object
+//             * 
+//             * { database: 'event_20140410_TarifaSurf',
+//   url:
+//    'http://club.tractrac.com/events/event_20140410_TarifaSurf/index.php?raceid=58fee0b0-de58-0135-d464-101b0ec43d96',
+//   url_emb:
+//    'http://club.tractrac.com/events/event_20140410_TarifaSurf/58fee0b0-de58-0135-d464-101b0ec43d96.html',
+//   params_url:
+//    'http://club.tractrac.com/events/event_20140410_TarifaSurf/58fee0b0-de58-0135-d464-101b0ec43d96.txt',
+//   url_html:
+//    'https://live.tractrac.com/viewer/index.html?target=https://em.club.tractrac.com/events/782fb150-a2bb-0131-f556-10bf48d758ce/races/58fee0b0-de58-0135-d464-101b0ec43d96.json',
+//   event_id: '782fb150-a2bb-0131-f556-10bf48d758ce',
+//   event_name: 'Surfski Center Tarifa',
+//   event_type: 'Sailing',
+//   id: '58fee0b0-de58-0135-d464-101b0ec43d96',
+//   name: 'Surfski Center Tarifa - Test Paddle 16:00 h',
+//   tracking_starttime: '2018-01-18 14:47:31',
+//   tracking_endtime: '2018-01-18 17:18:56',
+//   race_starttime: '',
+//   expected_race_startdate: '2018-01-18',
+//   initialized: '1',
+//   status: 'ONLINE',
+//   visibility: 'REPLAY',
+//   classes: 'Tarifa',
+//   classes_list:
+//    [ { id: '1f351760-0919-0132-f4a2-10bf48d758ce', name: 'Tarifa' } ],
+//   rerun: '',
+//   lat: 36.02044505682507,
+//   lon: -5.619309594726587 }
+//             */
+//             raceObject.club = clubObject.id
+//             raceObject.club_original_id = clubObject.original_id
+//             raceObject.has_club = true
+//             raceObject.event_id = null
 
-        for(raceIndex in clubRacesRequest.data.races){
-            var raceObject = clubRacesRequest.data.races[raceIndex]
-            raceObject.club = clubObject.id
-            raceObject.club_original_id = clubObject.original_id
-            raceObject.has_club = true
-            raceObject.event_id = null
+//             if(raceObject.event_type === 'Sailing'){
+//                 await parseRace(raceObject)
 
-            if(raceObject.event_type === 'Sailing'){
-              //  await parseRace(raceObject)
-
-            }
+//             }
             
             
-        }
-    }
+//         }
+//     }
 
 
 
         
     for(eventIndex in allEvents){
-        var eventObject = allEvents[eventIndex]
+        let eventIndexLast = allEvents.length - 5
+       let eventObject = allEvents[eventIndex]
 
+       /** evennt object
+        * 
+        * { id: '1957',
+  races_url:
+   'http://event.tractrac.com/events/event_20201110_classJapan/jsonservice.php',
+  database: 'event_20201110_classJapan',
+  name: '470 class Japan Championships 2020',
+  logo:
+   'images/events/aad5a9f0-e680-0138-8d2c-60a44ce903c3_small.png',
+  logo_large:
+   'images/events/aad5a9f0-e680-0138-8d2c-60a44ce903c3_large.png',
+  cover:
+   'images/events/aad5a9f0-e680-0138-8d2c-60a44ce903c3_cover.jpg',
+  type: 'Sailing',
+  startTime: '2020-11-11',
+  endTime: '2020-11-15',
+  country: 'JPN',
+  city: 'Enoshima',
+  lat: '35.300000000000',
+  lon: '139.500000000000',
+  sortOrder: '6',
+  map_visibility: 'past',
+  etype_icon: 'ico-sailing.png' }
+        */
+
+       //console.log(eventObject)
         // If event isn't in future, or doesn't already exist, save it.
         // TODO
 
      
-        var eventHasEnded = new Date(eventObject.endTime).getTime() < new Date().getTime()
+       let eventHasEnded = new Date(eventObject.endTime).getTime() < new Date().getTime()
 
-        var eventSave = {
-            id: uuidv4(),
-            small_original_id: eventObject.id,
-            name: eventObject.name,
-            start: eventObject.startTime,
-            end: eventObject.endTime,
-            country: eventObject.country,
-            city: eventObject.city,
-            lon: eventObject.lon,
-            lat: eventObject.lat
-        }
-
+     
         
 
         if(eventObject.type === 'Sailing' && eventHasEnded){
             console.log("Attempting new event.")
-            var racesRequest = await axios.get(eventObject.races_url)
-            var eventDetails = racesRequest.data.event
-            var races = racesRequest.data.races
+           let racesRequest = await axios.get(eventObject.races_url)
+           let eventDetails = racesRequest.data.event
+           let races = racesRequest.data.races
 
-            /**
+           //console.log(eventDetails)
+
+            /** event details
+             * 
+             * 
              * { id: 'd2a0e010-a320-0138-c48f-60a44ce903c3',
                 name: 'Swedish SL- Mästarnas Mästare Marstrand',
                 database: 'event_20201009_SwedishSLM',
@@ -256,28 +413,17 @@ const axiosRetry = require('axios-retry');
              * 
              */
 
-            eventSave.large_original_id = eventDetails.id
-            eventSave.type = eventDetails.type
-            eventSave.url = eventDetails.web_url
-            eventSave.sap_url = eventDetails.sap_url
-            eventSave.sap_event_url = eventDetails.sap_event_url
-            eventSave.sap_leaderboard_name = eventDetails.sap_leaderboard_team
+        //    await page.goto(eventSave.url)
 
-            await page.goto(eventSave.url)
-
-            eventSave.external_url = await page.evaluate(() => {
-                return document.querySelector('#app > main > section > div > div.details > div:nth-child(3) > a').href
-            })
+            // eventSave.external_url = await page.evaluate(() => {
+            //     return document.querySelector('#app > main > section > div > div.details > div:nth-child(3) > a').href
+            // })
 
             console.log('Got race list. Going through each race now.')
             for(raceIndex in races){
                 
-
-    
-                var raceObject = races[raceIndex]
-                raceObject.event = eventSave.id
-                raceObject.event_small_original_id = eventSave.small_original_id
-                raceObject.event_large_original_id = eventSave.large_original_id
+                let raceObject = races[raceIndex]
+               
                 await parseRace(raceObject)
 
                 

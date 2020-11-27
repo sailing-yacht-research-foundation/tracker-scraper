@@ -8,7 +8,7 @@ const { get } = require('request');
     await connect()
     var existingObjects = await findExistingObjects(RaceQs)
 
-    const BEGIN_COUNTING_AT = 21130
+    const BEGIN_COUNTING_AT = 100000
    
     var pageIndex = BEGIN_COUNTING_AT
         

@@ -22,7 +22,7 @@ const puppeteer = require('puppeteer');
           boatOriginalIdToNewId[b.original_id] = b.id
         })
 
-        // Visit the Bluewater Home Page and look for new URLS.
+        // Visit the Bluewater Home Page and look for new URLS. Leaving this in for posterity.
         // const browser = await puppeteer.launch();
         // const page = await browser.newPage();
         // await page.goto(BLUEWATER_TRACKS_HOME_PAGE, {waitUntil: "networkidle2", timeout: 300000});
