@@ -1,21 +1,39 @@
-const {YachtBot, sequelize, connect, keyInDictionary, findExistingObjects, instantiateOrReturnExisting, getUUIDForOriginalId, bulkSave} = require('../../tracker-schema/schema.js')
-const {axios, uuidv4} = require('../../tracker-schema/utils.js')
+const {YachtBot, sequelize, connect, keyInDictionary, findExistingObjects, instantiateOrReturnExisting, getUUIDForOriginalId, bulkSave} = require('../tracker-schema/schema.js')
+const {axios, uuidv4} = require('../tracker-schema/utils.js')
 const puppeteer = require('puppeteer');
 const xml2json = require('xml2json');
+
 
 ( async () => {
     await connect()
     var existingObjects = await findExistingObjects(YachtBot)
 
+    // var errors = await YachtBot.FailedUrl.findAll()
+    // var races = await YachtBot.Race.findAll()
+    
+    // var raceIds = {}
+    // races.forEach(r=>{
+    //     raceIds[r.original_id] = true
+    // })
+    // var errorIds = {}
+   
+    
+   // console.log(errorIds)
+    
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
     
-    var idx = 4000
+    var idx = 1
     //var idx = 17000
  
-    while(idx < 17320){
+    while(idx == 17159){
+        // if(!raceIds[new String(idx)]){
+        //     idx++
+        //     console.log('Not a saved race.')
+        //     continue
+        // }
 
-        var raceSaveObj = instantiateOrReturnExisting(existingObjects, YachtBot.Race, idx)
+        let raceSaveObj = instantiateOrReturnExisting(existingObjects, YachtBot.Race, idx)
         if(! raceSaveObj.shouldSave){
             idx++
             console.log('Already saved this so skipping.')
@@ -27,18 +45,18 @@ const xml2json = require('xml2json');
         try{
 
             console.log('about to go to page ' + page_url)
-            await page.goto(page_url, {timeout: 0, waitUntil: "networkidle0"})
+            await page.goto(page_url)
             console.log('went to page ' + page_url)
-            var should_continue = await page.waitForFunction("document.querySelector('#overlay > div.error-state').style.display === 'none'").then(()=>{ return true}).catch(e => {return false})
+            let should_continue = await page.waitForFunction("document.querySelector('#overlay > div.error-state').style.display === 'none'").then(()=>{ return true}).catch(e => {return false})
             if(should_continue){
                 token = await page.evaluate(()=>{
                     return oauth_access_token
                 });
             
-                var session = await axios.get("https://www.igtimi.com/api/v1/sessions/" + idx + "?access_token=" + token)
-                var start_time = session.data.session.start_time
-                var end_time = session.data.session.end_time
-                var current_time = new Date().getTime()
+                let session = await axios.get("https://www.igtimi.com/api/v1/sessions/" + idx + "?access_token=" + token)
+                let start_time = session.data.session.start_time
+                let end_time = session.data.session.end_time
+                let current_time = new Date().getTime()
 
                 if(start_time > new Date().getTime() || end_time > new Date().getTime()){
                     console.log('Future race so skipping.')
@@ -49,13 +67,13 @@ const xml2json = require('xml2json');
                 session.data.session.url = page_url
                 
              
-                var logs_request = await axios.get("https://www.igtimi.com/api/v1/sessions/" + idx + "/logs?access_token=" + token)
+                let logs_request = await axios.get("https://www.igtimi.com/api/v1/sessions/" + idx + "/logs?access_token=" + token)
                 
-                var logs = JSON.parse(xml2json.toJson(logs_request.data)).session.content.log.log_entry
-                var windowsRequest = await axios.get("https://www.igtimi.com/api/v1/devices/data_access_windows?start_time=" + start_time + "&end_time=" + current_time + "&types%5B%5D=read&types%5B%5D=modify&access_token=" + token )
-                var windows = windowsRequest.data.data_access_windows
+                let logs = JSON.parse(xml2json.toJson(logs_request.data)).session.content.log.log_entry
+                let windowsRequest = await axios.get("https://www.igtimi.com/api/v1/devices/data_access_windows?start_time=" + start_time + "&end_time=" + current_time + "&types%5B%5D=read&types%5B%5D=modify&access_token=" + token )
+                let windows = windowsRequest.data.data_access_windows
                 
-                var groups = {}
+                let groups = {}
                 windows.forEach(w =>{
                     window = w.data_access_window
                     let key = window.recipient.group.id
@@ -74,11 +92,11 @@ const xml2json = require('xml2json');
                 //var permissionsUrl = "https://www.igtimi.com/api/v1//resources?permission=read&start_time=" + start_time + "&end_time=" + end_time
             
                 
-                var metadatas = []
-                var objects = []
-                var object_datas = []
+                let metadatas = []
+                let objects = []
+                let object_datas = []
                 // Devices have object ids and serial numbers.
-                var devices = []
+                let devices = []
 
             
                 logs.forEach(entry => {
@@ -106,15 +124,15 @@ const xml2json = require('xml2json');
                     }
                 })
 
-                var oids_to_serial = {}
+                let oids_to_serial = {}
                 devices.forEach(d=>{
                     oids_to_serial[d.object_id] = d.serial_number
               
                 })
 
                 // http://support.igtimi.com/support/solutions/articles/8000009993-api-communication-fundamentals
-                var positionRequestData = "start_time=" + start_time + "&end_time=" + end_time + "&types%5B1%5D=0&types%5B2%5D=0&types%5B3%5D=0&types%5B4%5D=0&types%5B5%5D=0&types%5B6%5D=0&types%5B7%5D=0&types%5B8%5D=0&types%5B9%5D=0&types%5B10%5D=0&types%5B11%5D=0&types%5B12%5D=0&types%5B13%5D=0&types%5B14%5D=0&types%5B15%5D=0&types%5B16%5D=0&types%5B17%5D=0&types%5B18%5D=0&types%5B19%5D=0&types%5B20%5D=0&types%5B21%5D=0&types%5B22%5D=0&types%5B23%5D=0&types%5B24%5D=0&types%5B25%5D=0&types%5B26%5D=0&types%5B27%5D=0&types%5B28%5D=0&types%5B29%5D=0&types%5B30%5D=0&types%5B31%5D=0&types%5B32%5D=0&types%5B33%5D=0&types%5B34%5D=0&types%5B35%5D=0&types%5B36%5D=0&types%5B37%5D=0&types%5B38%5D=0&types%5B39%5D=0&types%5B40%5D=0&types%5B41%5D=0&types%5B42%5D=0&types%5B43%5D=0&types%5B44%5D=0&types%5B45%5D=0&types%5B46%5D=0&types%5B47%5D=0&types%5B48%5D=0&types%5B49%5D=0&types%5B50%5D=0&types%5B51%5D=0&types%5B52%5D=0&types%5B53%5D=0&types%5B54%5D=0&types%5B55%5D=0&types%5B56%5D=0&types%5B57%5D=0&types%5B23%5D=0&restore_archives=true"
-                var serials = {}
+                let positionRequestData = "start_time=" + start_time + "&end_time=" + end_time + "&types%5B1%5D=0&types%5B2%5D=0&types%5B3%5D=0&types%5B4%5D=0&types%5B5%5D=0&types%5B6%5D=0&types%5B7%5D=0&types%5B8%5D=0&types%5B9%5D=0&types%5B10%5D=0&types%5B11%5D=0&types%5B12%5D=0&types%5B13%5D=0&types%5B14%5D=0&types%5B15%5D=0&types%5B16%5D=0&types%5B17%5D=0&types%5B18%5D=0&types%5B19%5D=0&types%5B20%5D=0&types%5B21%5D=0&types%5B22%5D=0&types%5B23%5D=0&types%5B24%5D=0&types%5B25%5D=0&types%5B26%5D=0&types%5B27%5D=0&types%5B28%5D=0&types%5B29%5D=0&types%5B30%5D=0&types%5B31%5D=0&types%5B32%5D=0&types%5B33%5D=0&types%5B34%5D=0&types%5B35%5D=0&types%5B36%5D=0&types%5B37%5D=0&types%5B38%5D=0&types%5B39%5D=0&types%5B40%5D=0&types%5B41%5D=0&types%5B42%5D=0&types%5B43%5D=0&types%5B44%5D=0&types%5B45%5D=0&types%5B46%5D=0&types%5B47%5D=0&types%5B48%5D=0&types%5B49%5D=0&types%5B50%5D=0&types%5B51%5D=0&types%5B52%5D=0&types%5B53%5D=0&types%5B54%5D=0&types%5B55%5D=0&types%5B56%5D=0&types%5B57%5D=0&types%5B23%5D=0&restore_archives=true"
+                let serials = {}
                 object_datas.forEach(o => {
                     serial_number = oids_to_serial[o.object_id]
                     o.object_content.serial_number = serial_number
@@ -163,18 +181,19 @@ const xml2json = require('xml2json');
                 
         
                 positionRequestData = positionRequestData + "&_method=GET&restore_archives=true&access_token=" + token 
-                var positionsRequest = await axios({
+                let positionsRequest = await axios({
                     method:'post',
                     url: 'https://www.igtimi.com/api/v1/resources/data',
                     data: positionRequestData
                 })
                 
 
-                var boats = []
-                var buoys = []
-                var positions = []
+                let boats = []
+                let buoys = []
+            
+                let positions = []
 
-                var positionSerials = Object.keys(positionsRequest.data)
+                let positionSerials = Object.keys(positionsRequest.data)
                 
                 // http://support.igtimi.com/support/solutions/articles/8000009993-api-communication-fundamentals
 
@@ -211,7 +230,9 @@ const xml2json = require('xml2json');
                     let metas = JSON.stringify({gpsQuality, gpsQualitySatCount, gpsQualityHDOP, gpsAltitude, cog, hdgm, hdg, sog, stw, awa, aws, antHrm, quaternion, acceleration, gyro, 
                          force, torque, twa, tws, pressure})
                     
-
+                    if(metas === '{}'){
+                        metas = null
+                    }
                     let current_positions = []
 
                     if(gps !== undefined && gps !== null){
@@ -233,7 +254,7 @@ const xml2json = require('xml2json');
                         }
                     }
                     
-                    if(device.type === 'buoy'){
+                    if(device.type === 'buoy' || device.type === 'wind'){
                         let id = device.uuid
                         let original_id = s
                         let race = raceSaveObj.obj.id
@@ -260,14 +281,15 @@ const xml2json = require('xml2json');
                         
                         let bo = {id, original_id, race, race_original_id, name, buoy_type, connected_buoy, connected_buoy_original_id, metas}
                         current_positions.forEach(p => {
-                            p.yacht_or_buoy = 'buoy'
+                            p.yacht_or_buoy =  device.type
                             p.buoy = id
                             p.buoy_original_id = original_id
-                          
+                        
                             positions.push(p)
                         })
                         
                         buoys.push(bo)
+                        
                         
 
 
@@ -313,14 +335,15 @@ const xml2json = require('xml2json');
                 
 
                 
-            var races = [raceSaveObj.obj]
+            let races = [raceSaveObj.obj]
             
 
             let newObjectsToSave = [
                 { objectType:YachtBot.Race, objects:races},
+                { objectType:YachtBot.Yacht, objects:boats},
                 { objectType:YachtBot.Position, objects:positions},
-                { objectType:YachtBot.Buoy, objects:buoys},
-                { objectType:YachtBot.Yacht, objects:boats}]
+                { objectType:YachtBot.Buoy, objects:buoys}
+                ]
                 console.log('Bulk saving objects.')
                 
                 await bulkSave(newObjectsToSave, YachtBot.FailedUrl, page_url)
