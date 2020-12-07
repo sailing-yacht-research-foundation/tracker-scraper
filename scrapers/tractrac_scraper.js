@@ -47,7 +47,8 @@ const puppeteer = require('puppeteer');
             raceObjSave.calculated_start_time = raceDetails.assorted.calculated_start_time
             raceObjSave.race_handicap = raceDetails.assorted.p_race_handicap
         }else{
-            
+            console.log('Already saved so skipping.')
+            return null
         }
         if(event !== null){
             raceObjSave.event = event.id
@@ -369,6 +370,7 @@ const puppeteer = require('puppeteer');
                     
                     // TODO: save as failed race
                     console.log('Skipping')
+                    console.log(raceMeta.url_html)
                     skip = true;
                 })
 
@@ -485,7 +487,7 @@ const puppeteer = require('puppeteer');
                     })
                     race_details.race = raceMeta
                     return race_details
-                    // TODO: Go through race_details object and other objects and save them to DB in a transaction. 1 Transaction per race.
+
                     // TODO: wrap in try catch.
                 }
                 
@@ -544,6 +546,7 @@ const puppeteer = require('puppeteer');
 
 
            let eventSave = instantiateOrReturnExisting(existingObjects, TracTrac.Event, eventDetails.id)
+     
            let eventSaveObj = eventSave.obj
           
            //console.log(eventDetails)
@@ -638,6 +641,8 @@ const puppeteer = require('puppeteer');
                         
                     }
         
+                }else{
+                    console.log('Already saved this race.')
                 }
             }
             
@@ -678,7 +683,7 @@ const puppeteer = require('puppeteer');
             // TODO: log failed url
         }
         
-        // TODO Save email
+      
 
        
         for(raceIndex in clubRacesRequest.data.races){
