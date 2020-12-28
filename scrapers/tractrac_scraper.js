@@ -74,7 +74,10 @@ const puppeteer = require('puppeteer');
             routeObjSave.race = raceObjSave.id
             routeObjSave.race_original_id = raceObjSave.original_id
             routeObjSave.name = r.route_name
-            routesToSave.push(routeObjSave)
+            if(routeObj.shouldSave){
+                routesToSave.push(routeObjSave)
+            }
+            
 
             r.controls.forEach( c => {
                 let ctrl = instantiateOrReturnExisting(existingObjects, TracTrac.Control, c.original_id)
@@ -245,7 +248,7 @@ const puppeteer = require('puppeteer');
     }
 
     const parseRace =  async function(race) { 
-       
+        console.log('w')
         let raceMeta = race
       
         /**
@@ -298,8 +301,9 @@ const puppeteer = require('puppeteer');
                 //console.log(raceMeta)
                 // url_html is the race url to view.
 
-
+                
                 if(raceMeta.params_json !== undefined){
+                    console.log('x')
                     let raceParamsRequest = await axios.get(raceMeta.params_json)
                     // This is HUGE
                     //console.log(Object.keys(raceParamsRequest.data))
@@ -345,6 +349,7 @@ const puppeteer = require('puppeteer');
                         'raceTimeZone' ]
                      */
                 }else{
+                    console.log('x2')
                     let raceParamsRequest = await axios.get(raceMeta.params_url)
                     
                     // TODO: Do I need this?
@@ -358,137 +363,145 @@ const puppeteer = require('puppeteer');
                         }
                     })
                 }
-               
-                await page.goto(raceMeta.url_html, {waitUntil: "networkidle2"});
 
-                await page.waitForSelector('#time-control-play')
-                await page.click('#time-control-play')
-                await page.waitForSelector('#contTop > div > section.race')
-                let wait_for_fully_loaded = 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"'
-                let skip = false;
-                await page.waitForFunction(wait_for_fully_loaded, {timeout:60000} ).catch(e => {
-                    
-                    // TODO: save as failed race
-                    console.log('Skipping')
-                    console.log(raceMeta.url_html)
-                    skip = true;
-                })
-
-                if(!skip){
-                    console.log('Loaded race, beginning to parse from website.')
-                    let race_details = await page.evaluate(() => {
-                       let context = document.querySelector("#contTop > div > section.race")[Object.keys(document.querySelector("#contTop > div > section.race"))[0]][Object.keys(document.querySelector("#contTop > div > section.race")[Object.keys(document.querySelector("#contTop > div > section.race"))[0]])[0]]["context"]
-                       let race = context["$component"]["raceData"]["race"]
-                       let name = race["name"]
-                       let original_id = race["id"]
-                       let calculated_start_time = race["calculatedStartTime"]
-                       let start_time = race["raceStartTime"]
-                       let end_time = race["raceEndTime"]
-                       let tracking_start_time = race["trackingStartTime"]
-                       let tracking_end_time = race["trackingEndTime"]
-                       let extent = race["extent"]
-                       let time_zone = race["parameterSet"]["parameters"]["eventTimezone"]
-                       let race_date_s = race["readableDate"]
-                       let race_date_timestamp = race["notReadableDate"]
-                       let classes = race["parameterSet"]["parameters"]["classes"]
-                       let params = race["parameterSet"]["parameters"]["parameters"]
-                       let routes = Object.values(race["routes"]).map(route => {
-                           let route_name = route.name
-                           let route_id = route.id
-                           let controls = []
-                           route.controls.forEach(c => {
-                               let original_id = c.id
-                               let name = c.name
-
-                               let control_points = []
-                               c.controlPoints.forEach(cp => {
-                                  
-                                   let control_id = cp.control.id
-                                   let control_name = cp.control.name
-                                   let positions = cp.positions.positions
-                                   control_points.push({control_id, control_name, positions})
-                               })
-                               controls.push({original_id, name, control_points})
-                           })
-                           return {route_name, route_id, controls}
-                           // Legs are all derrived values I think.
-                        //    let legs = []
-                        //    route.legs.forEach(l => {
-
-                        //    })
-                       })
-
-                      
-                       let p_event_id = race["parameterSet"]["parameters"]["eventId"]
-                       let p_event_st = race["parameterSet"]["parameters"]["eventStartTime"]
-                       let p_event_et = race["parameterSet"]["parameters"]["eventEndTime"]
-                       let p_race_handicap = race["parameterSet"]["parameters"]["raceHandicapSystem"]
-                       let p_web_id = race["parameterSet"]["parameters"]["webId"]
-                       let p_course_area = race["parameterSet"]["parameters"]["course_area"]
-
-                       let assorted = {params, classes, routes, extent, end_time, calculated_start_time, p_event_id, p_event_st, p_event_et, p_web_id, p_course_area, p_race_handicap}
-
-                       let competitors_params = Object.values(race["parameterSet"]["parameters"]["competitors"])
-
-                        let competitors_race = []
-                        Object.values(race["raceCompetitors"]).forEach(c =>{
-                            competitors_race.push({'classId':c.competitorClass.id, 'className':c.competitorClass.name, 'description':c.description, 
-                            'finishTime':c.finishTime, 'firstName':c.firstName, 'handicapToD':c.handicapToD, 'handicapToT':c.handicapToT,
-                            'id':c.id, 'lastName':c.lastName, 'name':c.name, 'nameAlias':c.nameAlias, 'nationality':c.nationality, 'nonCompeting':c.nonCompeting,
-                            'boatName':c.properties.boatName, 'boatId':c.properties.boatId, 'shortAlias':c.shortAlias, 'shortName':c.shortName, 
-                            'standingPos':c.standingPos, 'startTime':c.startTime, 'statusId':c.status.id, 'statusCodePointAt':c.statusCodePointAt, 
-                            'statusName':c.statusName, 'statusDescription':c.statusDesc, 'statusFull':c.status.full, 'statusTime':c.statusTime, 'stopTime':c.stopTime
-                            })
-                        });
-
-                       let team_position_data = Object.values(context["$component"]["raceData"]["resultItems"]).map( resultItem => {
-
-                               let positions = resultItem["positions"]["positions"]
-                               let team = resultItem["team"]["id"]
-                               let competitor_id = resultItem["id"]
-                               let short_name = resultItem["shortName"]
-                               let time_elapsed = resultItem["timeElapsed"]
-                               let start_time = resultItem["startTime"]
-                               let stop_time = resultItem["stopTime"]
-                               let finish_time = resultItem["finishTime"]
-                               let status = resultItem["status"]
-
-                               let passings = null
-                               if(resultItem["controlPassings"] !== null){
-                                passings = resultItem["controlPassings"].map(p => { return {controlId:p.control.id, passingTime:p.passingTime, realPassingTime:p.realPassingTime, pos:p.pos, timeFromStart:p.timeFromStart}})
-                              
-                               }
-                               
-                             
-                               let group_leader = resultItem["groupLeader"]
-                               let course_time_handicap = resultItem["courseTimeHandicap"]
-                               let start_line_analysis = resultItem["startLineAnalysis"]
-
-
-                                return {group_leader, competitor_id, course_time_handicap, start_line_analysis, positions, team, short_name, time_elapsed, start_time, stop_time, finish_time, status, passings}
-
-                        });
-
-                        return {competitors_params, 
-                            competitors_race,
-                            team_position_data, 
-                            assorted, 
-                            race_date_timestamp, 
-                            name, 
-                            original_id, 
-                            calculated_start_time, 
-                            start_time, 
-                            end_time, 
-                            tracking_start_time, 
-                            tracking_end_time,
-                            time_zone, 
-                            race_date_s, 
-                            race_date_timestamp}
+                try{
+                    console.log('y')
+                    await page.goto(raceMeta.url_html, {waitUntil: "networkidle2"});
+                    await page.waitForSelector('#time-control-play')
+                    await page.click('#time-control-play')
+                    await page.waitForSelector('#contTop > div > section.race')
+                    let wait_for_fully_loaded = 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"'
+                    let skip = false;
+                    console.log('z')
+                    await page.waitForFunction(wait_for_fully_loaded, {timeout:60000} ).catch(e => {
+                        
+                        // TODO: save as failed race
+                        console.log('Skipping')
+                        console.log(raceMeta.url_html)
+                        skip = true;
                     })
-                    race_details.race = raceMeta
-                    return race_details
-
-                    // TODO: wrap in try catch.
+                    console.log('z2')
+                    if(!skip){
+                        console.log('Loaded race, beginning to parse from website.')
+                        console.log(raceMeta.url_html)
+                        let race_details = await page.evaluate(() => {
+                           let context = document.querySelector("#contTop > div > section.race")[Object.keys(document.querySelector("#contTop > div > section.race"))[0]][Object.keys(document.querySelector("#contTop > div > section.race")[Object.keys(document.querySelector("#contTop > div > section.race"))[0]])[0]]["context"]
+                           let race = context["$component"]["raceData"]["race"]
+                           let name = race["name"]
+                           let original_id = race["id"]
+                           let calculated_start_time = race["calculatedStartTime"]
+                           let start_time = race["raceStartTime"]
+                           let end_time = race["raceEndTime"]
+                           let tracking_start_time = race["trackingStartTime"]
+                           let tracking_end_time = race["trackingEndTime"]
+                           let extent = race["extent"]
+                           let time_zone = race["parameterSet"]["parameters"]["eventTimezone"]
+                           let race_date_s = race["readableDate"]
+                           let race_date_timestamp = race["notReadableDate"]
+                           let classes = race["parameterSet"]["parameters"]["classes"]
+                           let params = race["parameterSet"]["parameters"]["parameters"]
+                           let routes = Object.values(race["routes"]).map(route => {
+                               let route_name = route.name
+                               let route_id = route.id
+                               let controls = []
+                               route.controls.forEach(c => {
+                                   let original_id = c.id
+                                   let name = c.name
+    
+                                   let control_points = []
+                                   c.controlPoints.forEach(cp => {
+                                      
+                                       let control_id = cp.control.id
+                                       let control_name = cp.control.name
+                                       let positions = cp.positions.positions
+                                       control_points.push({control_id, control_name, positions})
+                                   })
+                                   controls.push({original_id, name, control_points})
+                               })
+                               return {route_name, route_id, controls}
+                               // Legs are all derrived values I think.
+                            //    let legs = []
+                            //    route.legs.forEach(l => {
+    
+                            //    })
+                           })
+                           console.log('z3')
+                          
+                           let p_event_id = race["parameterSet"]["parameters"]["eventId"]
+                           let p_event_st = race["parameterSet"]["parameters"]["eventStartTime"]
+                           let p_event_et = race["parameterSet"]["parameters"]["eventEndTime"]
+                           let p_race_handicap = race["parameterSet"]["parameters"]["raceHandicapSystem"]
+                           let p_web_id = race["parameterSet"]["parameters"]["webId"]
+                           let p_course_area = race["parameterSet"]["parameters"]["course_area"]
+    
+                           let assorted = {params, classes, routes, extent, end_time, calculated_start_time, p_event_id, p_event_st, p_event_et, p_web_id, p_course_area, p_race_handicap}
+    
+                           let competitors_params = Object.values(race["parameterSet"]["parameters"]["competitors"])
+    
+                            let competitors_race = []
+                            Object.values(race["raceCompetitors"]).forEach(c =>{
+                                competitors_race.push({'classId':c.competitorClass.id, 'className':c.competitorClass.name, 'description':c.description, 
+                                'finishTime':c.finishTime, 'firstName':c.firstName, 'handicapToD':c.handicapToD, 'handicapToT':c.handicapToT,
+                                'id':c.id, 'lastName':c.lastName, 'name':c.name, 'nameAlias':c.nameAlias, 'nationality':c.nationality, 'nonCompeting':c.nonCompeting,
+                                'boatName':c.properties.boatName, 'boatId':c.properties.boatId, 'shortAlias':c.shortAlias, 'shortName':c.shortName, 
+                                'standingPos':c.standingPos, 'startTime':c.startTime, 'statusId':c.status.id, 'statusCodePointAt':c.statusCodePointAt, 
+                                'statusName':c.statusName, 'statusDescription':c.statusDesc, 'statusFull':c.status.full, 'statusTime':c.statusTime, 'stopTime':c.stopTime
+                                })
+                            });
+    
+                           let team_position_data = Object.values(context["$component"]["raceData"]["resultItems"]).map( resultItem => {
+    
+                                   let positions = resultItem["positions"]["positions"]
+                                   let team = resultItem["team"]["id"]
+                                   let competitor_id = resultItem["id"]
+                                   let short_name = resultItem["shortName"]
+                                   let time_elapsed = resultItem["timeElapsed"]
+                                   let start_time = resultItem["startTime"]
+                                   let stop_time = resultItem["stopTime"]
+                                   let finish_time = resultItem["finishTime"]
+                                   let status = resultItem["status"]
+    
+                                   let passings = null
+                                   if(resultItem["controlPassings"] !== null){
+                                    passings = resultItem["controlPassings"].map(p => { return {controlId:p.control.id, passingTime:p.passingTime, realPassingTime:p.realPassingTime, pos:p.pos, timeFromStart:p.timeFromStart}})
+                                  
+                                   }
+                                   
+                                 
+                                   let group_leader = resultItem["groupLeader"]
+                                   let course_time_handicap = resultItem["courseTimeHandicap"]
+                                   let start_line_analysis = resultItem["startLineAnalysis"]
+    
+    
+                                    return {group_leader, competitor_id, course_time_handicap, start_line_analysis, positions, team, short_name, time_elapsed, start_time, stop_time, finish_time, status, passings}
+    
+                            });
+    
+                            return {competitors_params, 
+                                competitors_race,
+                                team_position_data, 
+                                assorted, 
+                                race_date_timestamp, 
+                                name, 
+                                original_id, 
+                                calculated_start_time, 
+                                start_time, 
+                                end_time, 
+                                tracking_start_time, 
+                                tracking_end_time,
+                                time_zone, 
+                                race_date_s, 
+                                race_date_timestamp}
+                        })
+                        console.log('Finished parse.')
+                        race_details.race = raceMeta
+                        return race_details
+                    }else{
+                        return null
+                    }
+                }catch(err){
+                    await TracTrac.FailedUrl.create({id:uuidv4(), error:err.toString(), url:JSON.stringify(raceMeta.url_html)})
+                    return null
                 }
                 
     }
@@ -500,161 +513,211 @@ const puppeteer = require('puppeteer');
    
    let allClubsRequest = await axios.get('http://live.tractrac.com/rest-api/clubs.json')
    let allClubs = allClubsRequest.data.events
-        
-    for(eventIndex in allEvents){
-        //let eventIndexLast = allEvents.length - 5
-       let eventObject = allEvents[eventIndex]
+   let found = false
+  
+//     for(eventIndex in allEvents){
+//         //let eventIndexLast = allEvents.length - 5
+//        let eventObject = allEvents[eventIndex]
+       
+//        if(eventObject.id === '97'){
+//            found = true
+//            console.log(eventObject)
+//            console.log('Found')
+//            console.log(eventObject.name)
+//            continue
+           
 
-       /** evennt object
-        * 
-        * { id: '1957',
-  races_url:
-   'http://event.tractrac.com/events/event_20201110_classJapan/jsonservice.php',
-  database: 'event_20201110_classJapan',
-  name: '470 class Japan Championships 2020',
-  logo:
-   'images/events/aad5a9f0-e680-0138-8d2c-60a44ce903c3_small.png',
-  logo_large:
-   'images/events/aad5a9f0-e680-0138-8d2c-60a44ce903c3_large.png',
-  cover:
-   'images/events/aad5a9f0-e680-0138-8d2c-60a44ce903c3_cover.jpg',
-  type: 'Sailing',
-  startTime: '2020-11-11',
-  endTime: '2020-11-15',
-  country: 'JPN',
-  city: 'Enoshima',
-  lat: '35.300000000000',
-  lon: '139.500000000000',
-  sortOrder: '6',
-  map_visibility: 'past',
-  etype_icon: 'ico-sailing.png' }
-        */
+//        //
+//        }
+
+//        if(!found){
+//          //  console.log('Continuing')
+//            continue
+//        }
+
+//        /** evennt object
+//         * 
+//         * { id: '1957',
+//   races_url:
+//    'http://event.tractrac.com/events/event_20201110_classJapan/jsonservice.php',
+//   database: 'event_20201110_classJapan',
+//   name: '470 class Japan Championships 2020',
+//   logo:
+//    'images/events/aad5a9f0-e680-0138-8d2c-60a44ce903c3_small.png',
+//   logo_large:
+//    'images/events/aad5a9f0-e680-0138-8d2c-60a44ce903c3_large.png',
+//   cover:
+//    'images/events/aad5a9f0-e680-0138-8d2c-60a44ce903c3_cover.jpg',
+//   type: 'Sailing',
+//   startTime: '2020-11-11',
+//   endTime: '2020-11-15',
+//   country: 'JPN',
+//   city: 'Enoshima',
+//   lat: '35.300000000000',
+//   lon: '139.500000000000',
+//   sortOrder: '6',
+//   map_visibility: 'past',
+//   etype_icon: 'ico-sailing.png' }
+//         */
 
    
 
-     
-        let eventHasEnded = new Date(eventObject.endTime).getTime() < new Date().getTime()
-
+//         // This has a bug I think.
+//         let eventHasEnded = true
         
         
     
-        if(eventObject.type === 'Sailing' && eventHasEnded){
-            console.log("Attempting new event.")
-           let racesRequest = await axios.get(eventObject.races_url)
-           let eventDetails = racesRequest.data.event
-           let races = racesRequest.data.races
-
-
-           let eventSave = instantiateOrReturnExisting(existingObjects, TracTrac.Event, eventDetails.id)
-     
-           let eventSaveObj = eventSave.obj
-          
-           //console.log(eventDetails)
-
-            /** event details
-             * 
-             * 
-             * { id: 'd2a0e010-a320-0138-c48f-60a44ce903c3',
-                name: 'Swedish SL- Mästarnas Mästare Marstrand',
-                database: 'event_20201009_SwedishSLM',
-                starttime: '2020-10-09 22:00:00',
-                endtime: '2020-10-11 21:00:00',
-                type: 'a1b74ca0-fdd8-11dc-8811-005056c00008',
-                enable_notifier: false,
-                notifier_client_name: null,
-                subscriber_service:
-                'https://em.event.tractrac.com/api/v1/events/d2a0e010-a320-0138-c48f-60a44ce903c3/mobile_subscriptions',
-                url_scheme: 'tractrac://open.app/1910',
-                db_replica_enabled: false,
-                high_load: false,
-                web_url:
-                'https://www.tractrac.com/event-page/event_20201009_SwedishSLM/1910',
-                dataservers: { stored: [], live: [], ws: [] },
-                sap_url:
-                'https://swedishleague2020.sapsailing.com/sailingserver/api/v1/leaderboardgroups/Mastarnas%20Mastare',
-                sap_event_url:
-                'https://swedishleague2020.sapsailing.com/gwt/Home.html#/regatta/leaderboard/:eventId=https://swedishleague2020.sapsailing.com/sailingserver/api/v1/leaderboardgroups/Mastarnas%20Mastare',
-                sap_leaderboard_name: 'Mästarnas Mästare Marstrand' }
-             * 
-             * 
-             */
-            if(eventSave.shouldSave){
-                await page.goto(eventDetails.web_url)
-                try{
-                    eventSaveObj.external_website = await page.evaluate(() => {
-                        return document.querySelector('#app > main > section > div > div.details > div:nth-child(3) > a').href
-                    })
-                }catch(err){
-                    // NO EXTERNAL WEBSITE
-                }
-
-                eventSaveObj.name = eventDetails.name
-                eventSaveObj.country = eventObject.country
-                eventSaveObj.city = eventObject.city
-                eventSaveObj.type = eventObject.type
-                eventSaveObj.start = eventDetails.starttime
-                eventSaveObj.end = eventDetails.endtime
-                eventSaveObj.web_url = eventDetails.web_url
-                eventSaveObj.sap_url = eventDetails.sap_url
-                eventSaveObj.sap_event_url = eventDetails.sap_event_url
-                eventSaveObj.sap_leaderboard_name = eventDetails.sap_leaderboard_name
-                eventSaveObj.lat = eventObject.lat
-                eventSaveObj.lon = eventObject.lon
-                await TracTrac.Event.create(eventSaveObj,{fields:Object.keys(eventSaveObj)})
-            }
+//         if(eventObject.type === 'Sailing' && eventHasEnded){
+//             console.log("Attempting new event.")
+//             let racesRequest = null
+//             try{
+//                 racesRequest = await axios.get(eventObject.races_url)
+//             }catch(err){
+//                 await TracTrac.FailedUrl.create({id:uuidv4(), error:err.toString(), url:JSON.stringify(eventObject)})
+//                 console.log(err)
+//                 continue
+//             }
            
-            console.log('Got race list. Going through each race now.')
-            for(raceIndex in races){
+//            let eventDetails = racesRequest.data.event
+//            let races = racesRequest.data.races
+
+//            if(eventDetails === undefined){
+//                continue 
+//            }
+
+
+//            let eventSave = instantiateOrReturnExisting(existingObjects, TracTrac.Event, eventDetails.id)
+     
+//            let eventSaveObj = eventSave.obj
+          
+//            //console.log(eventDetails)
+
+//             /** event details
+//              * 
+//              * 
+//              * { id: 'd2a0e010-a320-0138-c48f-60a44ce903c3',
+//                 name: 'Swedish SL- Mästarnas Mästare Marstrand',
+//                 database: 'event_20201009_SwedishSLM',
+//                 starttime: '2020-10-09 22:00:00',
+//                 endtime: '2020-10-11 21:00:00',
+//                 type: 'a1b74ca0-fdd8-11dc-8811-005056c00008',
+//                 enable_notifier: false,
+//                 notifier_client_name: null,
+//                 subscriber_service:
+//                 'https://em.event.tractrac.com/api/v1/events/d2a0e010-a320-0138-c48f-60a44ce903c3/mobile_subscriptions',
+//                 url_scheme: 'tractrac://open.app/1910',
+//                 db_replica_enabled: false,
+//                 high_load: false,
+//                 web_url:
+//                 'https://www.tractrac.com/event-page/event_20201009_SwedishSLM/1910',
+//                 dataservers: { stored: [], live: [], ws: [] },
+//                 sap_url:
+//                 'https://swedishleague2020.sapsailing.com/sailingserver/api/v1/leaderboardgroups/Mastarnas%20Mastare',
+//                 sap_event_url:
+//                 'https://swedishleague2020.sapsailing.com/gwt/Home.html#/regatta/leaderboard/:eventId=https://swedishleague2020.sapsailing.com/sailingserver/api/v1/leaderboardgroups/Mastarnas%20Mastare',
+//                 sap_leaderboard_name: 'Mästarnas Mästare Marstrand' }
+//              * 
+//              * 
+//              */
+//             if(eventSave.shouldSave){
+              
+//                 try{
+//                     await page.goto(eventDetails.web_url)
+//                     eventSaveObj.external_website = await page.evaluate(() => {
+//                         return document.querySelector('#app > main > section > div > div.details > div:nth-child(3) > a').href
+//                     })
+//                 }catch(err){
+//                     // NO EXTERNAL WEBSITE
+//                 }
+
+//                 eventSaveObj.name = eventDetails.name
+//                 eventSaveObj.country = eventObject.country
+//                 eventSaveObj.city = eventObject.city
+//                 eventSaveObj.type = eventObject.type
+//                 eventSaveObj.start = eventDetails.starttime
+//                 eventSaveObj.end = eventDetails.endtime
+//                 eventSaveObj.web_url = eventDetails.web_url
+//                 eventSaveObj.sap_url = eventDetails.sap_url
+//                 eventSaveObj.sap_event_url = eventDetails.sap_event_url
+//                 eventSaveObj.sap_leaderboard_name = eventDetails.sap_leaderboard_name
+//                 eventSaveObj.lat = eventObject.lat
+//                 eventSaveObj.lon = eventObject.lon
+//                 console.log('test')
+//                 await TracTrac.Event.create(eventSaveObj,{fields:Object.keys(eventSaveObj)})
+//                 console.log('untest')
+//             }
+           
+//             console.log('Got race list. Going through each race now.')
+//             for(raceIndex in races){   
+//                 console.log('a')
                 
-                let raceObject = races[raceIndex]
-
-                let details = await parseRace(raceObject)
-               
-                if(details !== null && details !== undefined){
-                    let thingsToSave = formatAndSaveRace(eventSaveObj, details)
+//                 let raceObject = races[raceIndex]
+//                 console.log('b')
+//                 let details = await parseRace(raceObject)
+//                 console.log('c')
+//                 if(details !== null && details !== undefined){
+//                     let thingsToSave = formatAndSaveRace(eventSaveObj, details)
                   
-                    
+//                     console.log('d')
 
-                    try{
-                        console.log('Formatting objects.')
-            
+//                     try{
+//                         console.log('Formatting objects.')
+//                         if(thingsToSave!= null){
+                          
+//                             let newObjectsToSave = [
+//                                 { objectType:TracTrac.Race, objects:thingsToSave.racesToSave},
+//                                 { objectType:TracTrac.Control, objects:thingsToSave.controlsToSave},
+//                                 { objectType:TracTrac.ControlPoint, objects:thingsToSave.controlPointsToSave},
+//                                 { objectType:TracTrac.Class, objects:thingsToSave.classesToSave},
+//                                 { objectType:TracTrac.RaceClass, objects:thingsToSave.raceClassesToSave},
+//                                 { objectType:TracTrac.ControlPointPosition, objects:thingsToSave.controlPointPositionsToSave},
+//                                 { objectType:TracTrac.Competitor, objects:thingsToSave.competitorsToSave},
+//                                 { objectType:TracTrac.CompetitorPassing, objects:thingsToSave.competitorPassingsToSave},
+//                                 { objectType:TracTrac.CompetitorResults, objects:thingsToSave.competitorResultsToSave},
+//                                 { objectType:TracTrac.CompetitorPosition, objects:thingsToSave.competitorPositionsToSave},
+//                                 { objectType:TracTrac.Route, objects:thingsToSave.routesToSave}
+//                                 ]
+//                                 console.log('Bulk saving objects.')
+//                                 try{
+//                                     await bulkSave(newObjectsToSave, TracTrac.FailedUrl, eventSaveObj.web_url)
+//                                 }catch(err){
+//                                     console.log(err)
+//                                     await TracTrac.FailedUrl.create({id:uuidv4(), error: JSON.stringify(err.toString()), url: JSON.stringify(eventSaveObj)})
+//                                 }
+//                         }
              
-                        let newObjectsToSave = [
-                            { objectType:TracTrac.Race, objects:thingsToSave.racesToSave},
-                            { objectType:TracTrac.Control, objects:thingsToSave.controlsToSave},
-                            { objectType:TracTrac.ControlPoint, objects:thingsToSave.controlPointsToSave},
-                            { objectType:TracTrac.Class, objects:thingsToSave.classesToSave},
-                            { objectType:TracTrac.RaceClass, objects:thingsToSave.raceClassesToSave},
-                            { objectType:TracTrac.ControlPointPosition, objects:thingsToSave.controlPointPositionsToSave},
-                            { objectType:TracTrac.Route, objects:thingsToSave.routesToSave},
-                            { objectType:TracTrac.Competitor, objects:thingsToSave.competitorsToSave},
-                            { objectType:TracTrac.CompetitorPassing, objects:thingsToSave.competitorPassingsToSave},
-                            { objectType:TracTrac.CompetitorResults, objects:thingsToSave.competitorResultsToSave},
-                            { objectType:TracTrac.CompetitorPosition, objects:thingsToSave.competitorPositionsToSave},
-                            ]
-                            console.log('Bulk saving objects.')
+
                             
-                            await bulkSave(newObjectsToSave, TracTrac.FailedUrl, eventSaveObj.web_url)
+                            
                            
-                    }catch(err){
-                        console.log(err)
+//                     }catch(err){
+//                         console.log(err)
                         
-                    }
+//                     }
         
-                }else{
-                    console.log('Already saved this race.')
-                }
-            }
+//                 }else{
+//                     console.log('Already saved this race.')
+//                 }
+//             }
             
-        }
-    }
-       
+//         }
+//     }
+   
     for(clubIndex in allClubs){
        let clubObject = allClubs[clubIndex]
       
         //TODO: check if club exists.
 
+        if(clubObject.name === 'Shantou JiaZheng Sports'){
+            found = true
+            continue
+        }
+        if(!found){
+            continue
+        }
 
+
+        // TODO: There is a bug here for saving routes. 
         /**Club object
          * 
          * { id: '27',
@@ -672,8 +735,13 @@ const puppeteer = require('puppeteer');
         clubObject.id = uuidv4()
        
         clubObject.email = clubObject.races_url.split('user=')[1]
+        console.log(clubObject.email)
 
-        await TracTrac.Email.create({id:uuidv4(), email: clubObject.email, country: clubObject.country, source:'TracTrac'})
+        if(clubObject.email !== undefined){
+            await TracTrac.Email.create({id:uuidv4(), email: clubObject.email, country: clubObject.country, source:'TracTrac'})
+        }
+
+      
       
         try{
            var clubRacesRequest = await axios.get(clubObject.races_url)
@@ -735,9 +803,11 @@ const puppeteer = require('puppeteer');
                     
 
                     try{
-                        console.log('Formatting objects.')
+                        if(thingsToSave != null){
+                            console.log('Formatting objects.')
             
-             
+                        
+                       
                         let newObjectsToSave = [
                             { objectType:TracTrac.Race, objects:thingsToSave.racesToSave},
                             { objectType:TracTrac.Control, objects:thingsToSave.controlsToSave},
@@ -745,15 +815,21 @@ const puppeteer = require('puppeteer');
                             { objectType:TracTrac.Class, objects:thingsToSave.classesToSave},
                             { objectType:TracTrac.RaceClass, objects:thingsToSave.raceClassesToSave},
                             { objectType:TracTrac.ControlPointPosition, objects:thingsToSave.controlPointPositionsToSave},
-                            { objectType:TracTrac.Route, objects:thingsToSave.routesToSave},
                             { objectType:TracTrac.Competitor, objects:thingsToSave.competitorsToSave},
                             { objectType:TracTrac.CompetitorPassing, objects:thingsToSave.competitorPassingsToSave},
                             { objectType:TracTrac.CompetitorResults, objects:thingsToSave.competitorResultsToSave},
                             { objectType:TracTrac.CompetitorPosition, objects:thingsToSave.competitorPositionsToSave},
+                            { objectType:TracTrac.Route, objects:thingsToSave.routesToSave}
                             ]
                             console.log('Bulk saving objects.')
-                            
-                            await bulkSave(newObjectsToSave, TracTrac.FailedUrl, raceObject.url_html)
+                            try{
+                                await bulkSave(newObjectsToSave, TracTrac.FailedUrl, raceObject.url_html)
+                            }catch(err){
+                                console.log(err)
+                                await TracTrac.FailedUrl.create({id:uuidv4(), error: JSON.stringify(err.toString()), url: JSON.stringify(raceObject.url_html)})
+                            }
+                        }
+                        
                     }catch(err){
                         console.log(err)
                     }
