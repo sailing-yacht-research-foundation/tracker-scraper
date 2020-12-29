@@ -984,16 +984,19 @@ function peekUint8(bytes) {
 
     var allRacesRequest = await axios.get('http://player.georacing.com/datas/applications/app_12.json')
     var allEvents = allRacesRequest.data.events
+    var count = 0
 
     for(eventsIndex in allEvents){
         var event = allEvents[eventsIndex]
 
         // TODO: Check if this event was already indexed.
 
+
         var currentEventSave = {
             id:uuidv4(),
             original_id: event.id,
             name: event.name,
+            short_name: event.short_name,
             time_zone: event.time_zone,
             description_en: event.description_en,
             description_fr: event.description_fr,
@@ -1008,30 +1011,20 @@ function peekUint8(bytes) {
         var nowStamp = new Date().getTime()
 
         if(startDateStamp > nowStamp || endDateStamp > nowStamp){
-            console.log('Future race so skipping')
+            console.log('Future event so skipping')
             continue
         }
 
         var races = event.races
+        count = count + races.length
+     
 
         for(raceIndex in races){
             var race = races[raceIndex]
 
              // TODO: Check if this race was already indexed.
 
-            var currentRaceSave = {
-                id: uuidv4(),
-                original_id: race.id,
-                event: currentEventSave.id,
-                event_original_id: currentEventSave.original_id,
-                name: race.name,
-                short_name: race.short_name,
-                short_description: race.short_description,
-                time_zone: race.time_zone,
-                available_time: race.available_time,
-                start_time: race.start_time,
-                end_time: race.end_time
-            }
+         
 
             var raceStartDateStamp = new Date(race.start_time).getTime()
             var raceEndDateStamp = new Date(race.end_time).getTime()
@@ -1048,21 +1041,39 @@ function peekUint8(bytes) {
             }
 
             var keepGoing = true;
-            
-            await page.goto(race.player_name, {waitUntil: "networkidle0", timeout: 600000}).catch(err => {
+            try{
+              await page.goto(race.player_name, {waitUntil: "networkidle0", timeout: 600000}).catch(err => {
                 keepGoing = false
-            })
+              })
 
             
-            await page.waitForFunction(() => 'PLAYER_VERSION' in window).catch((err)=>{
-                keepGoing = false;
-            })
+              await page.waitForFunction(() => 'PLAYER_VERSION' in window).catch((err)=>{
+                  keepGoing = false;
+              })
 
-            if(keepGoing){
+              if(keepGoing){
                 await page.waitForFunction("PLAYER_VERSION != null && PLAYER_VERSION.release > 0")
                 var playerVersion = await page.evaluate(() => { return PLAYER_VERSION.release })
+                
+                var currentRaceSave = {
+                  id: uuidv4(),
+                  original_id: race.id,
+                  event: currentEventSave.id,
+                  event_original_id: currentEventSave.original_id,
+                  name: race.name,
+                  short_name: race.short_name,
+                  short_description: race.short_description,
+                  time_zone: race.time_zone,
+                  available_time: race.available_time,
+                  start_time: race.start_time,
+                  end_time: race.end_time,
+                  url: race.player_name,
+                  player_version: playerVersion
+               }
 
                 if(playerVersion === 4){
+                
+                    console.log(race.player_name)
                     var loaded_test = "ALL_DATAS_LOADED && ALLJSON_LOADED && URL_JSON_LOADED && URL_BIN_LOADED && BINARY_LOADED && PLAYER_ISREADYFORPLAY && ALL_DATAS_LOADED && BINARY_LOADED && (LOAD_PERCENT >= 90)"
                     await page.waitForFunction(loaded_test, {timeout: 300000});
                     var loaded_test2 = "() => { var filtered = ACTORS_POSITIONS.filter(function(e1) { return e1 != null && e1.length > 0 }); return filtered.length > 0 }"
@@ -1074,13 +1085,29 @@ function peekUint8(bytes) {
                     try{
                       var virtualitiesRequest = await axios.get( dataUrl + 'virtualities.json')
                       console.log(virtualitiesRequest.data)
+                  
                     }catch(err){
-                      // TODO: hendle this
+                      // TODO: why do all virtualities requests 404?
+                      console.log('No virtualities')
                     }
-                    
+                    /**
+                     * allRequest.data keys =  [ 'states',
+  'message',
+  'news',
+  'race',
+  'options',
+  'actors',
+  'courses',
+  'weathers',
+  'splittimes',
+  'track',
+  'event',
+  'categories' ]
 
+                     */
+                   
                   /**
-                   * 
+                   * TODO: What is all of this?
                    * /" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/weathers.json",
                         news.json
                         "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/splittimes.json",
@@ -1110,9 +1137,7 @@ http://player.georacing.com/raw_datas"
                         pyxt + "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/track_prod.xml",
 
                    */
-                    var binaryUrls = await page.evaluate(()=>{
-                        return Object.keys(URL_BIN_LOADED)
-                    })
+            
                     
                     // console.log('states')
                     // console.log(allRequest.data.states)
@@ -1126,6 +1151,12 @@ http://player.georacing.com/raw_datas"
                     // console.log('options')
                     // console.log(allRequest.data.options)
 
+                    // console.log('categories')
+                    // console.log(allRequest.data.categories)
+
+                    console.log('track')
+                    console.log(allRequest.data.track)
+
                     // console.log('weathers')
                     // console.log(allRequest.data.weathers)
                     /**
@@ -1137,46 +1168,10 @@ http://player.georacing.com/raw_datas"
                         type: 'none',
                         time: '2020-09-03T22:04:46Z' }
                      */
+                    
 
-                    // console.log('splittimes')
-                    // console.log(allRequest.data.splittimes)
-
-                    /**
-                     * [ { id: 280393,
-                          name: 'Départ',
-                          short_name: '',
-                          splittimes_visible: 0,
-                          hide_on_timeline: 0,
-                          lap_number: 0,
-                          role: 'start',
-                          splittimes: [ [Object], [Object], [Object], [Object], [Object] ] },
-                        { id: 280394,
-                          name: 'Bouée 1 (1)',
-                          short_name: '',
-                          splittimes_visible: 1,
-                          hide_on_timeline: 0,
-                          lap_number: 0,
-                          role: 'none',
-                          splittimes: [ [Object], [Object], [Object], [Object], [Object] ] },
-                     */
-                    // console.log('categories')
-                    // console.log(allRequest.data.categories)
-                    //console.log(allRequest.data.courses)
-                    /** allRequest.data has keys
-                     * 'states',
-                        'message',
-                        'news',
-                        'race',
-                        'options',
-                        'actors',
-                        'courses',
-                        'weathers',
-                        'splittimes',
-                        'track',
-                        'event',
-                        'categories'
-                     * 
-                     */
+                    //     console.log('actors')
+                     // console.log(allRequest.data.actors[0])
                     /**
                      * allRequest.data.actors is array with each element has keys:
                      * 
@@ -1236,10 +1231,55 @@ http://player.georacing.com/raw_datas"
                       'id_provider_tracker2',
                       'states',
                       'person'
+
+                      states and person are arrays of something.
                      * 
                      */
 
 
+                    // console.log('splittimes')
+                    // console.log(allRequest.data.splittimes[0].splittimes[0])
+
+                    /**
+                     * [ { id: 280393,
+                          name: 'Départ',
+                          short_name: '',
+                          splittimes_visible: 0,
+                          hide_on_timeline: 0,
+                          lap_number: 0,
+                          role: 'start',
+                          splittimes: [ [Object], [Object], [Object], [Object], [Object] ] },
+                        { id: 280394,
+                          name: 'Bouée 1 (1)',
+                          short_name: '',
+                          splittimes_visible: 1,
+                          hide_on_timeline: 0,
+                          lap_number: 0,
+                          role: 'none',
+                          splittimes: [ [Object], [Object], [Object], [Object], [Object] ] },
+
+                          splittime object: { id: 2048345,
+                                actor_id: 10145602,
+                                capital: null,
+                                max_speed: 0,
+                                duration: 0,
+                                detection_method_id: -1,
+                                is_pit_lap: 0,
+                                run: 1,
+                                value_in: null,
+                                value_out: null,
+                                official: 0,
+                                hours_mandatory_rest: 0,
+                                rest_not_in_cp: 0,
+                                rank: 1,
+                                rr: 1599908280,
+                                gap: 0,
+                                time: '2020-09-12T10:58:00.000Z',
+                                time_out: null }
+                     */
+
+                     // console.log('courses)
+                   //  console.log(allRequest.data.courses)
 
                     /**
                      * Courses is array of
@@ -1294,25 +1334,32 @@ http://player.georacing.com/raw_datas"
                           latitude: 42.566214372864,
                           altitude: null },
                      */
-                    // console.log(allRequest.data.track)
-                    // console.log(allRequest.data.categories)
-                    // for(posIndex in binaryUrls){
-                    //     var posUrl = 'http://player.georacing.com/datas/'+ currentEventSave.original_id + '/' + race.id + '/positions/' + binaryUrls[posIndex]
-                    //     try{
-                    //         var posFileRequest = await axios({
-                    //             method: 'get',
-                    //             responseType: 'arraybuffer',
-                    //             url: posUrl
-                    //         })
-                    //         var bytes = new Uint8Array(posFileRequest.data);
-                    //         // Positions are keyed by boat id and valued by a list of positions
-                    //         var positionsData = getPositionsFromBinary(bytes, { available_time: race.available_time, filename: binaryUrls[posIndex] })
-                    //     }catch(err){
-                    //         // TODO: Why do some of these fail?
-                    //     }
-                    // }
+                   
+                    var binaryUrls = await page.evaluate(()=>{
+                      return Object.keys(URL_BIN_LOADED)
+                    })
+                    for(posIndex in binaryUrls){
+                        var posUrl = 'http://player.georacing.com/datas/'+ currentEventSave.original_id + '/' + race.id + '/positions/' + binaryUrls[posIndex]
+                        try{
+                            var posFileRequest = await axios({
+                                method: 'get',
+                                responseType: 'arraybuffer',
+                                url: posUrl
+                            })
+                            var bytes = new Uint8Array(posFileRequest.data);
+                            // Positions are keyed by boat id and valued by a list of positions
+                            var positionsData = getPositionsFromBinary(bytes, { available_time: race.available_time, filename: binaryUrls[posIndex] })
+                            
+                        }catch(err){
+                            // TODO: Why do some of these fail?
+                            console.log('Failed to parse positions! This happens in the web app too!')
+                           
+                        }
+                    }
 
                 }else if(playerVersion === 3){
+                    console.log('Version 3!')
+                    console.log(race.player_name)
                     // EXAMPLE RACE: https://player.georacing.com/player_tjv/index.html
                     var dataUrl = await page.evaluate(()=>{
                         return URL_DATA
@@ -1323,40 +1370,110 @@ http://player.georacing.com/raw_datas"
                         console.log('NO URL DATA')
                         //TODO Handle this.
                     })
-                //    var filesRequest = await axios.get('https://player.georacing.com' + dataUrl + 'files.json')
-                //    var configRequest = await axios.get('https://player.georacing.com' + dataUrl + 'config/' + filesRequest.data.file_config)
+                   var filesRequest = await axios.get('https://player.georacing.com' + dataUrl + 'files.json')
+                   var configRequest = await axios.get('https://player.georacing.com' + dataUrl + 'config/' + filesRequest.data.file_config)
+            
+                  
+                   /** Config request data has these keys:
+                    * [ 'race',
+                      'options',
+                      'actors',
+                      'categories',
+                      'virtualities',
+                      'message',
+                      'sponsors',
+                      'ghosts' ]
 
-                //    for(positionsFilesIndex in filesRequest.data.files_data){
-                //        var url = 'https://player.georacing.com' + dataUrl + 'positions/' + filesRequest.data.files_data[positionsFilesIndex]
+
+                      Race has these keys: [ 'name',
+                      'available_time',
+                      'start_time',
+                      'end_time',
+                      'start_longitude',
+                      'start_latitude',
+                      'end_longitude',
+                      'end_latitude',
+                      'background_color',
+                      'logo_color' ]
+
+
+                      Virtualities has these keys:
+                      [ 'grounds', 'places', 'lines', 'images' ]
+
+
+                      Grounds is array of:
+                      'id',
+                      'name',
+                      'lo',
+                      'la',
+                      'color',
+                      'size',
+                      'undefined',
+                      'zoom_min',
+                      'zoom_max'
+
+                      Places is array of [ 'id',
+                    'name',
+                    'lo',
+                    'la',
+                    'color',
+                    'size',
+                    'zomm_min',
+                    'zomm_max',
+                    'zoom_min',
+                    'zoom_max' ]
+
+                    Lines is array of [ 'id',
+                        'name',
+                        'color',
+                        'type',
+                        'close',
+                        'percent_factor',
+                        'stroke_dasharray',
+                        'points' ]
+
+
+
+                    */
+                   for(positionsFilesIndex in filesRequest.data.files_data){
+                       var url = 'https://player.georacing.com' + dataUrl + 'positions/' + filesRequest.data.files_data[positionsFilesIndex]
                         
-                //        var posFileRequest = await axios({
-                //         method: 'get',
-                //         responseType: 'arraybuffer',
-                //         url: url
-                //        })
-                //        var bytes = new Uint8Array(posFileRequest.data);
-                //        try{
-                //           var positionsData = getPositionsFromBinary(bytes, null)
-                //        }catch(err){
-                //           console.log('FAILURE VERSION 3' + race.player_name)
-                //        }
-                //        // SAVE posFile
-                //    }
+                       var posFileRequest = await axios({
+                        method: 'get',
+                        responseType: 'arraybuffer',
+                        url: url
+                       })
+                       var bytes = new Uint8Array(posFileRequest.data);
+                       try{
+                          var positionsData = getPositionsFromBinary(bytes, null)
+                          
+                       }catch(err){
+                          console.log('FAILURE VERSION 3' + race.player_name)
+                       }
+                      
+                   }
 
                     
                 }else{
                     console.log('WHAT VERSION ' + race.player_name)
                     console.log(playerVersion)
                 }
-            }else{
-                // Don't keep going.
-                console.log(race.player_name)
+              }else{
+                  // Don't keep going.
+                  console.log(race.player_name)
+              }
+                
+            }catch(err){
+
             }
+           
         }
 
 
     }
+ 
 
+    process.exit()
 })();
 
 
