@@ -1,5 +1,5 @@
-const {Georacing, sequelize, connect, keyInDictionary, findExistingObjects, instantiateOrReturnExisting, getUUIDForOriginalId, bulkSave} = require('../../tracker-schema/schema.js')
-const {axios, uuidv4} = require('../../tracker-schema/utils.js')
+const {Georacing, sequelize, connect, keyInDictionary, findExistingObjects, instantiateOrReturnExisting, getUUIDForOriginalId, bulkSave} = require('../tracker-schema/schema.js')
+const {axios, uuidv4} = require('../tracker-schema/utils.js')
 const puppeteer = require('puppeteer');
 const { get } = require('request');
 
@@ -936,8 +936,8 @@ function peekUint8(bytes) {
         }
         result[actorIdStr].push({
           at: date_begin_time + millisecond_tmp,
-          lng: struct_tmp.lt,
-          lat: struct_tmp.lg,
+          lng: struct_tmp.lg,
+          lat: struct_tmp.lt,
           other: struct_tmp, // actor_info contains only data offsets
         });
       }

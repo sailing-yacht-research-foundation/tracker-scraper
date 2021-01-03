@@ -153,7 +153,8 @@ const { get } = require('request');
                     let boatDetails = boatDataRequest.data.response.users
                     if(boatDetails !== null){
                         boatDetails.forEach(boat => {
-                            let b = instantiateOrReturnExisting(existingObjects, Kwindoo.Boat, boat.id).obj
+                            let b_temp = instantiateOrReturnExisting(existingObjects, Kwindoo.Boat, boat.id)
+                            let b = b_temp.obj
                             b.regatta = newOrExistingRegatta.id,
                             b.regatta_original_id = newOrExistingRegatta.original_id,
                             b.race = newRace.id,
@@ -174,7 +175,7 @@ const { get } = require('request');
                             b.boat_type_alias = (boat.boat_data === null)? null : boat.boat_data.boat_type.alias,
                             b.class =  (boat.boat_data === null)? null : boat.boat_data.class
                             
-                            if(b.shouldSave){
+                            if(b_temp.shouldSave){
                                 newBoatObjects.push(b)
                             }
                         })    
