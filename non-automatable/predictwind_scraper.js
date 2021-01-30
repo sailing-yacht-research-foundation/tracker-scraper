@@ -11,6 +11,8 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const axiosRetry = require('axios-retry');
 
+//https://forecast.predictwind.com/vodafone/clubs/nzmyc.club?t=1609448951229
+//https://forecast.predictwind.com/vodafone/clubs/nzmyc-pic-coastal-classic-2020.race?t=1609448951488
 const knownUrls = [
     "https://forecast.predictwind.com/tracking/race/nzmyc",
     "https://forecast.predictwind.com/tracking/race/rayc",
@@ -21,7 +23,9 @@ const knownUrls = [
     "https://forecast.predictwind.com/tracking/race/typbc",
     "https://forecast.predictwind.com/tracking/race/RPNYC",
     "https://forecast.predictwind.com/tracking/race/ryc",
-    "http://forecast.predictwind.com/tracking/race/ISORA"
+    "http://forecast.predictwind.com/tracking/race/ISORA",
+    "https://forecast.predictwind.com/tracking/race/LowryBayYachtClub",
+    "https://forecast.predictwind.com/tracking/race/Waikawa_Boating_Club"
 ]
 
 
