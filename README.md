@@ -1,17 +1,24 @@
 # tracker-index
 Hosts the code that crawls all supported trackers, pulls down the data, and uploads it to the sources database.
 
+# Running locally
+1. Run `npm install`
+1. Copy the config file in `tracker-schema/config/.env.sample` to `.env`
+2. Set the correct database credentials
+3. Run the script. Example `node scrapers/bluewater_scraper.js`
+
+
 # Introduction
 Each crawler must be schedulable and run daily as a job to pull in the latest races.
 For each run, the general process is as follows:
 1) Query the source DB for a list of existing races or events.
 2) Crawl web, race list, mobile APIs to make a list of race urls.
-3) For each race url, if the race was already scraped, ignore it. 
+3) For each race url, if the race was already scraped, ignore it.
 4) If the race has not been scraped yet, check when it starts and ends.
-5) If the race takes place some time within the next 24 hours, add it to the live race model. 
+5) If the race takes place some time within the next 24 hours, add it to the live race model.
 6) If the race takes place more than 24 hours in the future, ignore it.
 7) If the race has completed, save it to the sources database using the tracker data model (dependency).
-8) Capture any timeouts, exceptions, and log them as failures. 
+8) Capture any timeouts, exceptions, and log them as failures.
 
 TODO:
 1) Jobify
