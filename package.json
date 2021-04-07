@@ -11,7 +11,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@mapbox/blend": "^2.0.1",
     "@turf/buffer": "^5.1.5",
     "@turf/collect": "^6.0.1",
     "@turf/turf": "^5.1.6",
