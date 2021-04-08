@@ -1,0 +1,3 @@
+[submodule "tracker-schema"]
+	path = tracker-schema
+	url = https://github.com/sailing-yacht-research-foundation/tracker-schema
