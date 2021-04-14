@@ -1,11 +1,12 @@
+require('dotenv').config();
+
+const AWS = require('aws-sdk');
 const { SearchSchema } = require('../tracker-schema/schema.js');
 const { uuidv4 } = require('../tracker-schema/utils.js');
 
-const AWS = require('aws-sdk');
-const ID = 'AKIAU4MUOS3JD7YG3BXW';
-const SECRET = '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';
-
-const BUCKET_NAME = 'syrftracksgeojson-dev';
+const ID = process.env.AWS_ID;
+const SECRET = process.env.AWS_SECRET;
+const BUCKET_NAME = process.env.GEOJSON_S3_BUCKET;
 
 const s3 = new AWS.S3({
     accessKeyId: ID,

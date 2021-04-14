@@ -115,7 +115,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
         boatsToSortedPositions
     );
 
-    const raceMetadata = createRace(
+    const raceMetadata = await createRace(
         race.id,
         race.name,
         event,
