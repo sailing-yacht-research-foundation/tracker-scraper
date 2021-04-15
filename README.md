@@ -3,9 +3,11 @@ Hosts the code that crawls all supported trackers, pulls down the data, and uplo
 
 # Running locally
 1. Run `npm install`
-1. Copy the config file in `tracker-schema/config/.env.sample` to `.env`
-2. Set the correct database credentials
-3. Run the script. Example `node scrapers/bluewater_scraper.js`
+2. Copy the tracker-schema config file in `tracker-index/tracker-schema/.env.sample` to `tracker-index/tracker-schema/.env`
+3. Set the correct database credentials and other environment variables
+4. Copy the tracker-index config file in `tracker-index/.env.sample` to `tracker-index/.env`
+5. Set the correct s3 bucket credentials and other environment variables
+6. Run the script. Example `node scrapers/bluewater_scraper.js`
 
 
 # Introduction

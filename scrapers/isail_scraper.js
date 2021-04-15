@@ -1,6 +1,26 @@
-const { iSail, sequelize, connect } = require('../tracker-schema/schema.js');
+const {
+    iSail,
+    SearchSchema,
+    sequelize,
+    connect,
+} = require('../tracker-schema/schema.js');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const puppeteer = require('puppeteer');
+const {
+    createBoatToPositionDictionary,
+    positionsToFeatureCollection,
+    collectFirstNPositionsFromBoatsToPositions,
+    collectLastNPositionsFromBoatsToPositions,
+    getCenterOfMassOfPositions,
+    findAverageLength,
+    createRace,
+    allPositionsToFeatureCollection,
+    findCenter,
+} = require('../tracker-schema/gis_utils.js');
+const turf = require('@turf/turf');
+const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
+
+const ISAIL_SOURCE = 'ISAIL';
 
 (async () => {
     const CONNECTED_TO_DB = connect();
@@ -393,7 +413,7 @@ const puppeteer = require('puppeteer');
                             class:
                                 existingClasses[t.participant.classEntity.id],
                             original_class_id: t.participant.classEntity.id,
-                            time: p.t,
+                            time: p.t * 1000,
                             speed: p.s,
                             heading: p.h,
                             distance: p.d,
@@ -487,6 +507,7 @@ const puppeteer = require('puppeteer');
                         await iSail.iSailPosition.bulkCreate(positions, {
                             fields: Object.keys(positions[0]),
                             transaction,
+                            logging: false,
                         });
                     }
 
@@ -521,6 +542,68 @@ const puppeteer = require('puppeteer');
                             transaction,
                         });
                     }
+                    // Normalize each race and create geojson to s3 bucket
+                    await Promise.all(
+                        raceJSON.map(async (race, index) => {
+                            const raceTrackIds = race.trackIds;
+                            const newRace = newRaces.find(
+                                (r) => r.original_id === race.id
+                            );
+                            const racePositions = positions.filter((pos) => {
+                                const isPositionInTrack = raceTrackIds.includes(
+                                    pos.original_track_id
+                                );
+                                if (isPositionInTrack) {
+                                    let isPositionInRaceTime;
+                                    const isAfterStart =
+                                        pos.time >= newRace.start * 1000;
+                                    const isBeforeEnd =
+                                        pos.time <= newRace.stop * 1000;
+                                    if (index === 0) {
+                                        // include positions before start if race is earliest
+                                        isPositionInRaceTime = isBeforeEnd;
+                                    } else if (index === raceJSON.length - 1) {
+                                        // include positions after end if race is latest
+                                        isPositionInRaceTime = isAfterStart;
+                                    } else {
+                                        isPositionInRaceTime =
+                                            isAfterStart && isBeforeEnd;
+                                    }
+                                    return isPositionInRaceTime;
+                                }
+                                return false;
+                            });
+                            const raceTracks = tracks.filter((t) =>
+                                raceTrackIds.includes(t.original_id)
+                            );
+                            const raceParticipantIds = raceTracks.map(
+                                (t) => t.original_participant_id
+                            );
+                            const raceParticipants = participants.filter((p) =>
+                                raceParticipantIds.includes(p.original_id)
+                            );
+                            const raceStartLines = newStartlines.filter(
+                                (s) => s.original_race_id === race.id
+                            );
+                            // Add the participantId in positions object for normalization
+                            racePositions.map((pos) => {
+                                const participantId = tracks.find(
+                                    (t) => t.id === pos.track
+                                )?.participant;
+                                if (participantId) {
+                                    pos.participant = participantId;
+                                }
+                                return pos;
+                            });
+                            await normalizeRace(
+                                newRace,
+                                racePositions,
+                                raceStartLines,
+                                raceParticipants,
+                                transaction
+                            );
+                        })
+                    );
                     transaction.commit();
                 } catch (err) {
                     transaction.rollback();
@@ -546,3 +629,107 @@ const puppeteer = require('puppeteer');
     }
     process.exit();
 })();
+
+async function normalizeRace(
+    race,
+    allPositions,
+    startLines,
+    boats,
+    transaction
+) {
+    if (allPositions.length === 0) {
+        console.log('No positions so skipping.');
+        return;
+    }
+    const id = race.id;
+    const name = race.name;
+    const event = race.event;
+    const url = race.url;
+    const startTime = new Date(race.start * 1000).getTime();
+    const endTime = new Date(race.stop * 1000).getTime();
+    const boundingBox = turf.bbox(
+        positionsToFeatureCollection('lat', 'lon', allPositions)
+    );
+    allPositions.forEach((p) => {
+        p.timestamp = p.time;
+    });
+    const boatsToSortedPositions = createBoatToPositionDictionary(
+        allPositions,
+        'participant',
+        'time'
+    );
+
+    const startObj = startLines.find((sl) => sl.name === 'start');
+    const endObj = startLines.find((sl) => sl.name === 'finish');
+    let startPoint, endPoint;
+    if (startObj) {
+        startPoint = findCenter(
+            startObj.lat_1,
+            startObj.lon_1,
+            startObj.lat_2,
+            startObj.lon_2
+        );
+    } else {
+        const first3Positions = collectFirstNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        startPoint = getCenterOfMassOfPositions('lat', 'lon', first3Positions);
+    }
+    if (endObj) {
+        endPoint = findCenter(
+            endObj.lat_1,
+            endObj.lon_1,
+            endObj.lat_2,
+            endObj.lon_2
+        );
+    } else {
+        const last3Positions = collectLastNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
+    }
+
+    const boatNames = [];
+    const boatModels = [];
+    const handicapRules = [];
+    const boatIdentifiers = [];
+    const unstructuredText = [];
+    console.log('boats', boats);
+    boats.forEach((b) => {
+        boatNames.push(b.name);
+        boatModels.push(b.class_name);
+        boatIdentifiers.push(b.sail_no);
+    });
+    console.log('boatModels', boatModels);
+    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
+    const raceMetadata = await createRace(
+        id,
+        name,
+        event,
+        ISAIL_SOURCE,
+        url,
+        startTime,
+        endTime,
+        startPoint,
+        endPoint,
+        boundingBox,
+        roughLength,
+        boatsToSortedPositions,
+        boatNames,
+        boatModels,
+        boatIdentifiers,
+        handicapRules,
+        unstructuredText
+    );
+    const tracksGeojson = JSON.stringify(
+        allPositionsToFeatureCollection(boatsToSortedPositions)
+    );
+
+    await SearchSchema.RaceMetadata.create(raceMetadata, {
+        fields: Object.keys(raceMetadata),
+        transaction,
+    });
+    await uploadGeoJsonToS3(race.id, tracksGeojson, ISAIL_SOURCE, transaction);
+}
