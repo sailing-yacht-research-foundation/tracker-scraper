@@ -25,7 +25,7 @@ const uploadS3 = (params) =>
         });
     });
 
-exports.uploadGeoJsonToS3 = async function (
+const uploadGeoJsonToS3 = async function (
     raceId,
     geojson,
     source,
@@ -55,4 +55,9 @@ exports.uploadGeoJsonToS3 = async function (
         },
         { transaction }
     );
+};
+
+module.exports = {
+    uploadS3,
+    uploadGeoJsonToS3,
 };
