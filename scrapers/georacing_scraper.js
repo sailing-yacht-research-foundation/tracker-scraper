@@ -143,12 +143,13 @@ function asDeci(val) {
 }
 
 function isNotEmpty(variable) {
-    return variable != null;
+    return variable !== null && variable !== undefined;
 }
 
 const NUM_VERSION_POSITION_WITHOUT_METEO = 101;
 const NUM_VERSION_POSITION = 100;
 const NUM_VERSION_POSITION_OLD = 3;
+const NUM_VERSION_110 = 110;
 
 function loadBinaryV101RankingsHelper(bytes, index) {
     const rd = {};
@@ -469,6 +470,103 @@ function loadBinaryV3(bytes, index) {
                     at: finalTimestamp * 1000,
                     lng: longitude,
                     lat: latitude,
+                });
+            }
+        }
+    }
+    return result;
+}
+
+function loadBinaryV110RankingsHelper(bytes, index) {
+    const rd = {};
+
+    rd.rank = readUInt8(bytes, index);
+    index += 1;
+    rd.evolution = readInt8(bytes, index);
+    index += 1;
+    rd.status = readInt8(bytes, index);
+    index += 1;
+    rd.visible = readInt8(bytes, index);
+    index += 1;
+    rd.distance = readFloat32(bytes, index);
+    index += 4;
+    rd.dtl = readFloat32(bytes, index);
+    index += 4;
+    rd.speed = asCenti(readUInt16(bytes, index));
+    index += 2;
+    rd.rest = readUInt8(bytes, index);
+    index += 1;
+
+    return rd;
+}
+function loadBinaryV110(bytes, index) {
+    const result = {
+        ActorsRankings: {},
+        ActorsPositions: {},
+    };
+    const byteslen = bytes.length;
+
+    while (index < byteslen) {
+        const timestamp = readInt64(bytes, index);
+        index += 8;
+        let rankingSize = readUInt32(bytes, index);
+        index += 4;
+        const structSize = readUInt16(bytes, index);
+        index += 2;
+
+        rankingSize += index;
+        while (index < rankingSize) {
+            const id = readInt64(bytes, index);
+            index += 8;
+            const rd = loadBinaryV110RankingsHelper(bytes, index);
+            index += structSize - 8 - 1;
+
+            const sid = id + '';
+            if (!isNotEmpty(result.ActorsRankings[sid])) {
+                result.ActorsRankings[sid] = [];
+            }
+            result.ActorsRankings[sid].push([timestamp, rd]);
+
+            if (!isNotEmpty(result.ActorsPositions[sid])) {
+                result.ActorsPositions[sid] = [];
+            }
+            const numLocations = readUInt8(bytes, index);
+            index += 1;
+            for (let l = 0; l < numLocations; l++) {
+                const latbin = readUInt32(bytes, index);
+                index += 4;
+                const lngbin = readUInt32(bytes, index);
+                index += 4;
+                const distance = readFloat32(bytes, index);
+                index += 4;
+
+                const offsetTimestamp = readUInt32(bytes, index);
+                index += 4;
+
+                let latitude = 0;
+                let longitude = 0;
+                if (latbin >= 0) {
+                    latitude = (latbin * 180.0) / (4294967295 - 1) - 90.0;
+                } else {
+                    latitude = 90.0 + (latbin * 180.0) / (4294967295 - 1);
+                }
+                if (lngbin >= 0) {
+                    longitude = (lngbin * 360.0) / (4294967295 - 1) - 180.0;
+                } else {
+                    longitude = 180.0 + (lngbin * 360.0) / (4294967295 - 1);
+                }
+                const finalTimestamp = timestamp + offsetTimestamp;
+                console.log({
+                    at: finalTimestamp * 1000,
+                    lng: longitude,
+                    lat: latitude,
+                    distance: distance,
+                });
+                result.ActorsPositions[sid].push({
+                    at: finalTimestamp * 1000,
+                    lng: longitude,
+                    lat: latitude,
+                    distance: distance,
                 });
             }
         }
@@ -1433,6 +1531,7 @@ function getPositionsFromBinary(bytes, meta = null) {
 
     let index = 0;
     const version = readUInt32(bytes, index);
+    console.log({ positionBinVersion: version });
     index += 4;
     if (version === NUM_VERSION_POSITION_WITHOUT_METEO) {
         return mergeActorsRankingsToActorsPositions(
@@ -1444,6 +1543,10 @@ function getPositionsFromBinary(bytes, meta = null) {
         );
     } else if (version === NUM_VERSION_POSITION_OLD) {
         return mergeActorsRankingsToActorsPositions(loadBinaryV3(bytes, index));
+    } else if (version === NUM_VERSION_110) {
+        return mergeActorsRankingsToActorsPositions(
+            loadBinaryV110(bytes, index)
+        );
     } else {
         throw new Error('invalid version binary file: ' + version);
     }
@@ -2473,8 +2576,8 @@ const allRacesURL =
     const page = await browser.newPage();
 
     const allRacesRequest = await axios.get(allRacesURL);
-    // const allEvents = allRacesRequest.data.events;
-    const allEvents = [allRacesRequest.data.events[9]];
+    const allEvents = allRacesRequest.data.events;
+    // const allEvents = [allRacesRequest.data.events[9]];
     let count = 0;
 
     for (const eventsIndex in allEvents) {

@@ -59,6 +59,6 @@ exports.uploadGeoJsonToS3 = async function (
         },
         { transaction }
     );
-    // console.log({ geojsonFile: file });
+    console.log({ geojsonFile: file });
     return file;
 };
