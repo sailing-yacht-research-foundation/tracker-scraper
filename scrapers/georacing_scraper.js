@@ -556,12 +556,6 @@ function loadBinaryV110(bytes, index) {
                     longitude = 180.0 + (lngbin * 360.0) / (4294967295 - 1);
                 }
                 const finalTimestamp = timestamp + offsetTimestamp;
-                console.log({
-                    at: finalTimestamp * 1000,
-                    lng: longitude,
-                    lat: latitude,
-                    distance: distance,
-                });
                 result.ActorsPositions[sid].push({
                     at: finalTimestamp * 1000,
                     lng: longitude,
