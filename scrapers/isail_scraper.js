@@ -3,6 +3,7 @@ const {
     SearchSchema,
     sequelize,
     connect,
+    bulkSave,
 } = require('../tracker-schema/schema.js');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const puppeteer = require('puppeteer');
@@ -60,8 +61,8 @@ const ISAIL_SOURCE = 'ISAIL';
         let counter = 1;
         const maximum = 500;
         while (counter < maximum) {
-            console.log('Getting new event.');
             const url = 'http://app.i-sail.com/eventDetails/' + counter;
+            console.log(`Getting new event with url ${url}`);
 
             if (
                 existingEventUrls.includes(url) ||
@@ -162,10 +163,11 @@ const ISAIL_SOURCE = 'ISAIL';
                     todaysDate < startDate ||
                     todaysDate < endDate ||
                     allEventData.raceJSON.length === 0 ||
+                    typeof allEventData.trackJSON.ids === 'undefined' ||
                     allEventData.trackJSON.ids.length === 0
                 ) {
                     console.log(
-                        'Skipping this event because it is not over yet.'
+                        'Skipping this event because it is not over yet or no tracks available'
                     );
                     counter += 1;
                     continue;
@@ -371,7 +373,7 @@ const ISAIL_SOURCE = 'ISAIL';
                 trackIds.forEach((id) => {
                     urlSuffix = urlSuffix + 'trackIds%5B%5D=' + id + '&';
                 });
-
+                console.log('Getting tracks');
                 result = await axios.get(
                     'http://app.i-sail.com/ajax/getPoints?' + urlSuffix
                 );
@@ -466,83 +468,65 @@ const ISAIL_SOURCE = 'ISAIL';
                 });
                 const transaction = await sequelize.transaction();
                 try {
-                    await iSail.iSailEvent.create(event, {
-                        fields: Object.keys(event),
-                        transaction,
-                    });
-                    if (newClasses.length > 0) {
-                        await iSail.iSailClass.bulkCreate(newClasses, {
-                            fields: Object.keys(newClasses[0]),
-                            transaction,
-                        });
-                    }
-                    if (participants.length > 0) {
-                        await iSail.iSailEventParticipant.bulkCreate(
-                            participants,
-                            {
-                                fields: Object.keys(participants[0]),
-                                transaction,
-                            }
-                        );
-                    }
-                    if (newRaces.length > 0) {
-                        await iSail.iSailRace.bulkCreate(newRaces, {
-                            fields: Object.keys(newRaces[0]),
-                            transaction,
-                        });
-                    }
-                    await iSail.iSailEventTracksData.create(trackData, {
-                        fields: Object.keys(trackData),
-                        transaction,
-                    });
-
-                    if (tracks.length > 0) {
-                        await iSail.iSailTrack.bulkCreate(tracks, {
-                            fields: Object.keys(tracks[0]),
-                            transaction,
-                        });
-                    }
-
-                    if (positions.length > 0) {
-                        await iSail.iSailPosition.bulkCreate(positions, {
-                            fields: Object.keys(positions[0]),
-                            transaction,
-                            logging: false,
-                        });
-                    }
-
-                    if (newMarks.length > 0) {
-                        await iSail.iSailMark.bulkCreate(newMarks, {
-                            fields: Object.keys(newMarks[0]),
-                            transaction,
-                        });
-                    }
-                    if (newStartlines.length > 0) {
-                        await iSail.iSailStartline.bulkCreate(newStartlines, {
-                            fields: Object.keys(newStartlines[0]),
-                            transaction,
-                        });
-                    }
-                    if (newCourseMarks.length > 0) {
-                        await iSail.iSailCourseMark.bulkCreate(newCourseMarks, {
-                            fields: Object.keys(newCourseMarks[0]),
-                            transaction,
-                        });
-                    }
-                    if (newResults.length > 0) {
-                        await iSail.iSailResult.bulkCreate(newResults, {
-                            fields: Object.keys(newResults[0]),
-                            transaction,
-                        });
-                    }
-
-                    if (roundings.length > 0) {
-                        await iSail.iSailRounding.bulkCreate(roundings, {
-                            fields: Object.keys(roundings[0]),
-                            transaction,
-                        });
+                    const newObjectsToSave = [
+                        {
+                            objectType: iSail.iSailEvent,
+                            objects: [event],
+                        },
+                        {
+                            objectType: iSail.iSailClass,
+                            objects: newClasses,
+                        },
+                        {
+                            objectType: iSail.iSailEventParticipant,
+                            objects: participants,
+                        },
+                        {
+                            objectType: iSail.iSailRace,
+                            objects: newRaces,
+                        },
+                        {
+                            objectType: iSail.iSailEventTracksData,
+                            objects: trackData,
+                        },
+                        {
+                            objectType: iSail.iSailTrack,
+                            objects: tracks,
+                        },
+                        {
+                            objectType: iSail.iSailPosition,
+                            objects: positions,
+                        },
+                        {
+                            objectType: iSail.iSailMark,
+                            objects: newMarks,
+                        },
+                        {
+                            objectType: iSail.iSailStartline,
+                            objects: newStartlines,
+                        },
+                        {
+                            objectType: iSail.iSailCourseMark,
+                            objects: newCourseMarks,
+                        },
+                        {
+                            objectType: iSail.iSailResult,
+                            objects: newResults,
+                        },
+                        {
+                            objectType: iSail.iSailRounding,
+                            objects: roundings,
+                        },
+                    ];
+                    console.log(
+                        `Bulk saving data for event original id = ${event.original_id}`
+                    );
+                    const saved = await bulkSave(newObjectsToSave, transaction);
+                    if (!saved) {
+                        throw new Error('Failed to save bulk data');
                     }
                     // Normalize each race and create geojson to s3 bucket
+                    console.log('Normalizing race data');
                     await Promise.all(
                         raceJSON.map(async (race, index) => {
                             const raceTrackIds = race.trackIds;
@@ -604,7 +588,7 @@ const ISAIL_SOURCE = 'ISAIL';
                             );
                         })
                     );
-                    transaction.commit();
+                    await transaction.commit();
                 } catch (err) {
                     transaction.rollback();
                     console.log(err);
@@ -696,13 +680,11 @@ async function normalizeRace(
     const handicapRules = [];
     const boatIdentifiers = [];
     const unstructuredText = [];
-    console.log('boats', boats);
     boats.forEach((b) => {
         boatNames.push(b.name);
         boatModels.push(b.class_name);
         boatIdentifiers.push(b.sail_no);
     });
-    console.log('boatModels', boatModels);
     const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
     const raceMetadata = await createRace(
         id,
@@ -731,5 +713,6 @@ async function normalizeRace(
         fields: Object.keys(raceMetadata),
         transaction,
     });
+    console.log('Uploading to s3');
     await uploadGeoJsonToS3(race.id, tracksGeojson, ISAIL_SOURCE, transaction);
 }
