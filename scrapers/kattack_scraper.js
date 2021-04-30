@@ -1,11 +1,27 @@
 const {
     Kattack,
+    sequelize,
     connect,
     findExistingObjects,
     instantiateOrReturnExisting,
     bulkSave,
+    SearchSchema,
 } = require('../tracker-schema/schema.js');
+const {
+    createTurfPoint,
+    createBoatToPositionDictionary,
+    positionsToFeatureCollection,
+    collectFirstNPositionsFromBoatsToPositions,
+    collectLastNPositionsFromBoatsToPositions,
+    getCenterOfMassOfPositions,
+    findAverageLength,
+    createRace,
+    allPositionsToFeatureCollection,
+} = require('../tracker-schema/gis_utils.js');
+const turf = require('@turf/turf');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
+const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
+const KATTACK_SOURCE = 'KATTACK';
 
 (async () => {
     const CONNECTED_TO_DB = await connect();
@@ -501,7 +517,8 @@ const { axios, uuidv4 } = require('../tracker-schema/utils.js');
                 'http://kws.kattack.com/BPlayer/BuoyPlayer.aspx?RaceID=' +
                 raceId;
 
-            console.log('Scraping new race...');
+            console.log(`Scraping new race with id ${raceId}`);
+            const transaction = await sequelize.transaction();
             try {
                 const raceMetadataRequest = await axios({
                     method: 'post',
@@ -552,7 +569,7 @@ const { axios, uuidv4 } = require('../tracker-schema/utils.js');
                     continue;
                 }
 
-                console.log('Saving race...');
+                console.log(`Getting race ${raceId}`);
                 const currentRaceTemp = instantiateOrReturnExisting(
                     existingObjects,
                     Kattack.Race,
@@ -652,7 +669,7 @@ const { axios, uuidv4 } = require('../tracker-schema/utils.js');
                             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36',
                     },
                 });
-                console.log('Saving waypoints...');
+                console.log('Getting waypoints...');
                 const waypointArray = courseRequest.data.d;
                 const waypoints = [];
                 if (waypointArray !== undefined) {
@@ -703,7 +720,7 @@ const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 
                 const positions = [];
                 const devices = [];
-                console.log('Saving positions...');
+                console.log('Getting positions...');
                 for (const deviceIndex in deviceMetadata) {
                     const deviceData = deviceMetadata[deviceIndex];
 
@@ -793,28 +810,29 @@ const { axios, uuidv4 } = require('../tracker-schema/utils.js');
                         positions.push(position);
                     });
                 }
-
-                try {
-                    const newObjectsToSave = [
-                        { objectType: Kattack.Race, objects: [currentRace] },
-                        { objectType: Kattack.Waypoint, objects: waypoints },
-                        { objectType: Kattack.Device, objects: devices },
-                        { objectType: Kattack.Position, objects: positions },
-                    ];
-                    console.log('Bulk saving objects.');
-                    await bulkSave(
-                        newObjectsToSave,
-                        Kattack.FailedUrl,
-                        raceUrl
-                    );
-                } catch (err) {
-                    console.log(err);
-                    await Kattack.FailedUrl.create(
-                        { id: uuidv4(), url: raceUrl, error: err.toString() },
-                        { fields: ['id', 'url', 'error'] }
-                    );
+                const newObjectsToSave = [
+                    { objectType: Kattack.Race, objects: [currentRace] },
+                    { objectType: Kattack.Waypoint, objects: waypoints },
+                    { objectType: Kattack.Device, objects: devices },
+                    { objectType: Kattack.Position, objects: positions },
+                ];
+                console.log('Bulk saving objects.');
+                const saved = await bulkSave(newObjectsToSave, transaction);
+                if (!saved) {
+                    throw new Error('Failed to save bulk data');
                 }
+
+                console.log(`Normalizing Race with id ${raceId}`);
+                await normalizeRace(
+                    currentRace,
+                    positions,
+                    waypoints,
+                    devices,
+                    transaction
+                );
+                await transaction.commit();
             } catch (err) {
+                transaction.rollback();
                 console.log(err);
                 await Kattack.FailedUrl.create(
                     { id: uuidv4(), url: raceUrl, error: err.toString() },
@@ -830,3 +848,101 @@ const { axios, uuidv4 } = require('../tracker-schema/utils.js');
     }
     process.exit();
 })();
+
+async function normalizeRace(
+    race,
+    allPositions,
+    waypoints,
+    devices,
+    transaction
+) {
+    if (allPositions.length === 0) {
+        console.log('No positions so skipping.');
+        return;
+    }
+    const id = race.id;
+    const name = race.name;
+    const event = null;
+    const url = race.url;
+    const startTime = parseInt(race.start);
+    const endTime = parseInt(race.stop);
+    const boundingBox = turf.bbox(
+        positionsToFeatureCollection('lat', 'lon', allPositions)
+    );
+    allPositions.forEach((p) => {
+        p.time = parseInt(p.time);
+        p.timestamp = p.time; // Needed for function allPositionsToFeatureCollection
+    });
+    const boatsToSortedPositions = createBoatToPositionDictionary(
+        allPositions,
+        'device',
+        'time'
+    );
+
+    const startObj = waypoints.find((wp) => wp.name === 'Start Pin');
+    const endObj = waypoints.find((wp) => wp.name === 'Finish Pin');
+    let startPoint, endPoint;
+    if (startObj) {
+        startPoint = createTurfPoint(startObj.lat, startObj.lon);
+    } else {
+        const first3Positions = collectFirstNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        startPoint = getCenterOfMassOfPositions('lat', 'lon', first3Positions);
+    }
+    if (endObj) {
+        endPoint = createTurfPoint(endObj.lat, endObj.lon);
+    } else {
+        const last3Positions = collectLastNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
+    }
+
+    const deviceNames = [];
+    const boatModels = [];
+    const handicapRules = [];
+    const deviceIdentifiers = [];
+    const unstructuredText = [];
+    devices.forEach((d) => {
+        deviceNames.push(d.name);
+        deviceIdentifiers.push(d.sail_no);
+    });
+    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
+    const raceMetadata = await createRace(
+        id,
+        name,
+        event,
+        KATTACK_SOURCE,
+        url,
+        startTime,
+        endTime,
+        startPoint,
+        endPoint,
+        boundingBox,
+        roughLength,
+        boatsToSortedPositions,
+        deviceNames,
+        boatModels,
+        deviceIdentifiers,
+        handicapRules,
+        unstructuredText
+    );
+    const tracksGeojson = JSON.stringify(
+        allPositionsToFeatureCollection(boatsToSortedPositions)
+    );
+
+    await SearchSchema.RaceMetadata.create(raceMetadata, {
+        fields: Object.keys(raceMetadata),
+        transaction,
+    });
+    console.log('Uploading to s3');
+    await uploadGeoJsonToS3(
+        race.id,
+        tracksGeojson,
+        KATTACK_SOURCE,
+        transaction
+    );
+}
