@@ -372,9 +372,7 @@ function buildBoatData(newRaceId, raceData, idgara, buoyIds) {
 async function fetchRaceZipData(unknownIdentifier, idgara) {
     const zipFileResult = await axios({
         method: 'get',
-        url: 'http://app.metasail.it/(S($SOME_ID$))/race_$IDGARA$.zip'
-            .replace('$SOME_ID$', unknownIdentifier)
-            .replace('$IDGARA$', idgara),
+        url: `http://app.metasail.it/(S(${unknownIdentifier}))/race_${idgara}.zip`,
         responseType: 'arraybuffer',
     });
 
@@ -496,11 +494,8 @@ async function fetchRaceAllPoints(
 async function fetchRaceStats(currentRaceUrl, unknownIdentifier, idgara) {
     const statsRequest = await axios({
         method: 'post',
-        url: 'http://app.metasail.it/(S($SOME_ID$))/MetaSailWS.asmx/getStatistiche'.replace(
-            '$SOME_ID$',
-            unknownIdentifier
-        ),
-        data: 'idGara=$IDGARA$'.replace('$IDGARA$', idgara),
+        url: `http://app.metasail.it/(S(${unknownIdentifier}))/MetaSailWS.asmx/getStatistiche`,
+        data: `idGara=${idgara}`,
         headers: {
             Host: 'app.metasail.it',
             Referer: currentRaceUrl,
@@ -556,7 +551,7 @@ async function normalizeRace(
     );
     const boatsToSortedPositions = createBoatToPositionDictionary(
         allPositions,
-        'boat_id',
+        'boat',
         'time'
     );
     const first3Positions = collectFirstNPositionsFromBoatsToPositions(
@@ -701,7 +696,8 @@ async function createFailureRecord(url, err) {
 }
 
 (async () => {
-    if (!connect()) {
+    const dbConnected = await connect();
+    if (!dbConnected) {
         process.exit();
     }
 
@@ -727,7 +723,7 @@ async function createFailureRecord(url, err) {
         existingRaceIds.push(r.original_id);
     });
 
-    // Events increment by 1
+    // Events decrement by 1
     let counter = 159;
     while (counter > 117) {
         // Get Event
