@@ -1,4 +1,7 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({
+    path: path.resolve(__dirname, '..', '.env'),
+});
 
 const AWS = require('aws-sdk');
 const { SearchSchema } = require('../tracker-schema/schema.js');
@@ -41,10 +44,11 @@ exports.uploadGeoJsonToS3 = async function (
     }
 
     const lookupId = uuidv4();
+    const file = lookupId + '.geojson';
     // Uploading files to the bucket
     await uploadS3({
         Bucket: BUCKET_NAME,
-        Key: lookupId + '.geojson', // File name you want to save as in S3
+        Key: file, // File name you want to save as in S3
         Body: geojson,
     });
     await SearchSchema.TrackLookup.create(
@@ -55,4 +59,6 @@ exports.uploadGeoJsonToS3 = async function (
         },
         { transaction }
     );
+    console.log({ geojsonFile: file });
+    return file;
 };
