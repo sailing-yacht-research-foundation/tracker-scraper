@@ -30,31 +30,31 @@ const KATTACK_SOURCE = 'KATTACK';
         console.log('Getting data from DB...');
         const existingObjects = await findExistingObjects(Kattack);
 
-        // const yachtClubResults = await Kattack.KattackYachtClub.findAll({ attributes: ['id', 'external_url', 'original_id', 'name']})
-        // const existingYachtClubOriginalIdsToNewIds = {}
-        // const existingRaceIds = []
-        // const existingFeedIds = []
-        // const existingRaces = await Kattack.KattackRace.findAll({ attributes: ['id', 'original_id', 'original_paradigm']})
-        // const existingFailureObjects = await Kattack.KattackFailedUrl.findAll({attributes:['url']})
-        // const existingFailures = {}
+        const yachtClubResults = await Kattack.Club.findAll({
+            attributes: ['id', 'external_url', 'original_id', 'name'],
+        });
+        const existingYachtClubOriginalIds = yachtClubResults.map(
+            (y) => y.original_id
+        );
+        const existingRaceIds = [];
+        const existingFeedIds = [];
+        const existingRaces = await Kattack.Race.findAll({
+            attributes: ['id', 'original_id', 'original_paradigm'],
+        });
 
-        // const FEED_LIMIT = 2000;
-        // for(raceIndex in existingRaces){
-        //     var r = existingRaces[raceIndex]
-        //     if(r.original_paradigm === 'Race'){
-        //         existingRaceIds.push(r.original_id)
-        //     }else{
-        //         existingFeedIds.push(r.original_id)
-        //     }
-        // }
-
-        // if(FEED_LIMIT === 0){
-        //     FEED_LIMIT = 2000
-        // }
+        const FEED_LIMIT = 2000;
+        for (const raceIndex in existingRaces) {
+            const r = existingRaces[raceIndex];
+            if (r.original_paradigm === 'Race') {
+                existingRaceIds.push(r.original_id);
+            } else {
+                existingFeedIds.push(r.original_id);
+            }
+        }
 
         // These are new races and feedIds only.
         const raceIds = {};
-        // const feedIds = {};
+        const feedIds = {};
 
         // TODO: add non english characters to alphabet array.
         const SEARCH_REQUEST_DATA_STRING =
@@ -125,343 +125,456 @@ const KATTACK_SOURCE = 'KATTACK';
             '_',
         ];
 
-        // console.log('Parsing out clubs from club list and comparing against existing clubs...')
-        // var yachtClubListPage = await axios.get('http://kws.kattack.com/player/browselist.aspx')
-        // var clubRegex = /regatta.aspx\?YachtClubID=[a-zA-Z0-9-]*\" style=\"display:inline-block;\">.*<\/a>/g;
-        // var clubMatches = yachtClubListPage.data.toString().match(clubRegex)
-        // var clubs = []
-        // for(matchIndex in clubMatches){
-        //     var match =  clubMatches[matchIndex]
-        //     var extractor = /regatta.aspx\?YachtClubID=([a-zA-Z0-9-]*)\" style=\"display:inline-block;\">(.*)<\/a>/
-        //     var results = match.match(extractor)
-        //     var original_id = results[1]
-        //     if(!Object.keys(existingYachtClubOriginalIdsToNewIds).includes(original_id)){
-        //         var club = {
-        //             id: uuidv4(),
-        //             original_id: results[1],
-        //             name: results[2],
-        //             external_url: null
-        //         }
-        //         clubs.push(club)
-        //     }
+        console.log(
+            'Parsing out clubs from club list and comparing against existing clubs...'
+        );
+        const yachtClubListPage = await axios.get(
+            'http://kws.kattack.com/player/browselist.aspx'
+        );
+        const clubRegex = /regatta.aspx\?YachtClubID=[a-zA-Z0-9-]*" style="display:inline-block;">.*<\/a>/g;
+        const clubMatches = yachtClubListPage.data.toString().match(clubRegex);
+        const clubs = [];
+        for (const matchIndex in clubMatches) {
+            const match = clubMatches[matchIndex];
+            const extractor = /regatta.aspx\?YachtClubID=([a-zA-Z0-9-]*)" style="display:inline-block;">(.*)<\/a>/;
+            const results = match.match(extractor);
+            const originalId = results[1];
+            if (!existingYachtClubOriginalIds.includes(originalId)) {
+                const club = {
+                    id: uuidv4(),
+                    original_id: results[1],
+                    name: results[2],
+                    external_url: null,
+                };
+                clubs.push(club);
+            }
+        }
+        console.log('Saving new clubs...');
+        for (const clubIndex in clubs) {
+            const club = clubs[clubIndex];
+            const clubPage = await axios.get(
+                'http://kws.kattack.com/player/regatta.aspx?YachtClubID=' +
+                    club.original_id
+            );
+            const clubData = clubPage.data.toString();
+            const externalUrlRegex = /<a id="Image_Banner" href="(.*)"><img src/;
+            club.external_url = clubData.match(externalUrlRegex)[1];
+        }
 
-        // }
-        // console.log('Saving new clubs...')
-        // for(clubIndex in clubs){
-        //     let club = clubs[clubIndex]
-        //     let clubPage = await axios.get('http://kws.kattack.com/player/regatta.aspx?YachtClubID=' + club.original_id)
-        //     let clubData = clubPage.data.toString()
-        //     let externalUrlRegex = /<a id=\"Image_Banner\" href="(.*)"><img src/
-        //     club.external_url = clubData.match(externalUrlRegex)[1]
-        // }
-
-        // await Kattack.YachtClub.bulkCreate(clubs, {
-        //     fields:['id', 'original_id', 'name', 'external_url']
-        // })
+        await Kattack.Club.bulkCreate(clubs, {
+            fields: ['id', 'original_id', 'name', 'external_url'],
+        });
 
         // TODO: Make all URLs, cookies, headers, etc part of kattack metadata.
         // TODO: make FEED_LIMIT part of kattack metadaa.
 
-        // var counter = 100
-        // var funsOver = false
-        // console.log('Looking for new feed IDs...')
-        // while(! funsOver){
-        //     console.log('Checking for feed ' + counter + ' of ' + FEED_LIMIT + '...')
-        //         var feedPage = await axios.get('http://kws.kattack.com/GEPlayer/GMPosDisplay.aspx?FeedID=' + counter.toString())
-        //         var pageText = feedPage.data.toString()
-        //         if( ! pageText.includes('Error: Invalid Feed ID: ' + counter.toString())){
-        //             feedIds[counter] = counter
-        //     }
-        //     counter += 1
-        //     if(counter == FEED_LIMIT){
-        //         funsOver = true
-        //     }
-        // }
+        let counter = 100;
+        let funsOver = false;
+        console.log('Looking for new feed IDs...');
+        while (!funsOver) {
+            console.log(
+                'Checking for feed ' + counter + ' of ' + FEED_LIMIT + '...'
+            );
+            const feedPage = await axios.get(
+                'http://kws.kattack.com/GEPlayer/GMPosDisplay.aspx?FeedID=' +
+                    counter.toString()
+            );
+            const pageText = feedPage.data.toString();
+            if (
+                !pageText.includes(
+                    'Error: Invalid Feed ID: ' + counter.toString()
+                )
+            ) {
+                feedIds[counter] = counter;
+            }
+            counter += 1;
+            if (counter === FEED_LIMIT) {
+                funsOver = true;
+            }
+        }
 
         const todaysDate = new Date();
 
         // TODO: clean up all requests into a common method and unify feed and race loops since they're identical
-        // console.log('Downloading new feeds...')
-        // // Get the Feed data (feeds are like big races.) No need to check if this id exists in db since feedIds was already populated.
-        // for(feedIndex in Object.keys(feedIds)){
-        //     console.log('Scraping new feed id...')
-        //     let feedId = Object.keys(feedIds)[feedIndex]
-        //     let raceUrl = 'http://kws.kattack.com/GEPlayer/GMPosDisplay.aspx?FeedID=' + feedId
-        //     // if(Object.keys(existingFailures).includes(raceUrl)){
-        //     //     continue
-        //     // }
-        //     try{
-        //         let feedMetadataRequest = await axios({
-        //             method: 'post',
-        //             url: 'http://kws.kattack.com/GEPlayer/GMWebService.asmx/LiveFeed_select',
-        //             data: '{ "feedID": "' + feedId + '"}',
-        //             headers: {'Connection': 'keep-alive',
-        //             'Host' : 'kws.kattack.com',
-        //             'Accept': '*/*',
-        //             'Cookie': 'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
-        //             'Origin': 'http://kws.kattack.com',
-        //             'X-Requested-With': 'XMLHttpRequest',
-        //             'Cache-Control': 'no-cache',
-        //             'Pragma': 'no-cache',
-        //             'Content-Type':'application/json; charset=UTF-8',
-        //             'Accept-Language': 'en-US,en;q=0.9',
-        //             'Accept-Encoding': 'gzip, deflate',
-        //             'Referer': 'http://kws.kattack.com/GEPlayer/GMPlayer.aspx??FeedID=' + feedId,
-        //             'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36'
-        //             }
-        //         })
-        //         let metadata = feedMetadataRequest.data.d
+        console.log('Downloading new feeds...');
+        // Get the Feed data (feeds are like big races.) No need to check if this id exists in db since feedIds was already populated.
+        for (const feedIndex in Object.keys(feedIds)) {
+            const feedId = Object.keys(feedIds)[feedIndex];
+            console.log(`Scraping new feed id = ${feedId}`);
+            const raceUrl =
+                'http://kws.kattack.com/GEPlayer/GMPosDisplay.aspx?FeedID=' +
+                feedId;
+            // if(Object.keys(existingFailures).includes(raceUrl)){
+            //     continue
+            // }
+            try {
+                const feedMetadataRequest = await axios({
+                    method: 'post',
+                    url:
+                        'http://kws.kattack.com/GEPlayer/GMWebService.asmx/LiveFeed_select',
+                    data: '{ "feedID": "' + feedId + '"}',
+                    headers: {
+                        Connection: 'keep-alive',
+                        Host: 'kws.kattack.com',
+                        Accept: '*/*',
+                        Cookie:
+                            'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
+                        Origin: 'http://kws.kattack.com',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Cache-Control': 'no-cache',
+                        Pragma: 'no-cache',
+                        'Content-Type': 'application/json; charset=UTF-8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Accept-Encoding': 'gzip, deflate',
+                        Referer:
+                            'http://kws.kattack.com/GEPlayer/GMPlayer.aspx??FeedID=' +
+                            feedId,
+                        'User-Agent':
+                            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36',
+                    },
+                });
+                const metadata = feedMetadataRequest.data.d;
 
-        //         // If this race starts or stops in the future, ignore it. We'll get it next time.
-        //         let start_date = new Date(parseInt(metadata.StartTime.replace('/Date(', '').replace(')/', '')))
-        //         let stop_date = new Date(parseInt(metadata.StopTime.replace('/Date(', '').replace(')/', '')))
-        //         if(todaysDate < start_date || todaysDate < stop_date){
-        //             console.log('This race is in the future so lets skip it.')
-        //             continue
-        //         }
+                // If this race starts or stops in the future, ignore it. We'll get it next time.
+                const startDate = new Date(
+                    parseInt(
+                        metadata.StartTime.replace('/Date(', '').replace(
+                            ')/',
+                            ''
+                        )
+                    )
+                );
+                const stopDate = new Date(
+                    parseInt(
+                        metadata.StopTime.replace('/Date(', '').replace(
+                            ')/',
+                            ''
+                        )
+                    )
+                );
+                if (todaysDate < startDate || todaysDate < stopDate) {
+                    console.log('This race is in the future so lets skip it.');
+                    continue;
+                }
 
-        //         // BUG! Why is yachtclub almost always null?
+                // BUG! Why is yachtclub almost always null?
 
-        //         console.log('Saving race...')
-        //         let currentRaceTemp = instantiateOrReturnExisting(existingObjects, Kattack.Race, feedId)
-        //         if(!currentRaceTemp.shouldSave){
-        //             continue
-        //         }
-        //         let currentRace = currentRaceTemp.obj
+                console.log('Saving race...');
+                const currentRaceTemp = instantiateOrReturnExisting(
+                    existingObjects,
+                    Kattack.Race,
+                    feedId
+                );
+                if (!currentRaceTemp.shouldSave) {
+                    continue;
+                }
+                const currentRace = currentRaceTemp.obj;
 
-        //         currentRace.name = metadata.Name
-        //         currentRace.original_paradigm = 'Feed'
-        //         currentRace.yacht_club = null
-        //         currentRace.original_yacht_club_id = metadata.YachtClubID
-        //         currentRace.original_fleet_id = metadata.FleetID
-        //         currentRace.original_series_id = metadata.SeriesID
-        //         currentRace.original_course_id = metadata.CourseID
-        //         currentRace.start = metadata.StartTime.replace('/Date(', '').replace(')/', '')
-        //         currentRace.stop = metadata.StopTime.replace('/Date(', '').replace(')/', '')
-        //         currentRace.days = metadata.Days
-        //         currentRace.sleep_hour = metadata.SleepHour
-        //         currentRace.wake_hour = metadata.WakeHour
-        //         currentRace.heartbeat_int_sec = metadata.HeartbeatIntSec
-        //         currentRace.wait_samp_int_sec = metadata.WaitSampIntSec
-        //         currentRace.active_samp_int_sec = metadata.ActiveSampIntSec
-        //         currentRace.active_pts = metadata.ActivePts
-        //         currentRace.still_pts = metadata.StillPts
-        //         currentRace.still_radius_met = metadata.StillRadiusMet
-        //         currentRace.upload_int_sec = metadata.UploadIntSec
-        //         currentRace.modified_time = metadata.ModifiedTime.replace('/Date(', '').replace(')/', '')
-        //         currentRace.password = metadata.Password
-        //         currentRace.race_start_time_utc = metadata.RaceStartTimeUTC.replace('/Date(', '').replace(')/', '')
-        //         currentRace.feed_start_time_epoch_offset_sec = metadata.FeedStartTimeEPOCHOffsetSec
-        //         currentRace.prestart_length_sec = metadata.PrestartLengthSec
-        //         currentRace.race_start_time_epoch_offset_sec = metadata.RaceStartTimeEPOCHOffsetSec
-        //         currentRace.race_finish_time_epoch_offset_sec = metadata.RaceFinishTimeEPOCHOffsetSec
-        //         currentRace.feed_length_sec = metadata.FeedLengthSec
-        //         currentRace.race_length_sec = metadata.RaceLengthSec
-        //         currentRace.is_distance_race = metadata.IsDistanceRace
-        //         currentRace.is_open_feed = metadata.IsOpenFeed
-        //         currentRace.speed_filter_kts = metadata.SpeedFilterKts
-        //         currentRace.is_live = metadata.IsLive
-        //         currentRace.has_started = metadata.HasStarted
-        //         currentRace.lon = metadata.Lon
-        //         currentRace.lat = metadata.Lat
-        //         currentRace.course_heading_deg = metadata.CourseHeadingDeg
-        //         currentRace.js_race_feed_id = metadata.JSRaceFeedID
-        //         currentRace.js_race_course_id = metadata.JSRaceCourseID
-        //         currentRace.url = raceUrl
+                currentRace.name = metadata.Name;
+                currentRace.original_paradigm = 'Feed';
+                currentRace.yacht_club = null;
+                currentRace.original_yacht_club_id = metadata.YachtClubID;
+                currentRace.original_fleet_id = metadata.FleetID;
+                currentRace.original_series_id = metadata.SeriesID;
+                currentRace.original_course_id = metadata.CourseID;
+                currentRace.start = metadata.StartTime.replace(
+                    '/Date(',
+                    ''
+                ).replace(')/', '');
+                currentRace.stop = metadata.StopTime.replace(
+                    '/Date(',
+                    ''
+                ).replace(')/', '');
+                currentRace.days = metadata.Days;
+                currentRace.sleep_hour = metadata.SleepHour;
+                currentRace.wake_hour = metadata.WakeHour;
+                currentRace.heartbeat_int_sec = metadata.HeartbeatIntSec;
+                currentRace.wait_samp_int_sec = metadata.WaitSampIntSec;
+                currentRace.active_samp_int_sec = metadata.ActiveSampIntSec;
+                currentRace.active_pts = metadata.ActivePts;
+                currentRace.still_pts = metadata.StillPts;
+                currentRace.still_radius_met = metadata.StillRadiusMet;
+                currentRace.upload_int_sec = metadata.UploadIntSec;
+                currentRace.modified_time = metadata.ModifiedTime.replace(
+                    '/Date(',
+                    ''
+                ).replace(')/', '');
+                currentRace.password = metadata.Password;
+                currentRace.race_start_time_utc = metadata.RaceStartTimeUTC.replace(
+                    '/Date(',
+                    ''
+                ).replace(')/', '');
+                currentRace.feed_start_time_epoch_offset_sec =
+                    metadata.FeedStartTimeEPOCHOffsetSec;
+                currentRace.prestart_length_sec = metadata.PrestartLengthSec;
+                currentRace.race_start_time_epoch_offset_sec =
+                    metadata.RaceStartTimeEPOCHOffsetSec;
+                currentRace.race_finish_time_epoch_offset_sec =
+                    metadata.RaceFinishTimeEPOCHOffsetSec;
+                currentRace.feed_length_sec = metadata.FeedLengthSec;
+                currentRace.race_length_sec = metadata.RaceLengthSec;
+                currentRace.is_distance_race = metadata.IsDistanceRace;
+                currentRace.is_open_feed = metadata.IsOpenFeed;
+                currentRace.speed_filter_kts = metadata.SpeedFilterKts;
+                currentRace.is_live = metadata.IsLive;
+                currentRace.has_started = metadata.HasStarted;
+                currentRace.lon = metadata.Lon;
+                currentRace.lat = metadata.Lat;
+                currentRace.course_heading_deg = metadata.CourseHeadingDeg;
+                currentRace.js_race_feed_id = metadata.JSRaceFeedID;
+                currentRace.js_race_course_id = metadata.JSRaceCourseID;
+                currentRace.url = raceUrl;
 
-        //         let leaderboardRequest = await axios.get('http://kws.kattack.com/GEPlayer/GELeaderBoard.aspx?FeedID=' + feedId  + '&CourseID=' + metadata.CourseID)
-        //         let leaderboardData = leaderboardRequest.data
+                const leaderboardRequest = await axios.get(
+                    'http://kws.kattack.com/GEPlayer/GELeaderBoard.aspx?FeedID=' +
+                        feedId +
+                        '&CourseID=' +
+                        metadata.CourseID
+                );
+                const leaderboardData = leaderboardRequest.data;
 
-        //         currentRace.leaderboard_data = leaderboardData
+                currentRace.leaderboard_data = leaderboardData;
 
-        //         console.log('Saving waypoints...')
-        //         let courseWaypointRequest = await axios({
-        //             method: 'post',
-        //             url: 'http://kws.kattack.com/GEPlayer/GMWebService.asmx/Waypoint_selectCourseWaypointList',
-        //             data: '{ "courseID": "' + metadata.CourseID +'", "feedID": "' + feedId + '"}',
-        //             headers: {'Connection': 'keep-alive',
-        //             'Host' : 'kws.kattack.com',
-        //             'Accept': '*/*',
-        //             'Cookie': 'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
-        //             'Origin': 'http://kws.kattack.com',
-        //             'X-Requested-With': 'XMLHttpRequest',
-        //             'Cache-Control': 'no-cache',
-        //             'Pragma': 'no-cache',
-        //             'Content-Type':'application/json; charset=UTF-8',
-        //             'Accept-Language': 'en-US,en;q=0.9',
-        //             'Referer': 'http://kws.kattack.com/GEPlayer/GMPlayer.aspx??FeedID=' + feedId,
-        //             'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36'
-        //             }
-        //         })
-        //         let waypoint_array = courseWaypointRequest.data.d
-        //         let waypoints = []
-        //         if(waypoint_array != undefined){
-        //             waypoint_array.forEach((w) => {
-        //                     var waypoint = {
-        //                         id: uuidv4(),
-        //                         original_id: w.ID,
-        //                         race: currentRace.id,
-        //                         original_race_id: currentRace.original_id,
-        //                         html_description: w.HTMLDesc,
-        //                         name: w.Name,
-        //                         yacht_club: null,
-        //                         original_yacht_club_id: w.YachtClubID,
-        //                         lon: w.Lon,
-        //                         lat: w.Lat,
-        //                         epoch_offset_sec: w.point.epochOffsetSec
-        //                     }
-        //                     waypoints.push(waypoint)
-        //                 })
-        //         }
+                console.log('Saving waypoints...');
+                const courseWaypointRequest = await axios({
+                    method: 'post',
+                    url:
+                        'http://kws.kattack.com/GEPlayer/GMWebService.asmx/Waypoint_selectCourseWaypointList',
+                    data:
+                        '{ "courseID": "' +
+                        metadata.CourseID +
+                        '", "feedID": "' +
+                        feedId +
+                        '"}',
+                    headers: {
+                        Connection: 'keep-alive',
+                        Host: 'kws.kattack.com',
+                        Accept: '*/*',
+                        Cookie:
+                            'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
+                        Origin: 'http://kws.kattack.com',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Cache-Control': 'no-cache',
+                        Pragma: 'no-cache',
+                        'Content-Type': 'application/json; charset=UTF-8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        Referer:
+                            'http://kws.kattack.com/GEPlayer/GMPlayer.aspx??FeedID=' +
+                            feedId,
+                        'User-Agent':
+                            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36',
+                    },
+                });
+                const waypointArray = courseWaypointRequest.data.d;
+                const waypoints = [];
+                if (waypointArray !== undefined) {
+                    waypointArray.forEach((w) => {
+                        const waypoint = {
+                            id: uuidv4(),
+                            original_id: w.ID,
+                            race: currentRace.id,
+                            original_race_id: currentRace.original_id,
+                            html_description: w.HTMLDesc,
+                            name: w.Name,
+                            yacht_club: null,
+                            original_yacht_club_id: w.YachtClubID,
+                            lon: w.Lon,
+                            lat: w.Lat,
+                            epoch_offset_sec: w.point.epochOffsetSec,
+                        };
+                        waypoints.push(waypoint);
+                    });
+                }
 
-        //         let routeWaypointRequest = await axios({
-        //             method: 'post',
-        //             url: 'http://kws.kattack.com/GEPlayer/GMWebService.asmx/Waypoint_selectRoutePointList',
-        //             data: '{ "courseID": "' + metadata.CourseID + '"}',
-        //             headers: {'Connection': 'keep-alive',
-        //             'Host' : 'kws.kattack.com',
-        //             'Accept': '*/*',
-        //             'Cookie': 'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
-        //             'Origin': 'http://kws.kattack.com',
-        //             'X-Requested-With': 'XMLHttpRequest',
-        //             'Cache-Control': 'no-cache',
-        //             'Pragma': 'no-cache',
-        //             'Content-Type':'application/json; charset=UTF-8',
-        //             'Accept-Language': 'en-US,en;q=0.9',
-        //             'Referer': 'http://kws.kattack.com/GEPlayer/GMPlayer.aspx??FeedID=' + feedId,
-        //             'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36'
-        //             }
-        //         })
-        //         let routeWaypointData = routeWaypointRequest.data.d
-        //         // TODO: figure out routes
-        //         console.log(routeWaypointData)
+                const routeWaypointRequest = await axios({
+                    method: 'post',
+                    url:
+                        'http://kws.kattack.com/GEPlayer/GMWebService.asmx/Waypoint_selectRoutePointList',
+                    data: '{ "courseID": "' + metadata.CourseID + '"}',
+                    headers: {
+                        Connection: 'keep-alive',
+                        Host: 'kws.kattack.com',
+                        Accept: '*/*',
+                        Cookie:
+                            'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
+                        Origin: 'http://kws.kattack.com',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Cache-Control': 'no-cache',
+                        Pragma: 'no-cache',
+                        'Content-Type': 'application/json; charset=UTF-8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        Referer:
+                            'http://kws.kattack.com/GEPlayer/GMPlayer.aspx??FeedID=' +
+                            feedId,
+                        'User-Agent':
+                            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36',
+                    },
+                });
+                const routeWaypointData = routeWaypointRequest.data.d;
+                // TODO: figure out routes
+                console.log(routeWaypointData);
 
-        //         let deviceMetadataRequest = await axios({
-        //             method: 'post',
-        //             url: 'http://kws.kattack.com/GEPlayer/GMWebService.asmx/LiveDevice_selectFromData',
-        //             data: '{ "feedID": "' + feedId + '"}',
-        //             headers: {'Connection': 'keep-alive',
-        //             'Host' : 'kws.kattack.com',
-        //             'Accept': '*/*',
-        //             'Cookie': 'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
-        //             'Origin': 'http://kws.kattack.com',
-        //             'X-Requested-With': 'XMLHttpRequest',
-        //             'Cache-Control': 'no-cache',
-        //             'Pragma': 'no-cache',
-        //             'Content-Type':'application/json; charset=UTF-8',
-        //             'Accept-Language': 'en-US,en;q=0.9',
-        //             'Referer': 'http://kws.kattack.com/GEPlayer/GMPlayer.aspx??FeedID=' + feedId,
-        //             'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36'
-        //             }
-        //         })
-        //         let deviceMetadata = deviceMetadataRequest.data.d
+                const deviceMetadataRequest = await axios({
+                    method: 'post',
+                    url:
+                        'http://kws.kattack.com/GEPlayer/GMWebService.asmx/LiveDevice_selectFromData',
+                    data: '{ "feedID": "' + feedId + '"}',
+                    headers: {
+                        Connection: 'keep-alive',
+                        Host: 'kws.kattack.com',
+                        Accept: '*/*',
+                        Cookie:
+                            'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
+                        Origin: 'http://kws.kattack.com',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Cache-Control': 'no-cache',
+                        Pragma: 'no-cache',
+                        'Content-Type': 'application/json; charset=UTF-8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        Referer:
+                            'http://kws.kattack.com/GEPlayer/GMPlayer.aspx??FeedID=' +
+                            feedId,
+                        'User-Agent':
+                            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36',
+                    },
+                });
+                const deviceMetadata = deviceMetadataRequest.data.d;
 
-        //         // TODO: unique device ids
-        //         console.log('Saving positions...')
-        //         let positions = []
-        //         let devices = []
-        //         for(deviceIndex in deviceMetadata){
-        //             let deviceData = deviceMetadata[deviceIndex]
-        //             let device = {
-        //                 id: uuidv4(),
-        //                 original_id: deviceData.DeviceDGuid,
-        //                 race: currentRace.id,
-        //                 original_race_id: currentRace.original_id,
-        //                 name: deviceData.DeviceName,
-        //                 type: deviceData.DeviceType,
-        //                 lon: deviceData.Lon,
-        //                 lat: deviceData.Lat,
-        //                 last_course_pt_lon: deviceData.LastCoursePtLon,
-        //                 last_course_pt_lat: deviceData.LastCoursePtLat,
-        //                 speed_kts: deviceData.SpeedKts,
-        //                 heading_deg: deviceData.HeadingDeg,
-        //                 mode: deviceData.Mode,
-        //                 status: deviceData.Status,
-        //                 is_logging: deviceData.IsLogging,
-        //                 is_blocked: deviceData.IsBlocked,
-        //                 device_row_id: deviceData.DeviceRowID,
-        //                 yacht_club: null,
-        //                 original_yacht_club_id: deviceData.YachtClubID,
-        //                 shared_device_row_id: deviceData.SharedDeviceRowID,
-        //                 status_msg: deviceData.StatusMsg,
-        //                 device_internal_name: deviceData.DeviceInternalName,
-        //                 epoch_offset_sec: deviceData.epochOffsetSec,
-        //                 elapsed_time_dhms: deviceData.ElapsedTimeDHMS,
-        //                 info_html: deviceData.InfoHTML,
-        //                 info_html_2: deviceData.InfoHTML2,
-        //                 js_data_id: deviceData.JSDataID
-        //             }
-        //             devices.push(device)
+                // TODO: unique device ids
+                console.log('Saving positions...');
+                const positions = [];
+                const devices = [];
+                for (const deviceIndex in deviceMetadata) {
+                    const deviceData = deviceMetadata[deviceIndex];
+                    const device = {
+                        id: uuidv4(),
+                        original_id: deviceData.DeviceDGuid,
+                        race: currentRace.id,
+                        original_race_id: currentRace.original_id,
+                        name: deviceData.DeviceName,
+                        type: deviceData.DeviceType,
+                        lon: deviceData.Lon,
+                        lat: deviceData.Lat,
+                        last_course_pt_lon: deviceData.LastCoursePtLon,
+                        last_course_pt_lat: deviceData.LastCoursePtLat,
+                        speed_kts: deviceData.SpeedKts,
+                        heading_deg: deviceData.HeadingDeg,
+                        mode: deviceData.Mode,
+                        status: deviceData.Status,
+                        is_logging: deviceData.IsLogging,
+                        is_blocked: deviceData.IsBlocked,
+                        device_row_id: deviceData.DeviceRowID,
+                        yacht_club: null,
+                        original_yacht_club_id: deviceData.YachtClubID,
+                        shared_device_row_id: deviceData.SharedDeviceRowID,
+                        status_msg: deviceData.StatusMsg,
+                        device_internal_name: deviceData.DeviceInternalName,
+                        epoch_offset_sec: deviceData.epochOffsetSec,
+                        elapsed_time_dhms: deviceData.ElapsedTimeDHMS,
+                        info_html: deviceData.InfoHTML,
+                        info_html_2: deviceData.InfoHTML2,
+                        js_data_id: deviceData.JSDataID,
+                    };
+                    devices.push(device);
 
-        //             // TODO: get gpx via DownloadGPX.ashx?FeedID=" + feedID + "&DeviceDGuid=" + button.id;
+                    // TODO: get gpx via DownloadGPX.ashx?FeedID=" + feedID + "&DeviceDGuid=" + button.id;
 
-        //             let deviceDetailRequest = await axios({
-        //                 method: 'post',
-        //                 url: 'http://kws.kattack.com/GEPlayer/GMWebService.asmx/LiveData_selectDeviceList',
-        //                 data: '{ "deviceRowID": "' + deviceData.DeviceRowID +'", "feedID": "' + feedId + '"}',
-        //                 headers: {'Connection': 'keep-alive',
-        //                 'Host' : 'kws.kattack.com',
-        //                 'Accept': '*/*',
-        //                 'Cookie': 'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
-        //                 'Origin': 'http://kws.kattack.com',
-        //                 'X-Requested-With': 'XMLHttpRequest',
-        //                 'Cache-Control': 'no-cache',
-        //                 'Pragma': 'no-cache',
-        //                 'Content-Type':'application/json; charset=UTF-8',
-        //                 'Accept-Encoding': 'gzip, deflate',
-        //                 'Accept-Language': 'en-US,en;q=0.9',
-        //                 'Referer':' http://kws.kattack.com/GEPlayer/GMPlayer.aspx?FeedID=' + feedId,
-        //                 'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36'
-        //                 }
-        //             })
-        //             let devicePositions = deviceDetailRequest.data.d
+                    const deviceDetailRequest = await axios({
+                        method: 'post',
+                        url:
+                            'http://kws.kattack.com/GEPlayer/GMWebService.asmx/LiveData_selectDeviceList',
+                        data:
+                            '{ "deviceRowID": "' +
+                            deviceData.DeviceRowID +
+                            '", "feedID": "' +
+                            feedId +
+                            '"}',
+                        headers: {
+                            Connection: 'keep-alive',
+                            Host: 'kws.kattack.com',
+                            Accept: '*/*',
+                            Cookie:
+                                'ASP.NET_SessionId=4tzo1aa2ed1oh0k1zu1jqtly; __utmc=59827767; __utmz=59827767.1598381375.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none); __utma=59827767.1134480228.1598381375.1598722255.1598725437.6; __utmt=1; __utmb=59827767.2.10.159872543',
+                            Origin: 'http://kws.kattack.com',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Cache-Control': 'no-cache',
+                            Pragma: 'no-cache',
+                            'Content-Type': 'application/json; charset=UTF-8',
+                            'Accept-Encoding': 'gzip, deflate',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            Referer:
+                                ' http://kws.kattack.com/GEPlayer/GMPlayer.aspx?FeedID=' +
+                                feedId,
+                            'User-Agent':
+                                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36',
+                        },
+                    });
+                    const devicePositions = deviceDetailRequest.data.d;
 
-        //             // TODO: get new ids for device_id
-        //             devicePositions.forEach( (p) => {
+                    // TODO: get new ids for device_id
+                    devicePositions.forEach((p) => {
+                        const position = {
+                            id: uuidv4(),
+                            device: device.id,
+                            original_device_id: deviceData.DeviceDGuid,
+                            race: currentRace.id,
+                            original_race_id: currentRace.original_id,
+                            lon: p.lon,
+                            lat: p.lat,
+                            time: p.time
+                                .replace('/Date(', '')
+                                .replace(')/', ''),
+                            speed_kts: p.speedKts,
+                            distance_nm: p.distanceNM,
+                            heading_deg: p.headingDeg,
+                            epoch_offset_sec: p.epochOffsetSec,
+                        };
 
-        //                 let position = {
-        //                     id: uuidv4(),
-        //                     device: device.id,
-        //                     original_device_id: deviceData.DeviceDGuid,
-        //                     race: currentRace.id,
-        //                     original_race_id: currentRace.original_id,
-        //                     lon: p.lon,
-        //                     lat: p.lat,
-        //                     time: p.time.replace('/Date(', '').replace(')/', ''),
-        //                     speed_kts: p.speedKts,
-        //                     distance_nm: p.distanceNM,
-        //                     heading_deg: p.headingDeg,
-        //                     epoch_offset_sec: p.epochOffsetSec
-        //                 }
+                        positions.push(position);
+                    });
+                }
 
-        //                 positions.push(position)
-        //             })
+                try {
+                    const newObjectsToSave = [
+                        { objectType: Kattack.Race, objects: [currentRace] },
+                        { objectType: Kattack.Waypoint, objects: waypoints },
+                        { objectType: Kattack.Device, objects: devices },
+                        { objectType: Kattack.Position, objects: positions },
+                    ];
+                    console.log('Bulk saving objects.');
+                    const transaction = await sequelize.transaction();
+                    const saved = await bulkSave(newObjectsToSave, transaction);
+                    if (!saved) {
+                        throw new Error('Failed to save bulk data');
+                    }
 
-        //         }
+                    console.log(`Normalizing Race with feed id ${feedId}`);
+                    await normalizeRace(
+                        currentRace,
+                        positions,
+                        waypoints,
+                        devices,
+                        transaction
+                    );
+                    await transaction.commit();
+                } catch (err) {
+                    console.log(err);
 
-        //         try{
-
-        //             let newObjectsToSave = [
-        //                 { objectType:Kattack.Race, objects:[currentRace]},
-        //                 { objectType:Kattack.Waypoint, objects:waypoints},
-        //                 { objectType:Kattack.Device, objects:devices},
-        //                 { objectType:Kattack.Position, objects:positions}]
-        //             console.log('Bulk saving objects.')
-        //             await bulkSave(newObjectsToSave, Kattack.FailedUrl, raceUrl)
-
-        //         }catch(err){
-        //             console.log(err)
-
-        //             await Kattack.FailedUrl.create({id:uuidv4(), url: raceUrl, error: err.toString()}, {fields:['id','url', 'error']})
-        //         }
-        //         console.log('Finished scraping race.')
-        //     }catch(err){
-        //         console.log(err)
-        //         await Kattack.FailedUrl.create({id:uuidv4(), url: raceUrl, error: err.toString()}, {fields:['id','url', 'error']})
-
-        //     }
-        // }
-        // console.log('Finished scraping all new feeds.')
+                    await Kattack.FailedUrl.create(
+                        { id: uuidv4(), url: raceUrl, error: err.toString() },
+                        { fields: ['id', 'url', 'error'] }
+                    );
+                }
+                console.log('Finished scraping race.');
+            } catch (err) {
+                console.log(err);
+                await Kattack.FailedUrl.create(
+                    { id: uuidv4(), url: raceUrl, error: err.toString() },
+                    { fields: ['id', 'url', 'error'] }
+                );
+            }
+        }
+        console.log('Finished scraping all new feeds.');
 
         console.log('Searching through alphabet for new races...');
         for (const index in alphabet) {
