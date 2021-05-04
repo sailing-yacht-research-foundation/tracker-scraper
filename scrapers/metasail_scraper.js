@@ -25,7 +25,11 @@ const METASAIL_EVENT_URL = 'https://www.metasail.it/past/';
 const NO_RACES_WARNING = 'No race still available';
 const METASAIL_SOURCE = 'METASAIL';
 
-async function isNoRace(eventUrl, page) {
+/**
+ * Check if event page has race list by detecting message "No race still available" is absent on page.
+ * If the message is visible on page that mean the event is not valid or event doesn't have races.
+ */
+async function isValidEvent(eventUrl, page) {
     await page.goto(eventUrl, {
         timeout: 0,
         waitUntil: 'networkidle0',
@@ -36,7 +40,7 @@ async function isNoRace(eventUrl, page) {
             '#evento-single > div > div:nth-child(2) > div.col-sm-8 > div > h4'
         ).textContent;
     });
-    return noRaceText === NO_RACES_WARNING;
+    return noRaceText !== NO_RACES_WARNING;
 }
 
 async function getPageData(page) {
@@ -731,8 +735,8 @@ async function createFailureRecord(url, err) {
 
         const eventUrl = METASAIL_EVENT_URL + counter.toString();
         try {
-            const noRace = await isNoRace(eventUrl, page);
-            if (noRace) {
+            const validEvent = await isValidEvent(eventUrl, page);
+            if (!validEvent) {
                 console.log('No races associated with this event. Skipping.');
                 counter -= 1;
                 continue;
