@@ -23,7 +23,7 @@ const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
 const KATTACK_SOURCE = 'KATTACK';
 
-(async () => {
+const mainScript = async () => {
     const CONNECTED_TO_DB = await connect();
 
     if (CONNECTED_TO_DB) {
@@ -960,15 +960,15 @@ const KATTACK_SOURCE = 'KATTACK';
         console.log('Not connected to DB.');
     }
     process.exit();
-})();
+};
 
-async function normalizeRace(
+const normalizeRace = async (
     race,
     allPositions,
     waypoints,
     devices,
     transaction
-) {
+) => {
     if (allPositions.length === 0) {
         console.log('No positions so skipping.');
         return;
@@ -1058,4 +1058,10 @@ async function normalizeRace(
         KATTACK_SOURCE,
         transaction
     );
+};
+
+if (require.main === module) {
+    // Only run the main script if not added as a dependency module
+    mainScript();
 }
+exports.normalizeRace = normalizeRace;
