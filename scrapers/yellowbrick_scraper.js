@@ -4,6 +4,10 @@ const {
     connect,
     bulkSave,
 } = require('../tracker-schema/schema.js');
+const {
+    uploadS3,
+    deleteObjectInS3,
+} = require('../utils/upload_racegeojson_to_s3.js');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const puppeteer = require('puppeteer');
 const xml2json = require('xml2json');
@@ -1202,6 +1206,7 @@ const axiosRetry = require('axios-retry');
     });
 
     for (const codeIndex in codes) {
+        const kmlLookupId = uuidv4();
         try {
             const currentCode = codes[codeIndex];
 
@@ -1232,8 +1237,14 @@ const axiosRetry = require('axios-retry');
             const raceCode = setupData.url;
             const raceNewId = uuidv4();
 
-            // TODO: kml.data to be saved in s3 bucket
-            // const kml = await axios.get('http://yb.tl/' + currentCode + '.kml');
+            const kml = await axios.get(`http://yb.tl/${currentCode}.kml`);
+            // Uploading files to the bucket
+            const KML_BUCKET_NAME = process.env.YELLOWBRICK_KML_S3_BUCKET;
+            await uploadS3({
+                Bucket: KML_BUCKET_NAME,
+                Key: `${kmlLookupId}.kml`, // File name you want to save as in S3
+                Body: kml.data,
+            });
 
             const leaderBoardUrl = `http://yb.tl/l/${currentCode}`;
             console.log(`Getting leaderboard data with url ${leaderBoardUrl}`);
@@ -1256,6 +1267,7 @@ const axiosRetry = require('axios-retry');
                 title: setupData.title,
                 flag_stopped: setupData.flagStopped,
                 super_lines: setupData.superLines,
+                kml_s3_id: kmlLookupId,
                 text_leaderboard: txtLeaderboard.data,
                 distance: setupData.course?.distance,
                 url: `http://yb.tl/${raceCode}`,
@@ -1505,6 +1517,11 @@ const axiosRetry = require('axios-retry');
                 await transaction.commit();
             } catch (err) {
                 await transaction.rollback();
+                // Delete kml file on s3 since db transaction failed
+                await deleteObjectInS3({
+                    Bucket: KML_BUCKET_NAME,
+                    Key: `${kmlLookupId}.kml`,
+                });
                 throw err;
             }
         } catch (err) {
