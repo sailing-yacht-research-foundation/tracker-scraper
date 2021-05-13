@@ -63,7 +63,20 @@ const uploadGeoJsonToS3 = async function (
     return file;
 };
 
+const deleteObjectInS3 = (params) =>
+    new Promise((resolve, reject) => {
+        s3.deleteObject(params, function (err, data) {
+            if (err) {
+                reject(err);
+                return;
+            }
+            console.log('File deleted successfully.');
+            resolve(data);
+        });
+    });
+
 module.exports = {
     uploadS3,
     uploadGeoJsonToS3,
+    deleteObjectInS3,
 };
