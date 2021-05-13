@@ -2,12 +2,15 @@ const {
     Yellowbrick,
     sequelize,
     connect,
+    bulkSave,
 } = require('../tracker-schema/schema.js');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const puppeteer = require('puppeteer');
 const xml2json = require('xml2json');
+const axiosRetry = require('axios-retry');
 
 (async () => {
+    axiosRetry(axios, { retryDelay: axiosRetry.exponentialDelay, retries: 10 });
     if (!connect()) {
         process.exit();
     }
@@ -1190,8 +1193,6 @@ const xml2json = require('xml2json');
 
     // TODO: visit yeach yb.tl/links/code and get list of all related races.
     // TODO: get leaderboard from yb.tl/links/code
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
     const existingRaceCodes = await Yellowbrick.YellowbrickRace.findAll({
         attributes: ['race_code'],
     });
@@ -1205,12 +1206,15 @@ const xml2json = require('xml2json');
             const currentCode = codes[codeIndex];
 
             if (raceCodes.includes(currentCode)) {
+                console.log(
+                    `${currentCode} race already exist in database. Skipping race...`
+                );
                 continue;
             }
             const jsonUrl = 'http://yb.tl/JSON/';
-
-            // Setup
-            const setup = await axios.get(jsonUrl + currentCode + '/RaceSetup');
+            const raceSetupUrl = `${jsonUrl}${currentCode}/RaceSetup`;
+            console.log(`Getting Race Setup with url ${raceSetupUrl}`);
+            const setup = await axios.get(raceSetupUrl);
 
             if (
                 setup.data.start > new Date().getTime() / 1000 ||
@@ -1225,53 +1229,36 @@ const xml2json = require('xml2json');
             }
 
             const setupData = setup.data;
-            const tz = setupData.tz;
-            const lapz = setupData.lapz;
-            const laps = setupData.laps;
-            const trackWidth = setupData.trackWidth;
-            const motd = setupData.motd;
-            const associated2 = setupData.associated2;
-            const associated = setupData.associated;
-            const hashtag = setupData.hashtag;
-            const tzOffset = setupData.tzOffset;
-            const start = setupData.start;
             const raceCode = setupData.url;
-            const title = setupData.title;
-            const flagStopped = setupData.flagStopped;
-            const superLines = setupData.superLines;
             const raceNewId = uuidv4();
-            const stop = setupData.stop;
 
-            const kml = await axios.get('http://yb.tl/' + currentCode + '.kml');
-            const txtLeaderboard = await axios.get(
-                'http://yb.tl/l/' + currentCode
-            );
+            // TODO: kml.data to be saved in s3 bucket
+            // const kml = await axios.get('http://yb.tl/' + currentCode + '.kml');
 
-            let distance = null;
-            if (setupData.course !== null && setupData.course !== undefined) {
-                distance = setupData.course.distance;
-            }
+            const leaderBoardUrl = `http://yb.tl/l/${currentCode}`;
+            console.log(`Getting leaderboard data with url ${leaderBoardUrl}`);
+            const txtLeaderboard = await axios.get(leaderBoardUrl);
+
             const race = {
                 id: raceNewId,
-                tz: tz,
-                tz_offset: tzOffset,
-                lapz: JSON.stringify(lapz),
-                laps: laps,
-                track_width: trackWidth,
-                motd: motd,
-                associated2: JSON.stringify(associated2),
-                associated: JSON.stringify(associated),
-                hashtag: hashtag,
-                start: start,
-                stop: stop,
+                tz: setupData.tz,
+                tz_offset: setupData.tzOffset,
+                lapz: JSON.stringify(setupData.lapz),
+                laps: setupData.laps,
+                track_width: setupData.trackWidth,
+                motd: setupData.motd,
+                associated2: JSON.stringify(setupData.associated2),
+                associated: JSON.stringify(setupData.associated),
+                hashtag: setupData.hashtag,
+                start: setupData.start,
+                stop: setupData.stop,
                 race_code: raceCode,
-                title: title,
-                flag_stopped: flagStopped,
-                super_lines: superLines,
-                kml: kml.data,
+                title: setupData.title,
+                flag_stopped: setupData.flagStopped,
+                super_lines: setupData.superLines,
                 text_leaderboard: txtLeaderboard.data,
-                distance: distance,
-                url: 'http://yb.tl/' + raceCode,
+                distance: setupData.course?.distance,
+                url: `http://yb.tl/${raceCode}`,
             };
 
             const pois = setupData.poi;
@@ -1289,6 +1276,7 @@ const xml2json = require('xml2json');
                 };
                 poisSave.push(poi);
             }
+
             const courseNodes = [];
             if (setupData.course !== undefined) {
                 const course = setupData.course.nodes;
@@ -1430,150 +1418,94 @@ const xml2json = require('xml2json');
                     leaderboardTeams.push(leaderboardTeam);
                 }
             }
-
-            const url = 'http://yb.tl/' + currentCode;
-
-            await page.goto(url, {
-                waitUntil: 'networkidle2',
-                timeout: 300000,
-            });
-
-            const loadedTest =
-                'window.viewer.race != null && window.viewer.race.teams != null && window.viewer.race.teams.values().length > 0 &&  window.viewer.race.teams.values()[window.viewer.race.teams.values().length - 1].teamPositionsAvlTree != null';
-            await page.waitForFunction(loadedTest, { timeout: 300000 });
-
-            // Not being used
-            // const race_details = await page.evaluate(() => {
-            //     const race = window.viewer.race;
-            //     const agedDelay = race.agedDelay;
-            //     const associatedRacesToLoad = race.associatedRacesToLoad;
-            //     let course = [];
-            //     const leaderboard = race.leaderboard;
-            //     const title = race.title;
-            //     if (race.course !== undefined) {
-            //         course = race.course;
-            //     }
-
-            //     const flagLate = race.flagLate;
-            //     const flagStopped = race.flagStopped;
-
-            //     return {
-            //         agedDelay,
-            //         associatedRacesToLoad,
-            //         course,
-            //         flagLate,
-            //         flagStopped,
-            //         leaderboard,
-            //         title,
-            //     };
-            // });
-
-            const teamsDetails = await page.evaluate(() => {
-                const teamArray = Array.from(window.viewer.race.teams.values());
-                const teamsInfo = teamArray.map((team) => {
-                    const moments = team.moments;
-                    const id = team.id;
-                    return { id, moments };
+            let allPositions = [];
+            const jsonApiUrl = `https://yb.tl/API3/Race/${currentCode}/GetPositions?t=0`;
+            try {
+                const getPositionsRes = await axios.get(jsonApiUrl);
+                getPositionsRes.data.teams.forEach((team) => {
+                    const teamPositions = team.positions.map((p) => {
+                        return {
+                            id: uuidv4(),
+                            original_id: p.id,
+                            race_code: raceCode,
+                            race: raceNewId,
+                            team_original_id: team.marker,
+                            team: teamIds[team.marker],
+                            dtf_km: p.dtfKm,
+                            dtf_nm: p.dtfNm,
+                            lon: p.longitude,
+                            lat: p.latitude,
+                            timestamp: p.gpsAtMillis,
+                            sog_kmph: p.sogKmph,
+                            tx_at: p.txAt,
+                            altitude: p.altitude,
+                            type: p.type,
+                            battery: p.battery,
+                            sog_knots: p.sogKnots,
+                            alert: p.alert,
+                            cog: p.cog,
+                            gps_at: p.gpsAt,
+                        };
+                    });
+                    allPositions = allPositions.concat(teamPositions);
                 });
-                return teamsInfo;
-            });
-
-            // Positions for each team
-
-            let allMomentsSave = [];
-
-            if (teamsDetails !== undefined) {
-                teamsDetails.forEach((obj) => {
-                    const teamOriginalId = obj.id;
-                    const teamId = teamIds[teamOriginalId];
-                    const raceId = raceNewId;
-                    if (obj.moments !== undefined) {
-                        obj.moments.forEach((m) => {
-                            m.id = uuidv4();
-                            m.team_original_id = teamOriginalId;
-                            m.team = teamId;
-                            m.race = raceId;
-                            m.race_code = raceCode;
-                            m.timestamp = m.at;
-                        });
-
-                        allMomentsSave = allMomentsSave.concat(obj.moments);
-                    } else {
-                        console.log(raceCode);
-
-                        console.log('no moments');
-                    }
-                });
-            } else {
-                console.log(raceCode);
-                console.log('no teams');
+            } catch (err) {
+                console.log(
+                    `Failed getting positions using json api with url ${jsonApiUrl}. Falling back to puppeteer`,
+                    err
+                );
+                allPositions = await getPositionsWithPuppeteer(
+                    raceNewId,
+                    teamIds,
+                    currentCode
+                );
             }
 
             // // save all objects.
-            const t = await sequelize.transaction();
+            const transaction = await sequelize.transaction();
             try {
-                await Yellowbrick.YellowbrickRace.create(race, {
-                    fields: Object.keys(race),
-                });
-                // poisSave, courseNodes, tagsSave, teamsSave, leaderboardTeams, allMomentsSave
-
-                if (poisSave.length > 0) {
-                    await Yellowbrick.YellowbrickPoi.bulkCreate(poisSave, {
-                        fields: Object.keys(poisSave[0]),
-                    });
+                const newObjectsToSave = [
+                    {
+                        objectType: Yellowbrick.YellowbrickRace,
+                        objects: [race],
+                    },
+                    {
+                        objectType: Yellowbrick.YellowbrickPoi,
+                        objects: poisSave,
+                    },
+                    {
+                        objectType: Yellowbrick.YellowbrickCourseNode,
+                        objects: courseNodes,
+                    },
+                    {
+                        objectType: Yellowbrick.YellowbrickTag,
+                        objects: tagsSave,
+                    },
+                    {
+                        objectType: Yellowbrick.YellowbrickTeam,
+                        objects: teamsSave,
+                    },
+                    {
+                        objectType: Yellowbrick.YellowbrickLeaderboardTeam,
+                        objects: leaderboardTeams,
+                    },
+                    {
+                        objectType: Yellowbrick.YellowbrickPosition,
+                        objects: allPositions,
+                    },
+                ];
+                console.log('Bulk saving objects.');
+                const transaction = await sequelize.transaction();
+                const saved = await bulkSave(newObjectsToSave, transaction);
+                if (!saved) {
+                    throw new Error('Failed to save bulk data');
                 }
-
-                if (courseNodes.length > 0) {
-                    await Yellowbrick.YellowbrickCourseNode.bulkCreate(
-                        courseNodes,
-                        { fields: Object.keys(courseNodes[0]) }
-                    );
-                }
-
-                if (tagsSave.length > 0) {
-                    await Yellowbrick.YellowbrickTag.bulkCreate(tagsSave, {
-                        fields: Object.keys(tagsSave[0]),
-                    });
-                }
-
-                if (teamsSave.length > 0) {
-                    await Yellowbrick.YellowbrickTeam.bulkCreate(teamsSave, {
-                        fields: Object.keys(teamsSave[0]),
-                    });
-                }
-
-                if (leaderboardTeams.length > 0) {
-                    await Yellowbrick.YellowbrickLeaderboardTeam.bulkCreate(
-                        leaderboardTeams,
-                        { fields: Object.keys(leaderboardTeams[0]) }
-                    );
-                }
-
-                if (allMomentsSave.length > 0) {
-                    await Yellowbrick.YellowbrickPosition.bulkCreate(
-                        allMomentsSave,
-                        { fields: Object.keys(allMomentsSave[0]) }
-                    );
-                }
-
-                await t.commit();
                 raceCodes.push(raceCode);
                 console.log('Finished scraping race.');
-                function wait(ms) {
-                    const start = new Date().getTime();
-                    let end = start;
-                    while (end < start + ms) {
-                        end = new Date().getTime();
-                    }
-                }
-                wait(10000);
+                await transaction.commit();
             } catch (err) {
-                await t.rollback();
-                await Yellowbrick.YellowbrickFailedUrl.create(
-                    { url: raceCode, error: err.toString(), id: uuidv4() },
-                    { fields: ['url', 'id', 'error'] }
-                );
-                console.log(err);
+                await transaction.rollback();
+                throw err;
             }
         } catch (err) {
             console.log(err);
@@ -1584,7 +1516,62 @@ const xml2json = require('xml2json');
         }
     }
 
-    page.close();
-    browser.close();
     process.exit();
 })();
+
+async function getPositionsWithPuppeteer(raceId, teamIds, currentCode) {
+    const url = `http://yb.tl/${currentCode}`;
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.goto(url, {
+        waitUntil: 'networkidle2',
+        timeout: 300000,
+    });
+
+    const loadedTest =
+        'window.viewer.race != null && window.viewer.race.teams != null && window.viewer.race.teams.values().length > 0 &&  window.viewer.race.teams.values()[window.viewer.race.teams.values().length - 1].teamPositionsAvlTree != null';
+    await page.waitForFunction(loadedTest, { timeout: 300000 });
+
+    const teamsDetails = await page.evaluate(() => {
+        const teamArray = Array.from(window.viewer.race.teams.values());
+        const teamsInfo = teamArray.map((team) => {
+            const moments = team.moments;
+            const id = team.id;
+            return { id, moments };
+        });
+        return teamsInfo;
+    });
+
+    // Positions for each team
+
+    let allMomentsSave = [];
+
+    if (teamsDetails !== undefined) {
+        teamsDetails.forEach((obj) => {
+            const teamOriginalId = obj.id;
+            const teamId = teamIds[teamOriginalId];
+            if (obj.moments !== undefined) {
+                obj.moments.forEach((m) => {
+                    m.id = uuidv4();
+                    m.team_original_id = teamOriginalId;
+                    m.team = teamId;
+                    m.race = raceId;
+                    m.race_code = currentCode;
+                    m.timestamp = m.at;
+                    m.dtf_km = m.dtf;
+                });
+
+                allMomentsSave = allMomentsSave.concat(obj.moments);
+            } else {
+                console.log(
+                    `No moments for race id ${raceId} and code ${currentCode}`
+                );
+            }
+        });
+    } else {
+        console.log(`No Teams for race id ${raceId} and code ${currentCode}`);
+    }
+    page.close();
+    browser.close();
+    return allMomentsSave;
+}
