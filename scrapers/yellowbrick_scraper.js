@@ -3,15 +3,30 @@ const {
     sequelize,
     connect,
     bulkSave,
+    SearchSchema,
 } = require('../tracker-schema/schema.js');
+const {
+    createTurfPoint,
+    createBoatToPositionDictionary,
+    positionsToFeatureCollection,
+    collectFirstNPositionsFromBoatsToPositions,
+    collectLastNPositionsFromBoatsToPositions,
+    getCenterOfMassOfPositions,
+    findAverageLength,
+    createRace,
+    allPositionsToFeatureCollection,
+} = require('../tracker-schema/gis_utils.js');
 const {
     uploadS3,
     deleteObjectInS3,
+    uploadGeoJsonToS3,
 } = require('../utils/upload_racegeojson_to_s3.js');
+const turf = require('@turf/turf');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const puppeteer = require('puppeteer');
 const xml2json = require('xml2json');
 const axiosRetry = require('axios-retry');
+const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
 
 (async () => {
     axiosRetry(axios, { retryDelay: axiosRetry.exponentialDelay, retries: 10 });
@@ -1512,9 +1527,17 @@ const axiosRetry = require('axios-retry');
                 if (!saved) {
                     throw new Error('Failed to save bulk data');
                 }
-                raceCodes.push(raceCode);
-                console.log('Finished scraping race.');
+                console.log(`Normalizing Race with race code ${raceCode}`);
+                await normalizeRace(
+                    race,
+                    allPositions,
+                    courseNodes,
+                    teamsSave,
+                    tagsSave,
+                    transaction
+                );
                 await transaction.commit();
+                raceCodes.push(raceCode);
             } catch (err) {
                 await transaction.rollback();
                 // Delete kml file on s3 since db transaction failed
@@ -1532,7 +1555,6 @@ const axiosRetry = require('axios-retry');
             );
         }
     }
-
     process.exit();
 })();
 
@@ -1592,3 +1614,113 @@ async function getPositionsWithPuppeteer(raceId, teamIds, currentCode) {
     browser.close();
     return allMomentsSave;
 }
+
+const normalizeRace = async (
+    race,
+    allPositions,
+    nodes,
+    boats,
+    tags,
+    transaction
+) => {
+    if (allPositions.length === 0) {
+        console.log('No positions so skipping.');
+        return;
+    }
+    const id = race.id;
+    const startTime = parseInt(race.start) * 1000;
+    const endTime = parseInt(race.stop) * 1000;
+    const name = race.title;
+    const event = null;
+    const url = race.url;
+
+    const boatNames = [];
+    const boatModels = [];
+    const boatIdentifiers = [];
+    const handicapRules = [];
+    const unstructuredText = [];
+    let startPoint = null;
+    let endPoint = null;
+
+    if (nodes && nodes.length > 0) {
+        nodes.sort((a, b) => (parseInt(a.order) > parseInt(b.order) ? 1 : -1));
+        startPoint = createTurfPoint(nodes[0].lat, nodes[0].lon);
+        endPoint = createTurfPoint(
+            nodes[nodes.length - 1].lat,
+            nodes[nodes.length - 1].lon
+        );
+    }
+
+    boats.forEach((b) => {
+        boatIdentifiers.push(b.sail);
+        boatNames.push(b.name);
+        boatModels.push(b.model);
+    });
+
+    tags.forEach((t) => {
+        handicapRules.push(t.handicap);
+    });
+
+    allPositions.forEach((p) => {
+        p.timestamp = parseInt(p.timestamp);
+    });
+
+    const boundingBox = turf.bbox(
+        positionsToFeatureCollection('lat', 'lon', allPositions)
+    );
+    const boatsToSortedPositions = createBoatToPositionDictionary(
+        allPositions,
+        'team',
+        'timestamp'
+    );
+
+    if (startPoint === null) {
+        const first3Positions = collectFirstNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        startPoint = getCenterOfMassOfPositions('lat', 'lon', first3Positions);
+    }
+
+    if (endPoint === null) {
+        const last3Positions = collectLastNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
+    }
+    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
+    const raceMetadata = await createRace(
+        id,
+        name,
+        event,
+        YELLOWBRICK_SOURCE,
+        url,
+        startTime,
+        endTime,
+        startPoint,
+        endPoint,
+        boundingBox,
+        roughLength,
+        boatsToSortedPositions,
+        boatNames,
+        boatModels,
+        boatIdentifiers,
+        handicapRules,
+        unstructuredText
+    );
+    const tracksGeojson = JSON.stringify(
+        allPositionsToFeatureCollection(boatsToSortedPositions)
+    );
+
+    await SearchSchema.RaceMetadata.create(raceMetadata, {
+        fields: Object.keys(raceMetadata),
+    });
+    console.log('Uploading to s3');
+    await uploadGeoJsonToS3(
+        race.id,
+        tracksGeojson,
+        YELLOWBRICK_SOURCE,
+        transaction
+    );
+};
