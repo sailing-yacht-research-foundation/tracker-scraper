@@ -1,3 +1,4 @@
+const turf = require('@turf/turf');
 const {
     Kwindoo,
     connect,
@@ -6,9 +7,24 @@ const {
     getUUIDForOriginalId,
     bulkSave,
     sequelize,
+    SearchSchema,
 } = require('../tracker-schema/schema.js');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const { appendArray } = require('../utils/array');
+const {
+    createBoatToPositionDictionary,
+    positionsToFeatureCollection,
+    collectFirstNPositionsFromBoatsToPositions,
+    collectLastNPositionsFromBoatsToPositions,
+    getCenterOfMassOfPositions,
+    findAverageLength,
+    createRace,
+    createTurfPoint,
+    allPositionsToFeatureCollection,
+} = require('../tracker-schema/gis_utils.js');
+const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3');
+
+const KWINDOO_SOURCE = 'KWINDOO';
 
 async function fetchRegattaList() {
     const regattaListRequest = await axios({
@@ -39,19 +55,20 @@ async function checkAndSaveRegattaOwner(
         currentRegatta.owner_id
     );
 
+    ownerState.obj.regatta = newOrExistingRegatta.id;
+    ownerState.obj.regatta_original_id = newOrExistingRegatta.original_id;
+    ownerState.obj.first_name = currentRegatta.owner.first_name;
+    ownerState.obj.last_name = currentRegatta.owner.last_name;
+    ownerState.obj.email = currentRegatta.owner.email;
+    ownerState.obj.facebook_user_id = currentRegatta.owner.facebook_user_id;
+
     if (!ownerState.shouldSave) {
         newOrExistingRegatta.owner = ownerState.obj.id;
         newOrExistingRegatta.owner_original_id = ownerState.obj.original_id;
     } else {
-        ownerState.obj.regatta = newOrExistingRegatta.id;
-        ownerState.obj.regatta_original_id = newOrExistingRegatta.original_id;
-        ownerState.obj.first_name = currentRegatta.owner.first_name;
-        ownerState.obj.last_name = currentRegatta.owner.last_name;
-        ownerState.obj.email = currentRegatta.owner.email;
-        ownerState.obj.facebook_user_id = currentRegatta.owner.facebook_user_id;
         await Kwindoo.RegattaOwner.create(ownerState.obj, { transaction });
     }
-    return ownerState.obj;
+    return ownerState;
 }
 
 async function checkAndSaveHomeportLocation(
@@ -65,23 +82,22 @@ async function checkAndSaveHomeportLocation(
         Kwindoo.HomeportLocation,
         currentRegatta.homeport_location.id
     );
+    homeportState.obj.country = currentRegatta.homeport_location.country;
+    homeportState.obj.state = currentRegatta.homeport_location.state;
+    homeportState.obj.city = currentRegatta.homeport_location.city;
+    homeportState.obj.address = currentRegatta.homeport_location.address;
+    homeportState.obj.zip = currentRegatta.homeport_location.zip;
+    homeportState.obj.notice = currentRegatta.homeport_location.notice;
+    homeportState.obj.lat = currentRegatta.homeport_location.lat;
+    homeportState.obj.lon = currentRegatta.homeport_location.lon;
+    homeportState.obj.regatta = newOrExistingRegatta.id;
+    homeportState.obj.regatta_original_id = newOrExistingRegatta.original_id;
     if (homeportState.shouldSave) {
-        homeportState.obj.country = currentRegatta.homeport_location.country;
-        homeportState.obj.state = currentRegatta.homeport_location.state;
-        homeportState.obj.city = currentRegatta.homeport_location.city;
-        homeportState.obj.address = currentRegatta.homeport_location.address;
-        homeportState.obj.zip = currentRegatta.homeport_location.zip;
-        homeportState.obj.notice = currentRegatta.homeport_location.notice;
-        homeportState.obj.lat = currentRegatta.homeport_location.lat;
-        homeportState.obj.lon = currentRegatta.homeport_location.lon;
-        homeportState.obj.regatta = newOrExistingRegatta.id;
-        homeportState.obj.regatta_original_id =
-            newOrExistingRegatta.original_id;
         await Kwindoo.HomeportLocation.create(homeportState.obj, {
             transaction,
         });
     }
-    return homeportState.obj;
+    return homeportState;
 }
 
 async function createPois(regattaDetails, newOrExistingRegatta, transaction) {
@@ -167,6 +183,26 @@ async function checkAndCreateRegattaData(
 
     let transaction;
     try {
+        newOrExistingRegatta.name = currentRegatta.name;
+        newOrExistingRegatta.timezone = currentRegatta.timezone;
+        newOrExistingRegatta.public = currentRegatta.public;
+        newOrExistingRegatta.private = currentRegatta.private;
+        newOrExistingRegatta.sponsor = currentRegatta.sponsor;
+        newOrExistingRegatta.display_waypoint_pass_radius =
+            currentRegatta.display_waypoint_pass_radius;
+        newOrExistingRegatta.name_slug = currentRegatta.name_slug;
+        newOrExistingRegatta.first_start_time = currentRegatta.first_start_time;
+        newOrExistingRegatta.last_end_time = currentRegatta.last_end_time;
+        newOrExistingRegatta.updated_at_timestamp =
+            currentRegatta.updated_at_timestamp;
+        newOrExistingRegatta.regatta_logo_path =
+            currentRegatta.regatta_logo_path;
+        newOrExistingRegatta.name_slug = regattaDetails.name_slug;
+        newOrExistingRegatta.featured_background_path =
+            regattaDetails.featured_background_path;
+        newOrExistingRegatta.sponsor_logo_path =
+            regattaDetails.sponsor_logo_path;
+
         if (regattaIsNew) {
             transaction = await sequelize.transaction();
 
@@ -200,26 +236,6 @@ async function checkAndCreateRegattaData(
             console.log('Creating new Regatta.');
             newOrExistingRegatta.owner = ownerState.obj.id;
             newOrExistingRegatta.owner_original_id = ownerState.obj.original_id;
-            newOrExistingRegatta.name = currentRegatta.name;
-            newOrExistingRegatta.timezone = currentRegatta.timezone;
-            newOrExistingRegatta.public = currentRegatta.public;
-            newOrExistingRegatta.private = currentRegatta.private;
-            newOrExistingRegatta.sponsor = currentRegatta.sponsor;
-            newOrExistingRegatta.display_waypoint_pass_radius =
-                currentRegatta.display_waypoint_pass_radius;
-            newOrExistingRegatta.name_slug = currentRegatta.name_slug;
-            newOrExistingRegatta.first_start_time =
-                currentRegatta.first_start_time;
-            newOrExistingRegatta.last_end_time = currentRegatta.last_end_time;
-            newOrExistingRegatta.updated_at_timestamp =
-                currentRegatta.updated_at_timestamp;
-            newOrExistingRegatta.regatta_logo_path =
-                currentRegatta.regatta_logo_path;
-            newOrExistingRegatta.name_slug = regattaDetails.name_slug;
-            newOrExistingRegatta.featured_background_path =
-                regattaDetails.featured_background_path;
-            newOrExistingRegatta.sponsor_logo_path =
-                regattaDetails.sponsor_logo_path;
 
             await Kwindoo.Regatta.create(newOrExistingRegatta, { transaction });
 
@@ -464,7 +480,146 @@ async function fetchRacePositions(
     return positionObjects;
 }
 
+async function normalizeRace({
+    race,
+    regatta,
+    boats,
+    waypoints,
+    positions,
+    transaction,
+}) {
+    console.log('Normalizing race');
+    console.log('A');
+    const allPositions = [];
+    positions.forEach((p) => {
+        p.timestamp = parseInt(p.t) * 1000;
+        if (p.lat && p.lon && p.timestamp) {
+            allPositions.push(p);
+        }
+    });
+    console.log(`Position length: ${allPositions.length}`);
+    if (allPositions.length === 0) {
+        console.log('No positions so skipping.');
+        return;
+    }
+
+    const id = race.id;
+    const name = `${regatta.name} - ${race.name}`;
+    const event = race.regatta;
+    const url = race.url;
+    const startTime = parseInt(race.start_timestamp) * 1000;
+    const endTime = parseInt(race.end_timestamp) * 1000;
+
+    const runningGroups = await Kwindoo.RunningGroup.findAll({
+        where: { regatta: race.regatta },
+    });
+    const classes = [];
+    const handicaps = [];
+    runningGroups.forEach((rg) => {
+        if (
+            rg.name !== 'All classes' &&
+            rg.name !== 'All 1' &&
+            rg.name !== 'All 2'
+        ) {
+            if (rg.name.includes('ORC') || rg.name.includes('PHRF')) {
+                handicaps.push(rg.name);
+            } else {
+                classes.push(rg.name);
+            }
+        }
+    });
+
+    const boatIdentifiers = [];
+    const boatNames = [];
+    const unstructuredText = [];
+    boats.forEach((b) => {
+        boatIdentifiers.push(b.registry_number);
+        boatIdentifiers.push(b.sail_number);
+        boatNames.push(b.boat_name);
+        classes.push(b.class);
+    });
+
+    let startPoint = null;
+    let endPoint = null;
+    waypoints.forEach((wpt) => {
+        if (wpt.role === 'start') {
+            startPoint = createTurfPoint(
+                wpt.primary_marker_lat,
+                wpt.primary_marker_lon
+            );
+        } else if (wpt.role === 'finish') {
+            endPoint = createTurfPoint(
+                wpt.primary_marker_lat,
+                wpt.primary_marker_lon
+            );
+        }
+    });
+
+    const fc = positionsToFeatureCollection('lat', 'lon', allPositions);
+    console.log('B');
+    const boundingBox = turf.bbox(fc);
+    console.log('C');
+    const boatsToSortedPositions = createBoatToPositionDictionary(
+        allPositions,
+        'boat',
+        'timestamp'
+    );
+    console.log('D');
+
+    if (startPoint === null) {
+        const first3Positions = collectFirstNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        startPoint = getCenterOfMassOfPositions('lat', 'lon', first3Positions);
+    }
+
+    console.log('E');
+    if (endPoint === null) {
+        const last3Positions = collectLastNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
+    }
+
+    console.log('F');
+    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
+    console.log('G');
+    const raceMetadata = await createRace(
+        id,
+        name,
+        event,
+        KWINDOO_SOURCE,
+        url,
+        startTime,
+        endTime,
+        startPoint,
+        endPoint,
+        boundingBox,
+        roughLength,
+        boatsToSortedPositions,
+        boatNames,
+        classes,
+        boatIdentifiers,
+        handicaps,
+        unstructuredText
+    );
+    console.log('H');
+    const tracksGeojson = JSON.stringify(
+        allPositionsToFeatureCollection(boatsToSortedPositions)
+    );
+
+    await uploadGeoJsonToS3(id, tracksGeojson, KWINDOO_SOURCE, transaction);
+
+    await SearchSchema.RaceMetadata.create(raceMetadata, {
+        fields: Object.keys(raceMetadata),
+        transaction,
+    });
+}
+
 async function saveRaceData({
+    newOrExistingRegatta,
     newRace,
     newBoatObjects,
     newPOIObjects,
@@ -513,6 +668,14 @@ async function saveRaceData({
         ];
         console.log('Bulk saving objects.');
         await bulkSave(newObjectsToSave, transaction);
+        await normalizeRace({
+            race: newRace,
+            regatta: newOrExistingRegatta,
+            boats: newBoatObjects,
+            waypoints: newWaypointObjects,
+            positions: newPositionsObjects,
+            transaction,
+        });
         await transaction.commit();
         console.log('Finished saving race. On to the next one.');
     } catch (err) {
@@ -558,7 +721,9 @@ async function createFailureRecord(err, url) {
                 regattaDetails
             );
 
-            console.log('Going through all races... ');
+            console.log(
+                `Going through all races, length ${regattaDetails.races.length}... `
+            );
 
             for (const raceIndex in regattaDetails.races) {
                 console.log('Beginning new race.');
@@ -570,6 +735,7 @@ async function createFailureRecord(err, url) {
                     newOrExistingRegatta.name_slug +
                     '?race_id=' +
                     currentRace.id;
+                console.log({ raceUrl: url });
                 try {
                     const raceState = instantiateOrReturnExisting(
                         existingObjects,
@@ -650,6 +816,7 @@ async function createFailureRecord(err, url) {
                     appendArray(newPositionsObjects, positions);
 
                     await saveRaceData({
+                        newOrExistingRegatta,
                         newRace,
                         newBoatObjects,
                         newPOIObjects,
