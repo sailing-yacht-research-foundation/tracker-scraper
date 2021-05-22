@@ -1,92 +1,109 @@
-const {RaceQs, sequelize, connect, keyInDictionary, findExistingObjects, instantiateOrReturnExisting, getUUIDForOriginalId, bulkSave} = require('../../tracker-schema/schema.js')
-const {axios, uuidv4} = require('../../tracker-schema/utils.js')
-const puppeteer = require('puppeteer');
-const { get } = require('request');
+const moment = require('moment');
+const {
+    RaceQs,
+    connect,
+    findExistingObjects,
+    instantiateOrReturnExisting,
+    bulkSave,
+} = require('../tracker-schema/schema.js');
+const { axios, uuidv4 } = require('../../tracker-schema/utils.js');
 
+(async () => {
+    const dbConnected = await connect();
+    if (!dbConnected) {
+        process.exit();
+    }
+    const existingObjects = await findExistingObjects(RaceQs);
 
-( async () => {
-    await connect()
-    var existingObjects = await findExistingObjects(RaceQs)
+    const BEGIN_COUNTING_AT = 100000;
+    // const BEGIN_COUNTING_AT = 62880;
 
-    const BEGIN_COUNTING_AT = 100000
-   
-    var pageIndex = BEGIN_COUNTING_AT
-        
-    while(pageIndex > 0){
-        
-        let eventUrl = 'https://raceqs.com/tv-beta/tv.htm#eventId=' + pageIndex
+    let pageIndex = BEGIN_COUNTING_AT;
 
-        try{
-            let eventId = pageIndex
-            console.log('Getting new race.')
-            console.log(eventUrl)
-            let configRequest = await axios.get('https://raceqs.com/rest/meta?id=' + eventId)
-            let config = configRequest.data
-            
-            if(config.events.length == 0){
-                pageIndex--
-                continue
+    while (pageIndex > 0) {
+        const eventUrl =
+            'https://raceqs.com/tv-beta/tv.htm#eventId=' + pageIndex;
+
+        try {
+            const eventId = pageIndex;
+            console.log('Getting new race.');
+            console.log(eventUrl);
+            const configRequest = await axios.get(
+                'https://raceqs.com/rest/meta?id=' + eventId
+            );
+            const config = configRequest.data;
+
+            if (config.events.length === 0) {
+                pageIndex--;
+                continue;
             }
-            let newRegattas = []
-            let newEvents = []
-            let newWaypoints = []
-            let newDivisions = []
-            let newRoutes = []
-            let newStarts = []
-            let newUsers = []
-            let newPositions = []
-            let checkRegatta = instantiateOrReturnExisting(existingObjects, RaceQs.Regatta, config.events[0].regattaId)
-            if(checkRegatta.shouldSave){
-                
-                checkRegatta.obj.club_original_id = config.regattas[0].club,
-                checkRegatta.obj.name = config.regattas[0].name,
-                checkRegatta.obj.url = config.regattas[0].url,
-                checkRegatta.obj.content = config.regattas[0].content,
-                checkRegatta.obj.attach1 = config.regattas[0].attach1,
-                checkRegatta.obj.attach2 = config.regattas[0].attach2,
-                checkRegatta.obj.attach3 = config.regattas[0].attach3,
-                checkRegatta.obj.attach4 = config.regattas[0].attach4,
-                checkRegatta.obj.type = config.regattas[0].type,
-                checkRegatta.obj.administrator = config.regattas[0].administrator,
-                checkRegatta.obj.updated_at = config.regattas[0].updatedAt,
-                checkRegatta.obj.contactor_name = config.regattas[0].ContactorName,
-                checkRegatta.obj.contactor_email = config.regattas[0].ContactorEmail
-                newRegattas.push(checkRegatta.obj)
-
+            const newRegattas = [];
+            const newEvents = [];
+            const newWaypoints = [];
+            const newDivisions = [];
+            const newRoutes = [];
+            const newStarts = [];
+            const newUsers = [];
+            const newPositions = [];
+            const checkRegatta = instantiateOrReturnExisting(
+                existingObjects,
+                RaceQs.Regatta,
+                config.events[0].regattaId
+            );
+            if (checkRegatta.shouldSave) {
+                checkRegatta.obj.club_original_id = config.regattas[0].club;
+                checkRegatta.obj.name = config.regattas[0].name;
+                checkRegatta.obj.url = config.regattas[0].url;
+                checkRegatta.obj.content = config.regattas[0].content;
+                checkRegatta.obj.attach1 = config.regattas[0].attach1;
+                checkRegatta.obj.attach2 = config.regattas[0].attach2;
+                checkRegatta.obj.attach3 = config.regattas[0].attach3;
+                checkRegatta.obj.attach4 = config.regattas[0].attach4;
+                checkRegatta.obj.type = config.regattas[0].type;
+                checkRegatta.obj.administrator =
+                    config.regattas[0].administrator;
+                checkRegatta.obj.updated_at = config.regattas[0].updatedAt;
+                checkRegatta.obj.contactor_name =
+                    config.regattas[0].ContactorName;
+                checkRegatta.obj.contactor_email =
+                    config.regattas[0].ContactorEmail;
+                newRegattas.push(checkRegatta.obj);
             }
-            
-            
-            let newEventStat = instantiateOrReturnExisting(existingObjects, RaceQs.Event, config.events[0].id)
-          
-            if(newEventStat.shouldSave){
-    
-                newEventStat.obj.regatta = checkRegatta.obj.id,
-                newEventStat.obj.regatta_original_id = checkRegatta.obj.original_id,
-                newEventStat.obj.name = config.events[0].name,
-                newEventStat.obj.content = config.events[0].content,
-                newEventStat.obj.from = config.events[0].fromDtm,
-                newEventStat.obj.till = config.events[0].tillDtm,
-                newEventStat.obj.tz = config.events[0].tz,
-                newEventStat.obj.lat1 = config.events[0].lat1,
-                newEventStat.obj.lon1 = config.events[0].lon1,
-                newEventStat.obj.lat2 = config.events[0].lat2,
-                newEventStat.obj.lon2 = config.events[0].lon2,
-                newEventStat.obj.updated_at =  config.events[0].updatedAt,
-                newEventStat.obj.url = eventUrl
-              
-                newEvents.push(newEventStat.obj)
-                
-                let wpts = {}
+            const newEventStat = instantiateOrReturnExisting(
+                existingObjects,
+                RaceQs.Event,
+                config.events[0].id
+            );
 
-                config.waypoints.forEach(w => {
-                    
-                    let waypoint = {
+            if (newEventStat.shouldSave) {
+                newEventStat.obj.regatta = checkRegatta.obj.id;
+                newEventStat.obj.regatta_original_id =
+                    checkRegatta.obj.original_id;
+                newEventStat.obj.name = config.events[0].name;
+                newEventStat.obj.content = config.events[0].content;
+                newEventStat.obj.from = config.events[0].fromDtm;
+                newEventStat.obj.till = config.events[0].tillDtm;
+                newEventStat.obj.tz = config.events[0].tz;
+                newEventStat.obj.lat1 = config.events[0].lat1;
+                newEventStat.obj.lon1 = config.events[0].lon1;
+                newEventStat.obj.lat2 = config.events[0].lat2;
+                newEventStat.obj.lon2 = config.events[0].lon2;
+                newEventStat.obj.updated_at = config.events[0].updatedAt;
+                newEventStat.obj.url = eventUrl;
+
+                newEvents.push(newEventStat.obj);
+
+                const wpts = {};
+
+                config.waypoints.forEach((w) => {
+                    const waypoint = {
                         id: uuidv4(),
                         original_id: w.id,
                         event: newEventStat.obj.id,
                         event_original_id: newEventStat.obj.original_id,
                         regatta: newEventStat.obj.regatta,
-                        regatta_original_id: newEventStat.obj.regatta_original_id,
+                        regatta_original_id:
+                            newEventStat.obj.regatta_original_id,
                         start: w.start,
                         finish: w.finish,
                         lat: w.lat,
@@ -107,33 +124,31 @@ const { get } = require('request');
                         finish_Z: w.finishZ,
                         name: w.name,
                         race_type: w.race_type,
-                        boat_model: w.boat_model
-                    }
-                    wpts[w.id] = waypoint.id
-                    newWaypoints.push(waypoint)
-                })
-              
-    
-                let divs = {}
-                config.divisions.forEach(d=>{
-                    let division = {
-                        id:uuidv4(),
+                        boat_model: w.boat_model,
+                    };
+                    wpts[w.id] = waypoint.id;
+                    newWaypoints.push(waypoint);
+                });
+                const divs = {};
+                config.divisions.forEach((d) => {
+                    const division = {
+                        id: uuidv4(),
                         original_id: d.id,
                         event: newEventStat.obj.id,
                         event_original_id: newEventStat.obj.original_id,
                         regatta: newEventStat.obj.regatta,
-                        regatta_original_id: newEventStat.obj.regatta_original_id,
+                        regatta_original_id:
+                            newEventStat.obj.regatta_original_id,
                         name: d.name,
-                        avatar: d.avatar
-                    }
-                    divs[d.id] = division.id
-                    newDivisions.push(division)
-                })
+                        avatar: d.avatar,
+                    };
+                    divs[d.id] = division.id;
+                    newDivisions.push(division);
+                });
 
-                let starts = {}
-                config.starts.forEach(s =>{
-              
-                    let start = {
+                const starts = {};
+                config.starts.forEach((s) => {
+                    const start = {
                         id: uuidv4(),
                         original_id: s.id,
                         event: newEventStat.obj.id,
@@ -143,14 +158,14 @@ const { get } = require('request');
                         from: s.fromDtm,
                         type: s.type,
                         wind: s.wind,
-                        min_duration: s.minDuration
-                    }
-                    starts[s.id] = start.id
-                    newStarts.push(start)
-                })
+                        min_duration: s.minDuration,
+                    };
+                    starts[s.id] = start.id;
+                    newStarts.push(start);
+                });
 
-                config.routes.forEach(r => {
-                    let route = {
+                config.routes.forEach((r) => {
+                    const route = {
                         id: uuidv4(),
                         original_id: r.id,
                         event: newEventStat.obj.id,
@@ -163,38 +178,46 @@ const { get } = require('request');
                         wind_direction: r.windDirection,
                         wind_speed: r.windSpeed,
                         current_direction: r.currentDirection,
-                        current_speed: r.currentSpeed
-                    }
-                    newRoutes.push(route)
-                })
-
-               
-            }else{
-                console.log('Skipping this race cause you already indexed it.')
-                pageIndex--
-                continue
+                        current_speed: r.currentSpeed,
+                    };
+                    newRoutes.push(route);
+                });
+            } else {
+                console.log('Skipping this race cause you already indexed it.');
+                pageIndex--;
+                continue;
             }
-       
+
             // EVENTS is array of one object:
-            
-            let envUrls = []
 
-            let timestring = ''
+            const envUrls = [];
 
-            config.events.forEach(e=>{
-                let s = new Date(e.fromDtm).toISOString().split('.')[0] + e.tz
-                let f = new Date(e.tillDtm).toISOString().split('.')[0] + e.tz
-                let lat1 = e["lat1"]
-                let lat2 = e["lat2"]
-                let long1 = e["lon1"]
-                let long2 = e["lon2"]
-                let latString = "&lat=" + lat1 + ".." + lat2
-                let lonString = "&lon=" + long1 + ".." + long2
-                timestring = s + '..' + f
-                let requestString = 'https://raceqs.com/rest/environment?dt=' + s + '..' + f + latString + lonString
-                envUrls.push(requestString)
-            })
-        
+            let timestring = '';
+
+            config.events.forEach((e) => {
+                const s = moment(e.fromDtm)
+                    .utcOffset(e.tz)
+                    .format('YYYY-MM-DDTHH:mm:ssZ');
+                const f = moment(e.tillDtm)
+                    .utcOffset(e.tz)
+                    .format('YYYY-MM-DDTHH:mm:ssZ');
+                const lat1 = e.lat1;
+                const lat2 = e.lat2;
+                const long1 = e.lon1;
+                const long2 = e.lon2;
+                const latString = '&lat=' + lat1 + '..' + lat2;
+                const lonString = '&lon=' + long1 + '..' + long2;
+                timestring = s + '..' + f;
+                const requestString =
+                    'https://raceqs.com/rest/environment?dt=' +
+                    s +
+                    '..' +
+                    f +
+                    latString +
+                    lonString;
+                envUrls.push(requestString);
+            });
+
             // let startUrls = []
             // config.starts.forEach(s=>{
             //     let startUrl = 'https://raceqs.com/rest/start?id=' + s.id
@@ -207,55 +230,59 @@ const { get } = require('request');
             //     console.log(startConfigRequest.data)
             // }
 
-            console.log('Getting user positions.')
-            let userPositionUrls = []
-            let users = {}
-            for(envUrlIndex in envUrls){
-                let requestString = envUrls[envUrlIndex]
-    
-                let environmentRequest = await axios.get(requestString)
-               
-                environmentRequest.data.forEach(u => {
-                
-                    let userPositionUrl = 'https://raceqs.com/rest/data?userId=' + u.userId + '&dt=' + timestring
-                    userPositionUrls.push(userPositionUrl)
+            console.log('Getting user positions.');
+            const userPositionUrls = [];
+            const users = {};
+            for (const envUrlIndex in envUrls) {
+                const requestString = envUrls[envUrlIndex];
 
-                    let user = {
+                const environmentRequest = await axios.get(requestString);
+
+                environmentRequest.data.forEach((u) => {
+                    const userPositionUrl =
+                        'https://raceqs.com/rest/data?userId=' +
+                        u.userId +
+                        '&dt=' +
+                        timestring;
+                    userPositionUrls.push(userPositionUrl);
+
+                    const user = {
                         id: uuidv4(),
                         original_id: u.userId,
                         event: newEventStat.obj.id,
                         event_original_id: newEventStat.obj.original_id,
                         boat: u.boat,
                         start: u.startDt,
-                        finish: u.finishDt
-                    }
-                    users[u.userId] = user.id
-                    newUsers.push(user)
-                })
+                        finish: u.finishDt,
+                    };
+                    users[u.userId] = user.id;
+                    newUsers.push(user);
+                });
             }
-        
-            for(userPositionUrlIndex in userPositionUrls){
-                let positionUrl = userPositionUrls[userPositionUrlIndex]
-                
-                let positionsRequest = await axios.get(positionUrl)
-                let uid = positionUrl.split('userId=')[1].split('&')[0]
 
-                let lines = new String(positionsRequest.data).split('\n')
-                lines.shift()
-                lines.forEach(line =>{
-                    let tabs = line.split('\t')
-                    let time = tabs[0]
-                    let lat = tabs[1]
-                    let lon = tabs[2]
-                    let roll = tabs[3]
-                    let pitch = tabs[4]
-                    let heading = tabs[5]
-                    let sow = tabs[6]
-                    let wind_angle = tabs[7]
-                    let wind_speed = tabs[8]
-                    
+            for (const userPositionUrlIndex in userPositionUrls) {
+                const positionUrl = userPositionUrls[userPositionUrlIndex];
+                console.log({ positionUrl });
 
-                    let position = {
+                const positionsRequest = await axios.get(positionUrl);
+                console.log({ positionsRequest: positionsRequest.data });
+                const uid = positionUrl.split('userId=')[1].split('&')[0];
+
+                const lines = `${positionsRequest.data}`.split('\n');
+                lines.shift();
+                lines.forEach((line) => {
+                    const tabs = line.split('\t');
+                    const time = tabs[0];
+                    const lat = tabs[1];
+                    const lon = tabs[2];
+                    const roll = tabs[3];
+                    const pitch = tabs[4];
+                    const heading = tabs[5];
+                    const sow = tabs[6];
+                    const windAngle = tabs[7];
+                    const windSpeed = tabs[8];
+
+                    const position = {
                         id: uuidv4(),
                         event: newEventStat.obj.id,
                         event_original_id: newEventStat.obj.original_id,
@@ -268,37 +295,35 @@ const { get } = require('request');
                         pitch: pitch,
                         heading: heading,
                         sow: sow,
-                        wind_angle: wind_angle,
-                        wind_speed: wind_speed
-                    }
-                    newPositions.push(position)
+                        wind_angle: windAngle,
+                        wind_speed: windSpeed,
+                    };
+                    newPositions.push(position);
                 });
             }
 
-            let newObjectsToSave = [
-                { objectType:RaceQs.Event, objects:newEvents},
-                { objectType:RaceQs.Division, objects:newDivisions},
-                { objectType:RaceQs.Waypoint, objects:newWaypoints},
-                { objectType:RaceQs.Route, objects:newRoutes},
-                { objectType:RaceQs.Start, objects:newStarts},
-                { objectType:RaceQs.Participant, objects:newUsers},
-                { objectType:RaceQs.Position, objects:newPositions},
-                { objectType:RaceQs.Regatta, objects:newRegattas}]
-            console.log('Bulk saving objects.')
-            await bulkSave(newObjectsToSave, RaceQs.FailedUrl, eventUrl)
-            console.log('Finished saving race. On to the next one.')
-
-
-        }catch(err){
-            console.log(err)
-            await RaceQs.FailedUrl.create({id:uuidv4(), url: eventUrl, error: err.toString()})
+            const newObjectsToSave = [
+                { objectType: RaceQs.Event, objects: newEvents },
+                { objectType: RaceQs.Division, objects: newDivisions },
+                { objectType: RaceQs.Waypoint, objects: newWaypoints },
+                { objectType: RaceQs.Route, objects: newRoutes },
+                { objectType: RaceQs.Start, objects: newStarts },
+                { objectType: RaceQs.Participant, objects: newUsers },
+                { objectType: RaceQs.Position, objects: newPositions },
+                { objectType: RaceQs.Regatta, objects: newRegattas },
+            ];
+            console.log('Bulk saving objects.');
+            await bulkSave(newObjectsToSave);
+            console.log('Finished saving race. On to the next one.');
+        } catch (err) {
+            console.log(err);
+            await RaceQs.FailedUrl.create({
+                id: uuidv4(),
+                url: eventUrl,
+                error: err.toString(),
+            });
         }
-        
-        pageIndex--
+
+        pageIndex--;
     }
-
-
-
 })();
-
- 
