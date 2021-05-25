@@ -24,17 +24,20 @@ const xml2json = require('xml2json');
 const turf = require('@turf/turf');
 const YACHBOT_SOURCE = 'YACHTBOT';
 
-(async () => {
+const mainScript = async () => {
     await connect();
     const existingObjects = await findExistingObjects(YachtBot);
+    const existingRaceIds = Object.keys(existingObjects[YachtBot.Race.name]);
+    // Get the max index id in database and limit to 1000 more
+    const maxRaceId = existingRaceIds.reduce((a, b) => Math.max(a, b));
+    const MAX_RACE_INDEX = maxRaceId + 1000 || 1000;
 
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
-
     let idx = 1;
-    const MAX_RACE_INDEX = 17159;
 
     while (idx <= MAX_RACE_INDEX) {
+        console.log(`Scraping race index ${idx} of ${MAX_RACE_INDEX}`);
         const raceSaveObj = instantiateOrReturnExisting(
             existingObjects,
             YachtBot.Race,
@@ -474,7 +477,7 @@ const YACHBOT_SOURCE = 'YACHTBOT';
     page.close();
     browser.close();
     process.exit();
-})();
+};
 
 const normalizeRace = async (race, allPositions, boats, transaction) => {
     if (allPositions.length === 0) {
@@ -499,7 +502,7 @@ const normalizeRace = async (race, allPositions, boats, transaction) => {
     });
 
     allPositions.forEach((p) => {
-        p.timestamp = p.time;
+        p.timestamp = parseInt(p.time);
     });
 
     const boundingBox = turf.bbox(
@@ -562,3 +565,9 @@ const normalizeRace = async (race, allPositions, boats, transaction) => {
         transaction
     );
 };
+
+if (require.main === module) {
+    // Only run the main script if not added as a dependency module
+    mainScript();
+}
+exports.normalizeRace = normalizeRace;
