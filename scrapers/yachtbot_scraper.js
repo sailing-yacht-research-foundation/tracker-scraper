@@ -1,42 +1,40 @@
 const {
     YachtBot,
     connect,
+    sequelize,
     findExistingObjects,
     instantiateOrReturnExisting,
     bulkSave,
+    SearchSchema,
 } = require('../tracker-schema/schema.js');
+const {
+    createBoatToPositionDictionary,
+    positionsToFeatureCollection,
+    collectFirstNPositionsFromBoatsToPositions,
+    collectLastNPositionsFromBoatsToPositions,
+    getCenterOfMassOfPositions,
+    findAverageLength,
+    createRace,
+    allPositionsToFeatureCollection,
+} = require('../tracker-schema/gis_utils.js');
+const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const puppeteer = require('puppeteer');
 const xml2json = require('xml2json');
+const turf = require('@turf/turf');
+const YACHBOT_SOURCE = 'YACHTBOT';
 
 (async () => {
     await connect();
     const existingObjects = await findExistingObjects(YachtBot);
 
-    // var errors = await YachtBot.FailedUrl.findAll()
-    // var races = await YachtBot.Race.findAll()
-
-    // var raceIds = {}
-    // races.forEach(r=>{
-    //     raceIds[r.original_id] = true
-    // })
-    // var errorIds = {}
-
-    // console.log(errorIds)
-
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
 
     let idx = 1;
-    // var idx = 17000
+    const MAX_RACE_INDEX = 17159;
 
-    while (idx === 17159) {
-        // if(!raceIds[new String(idx)]){
-        //     idx++
-        //     console.log('Not a saved race.')
-        //     continue
-        // }
-
+    while (idx <= MAX_RACE_INDEX) {
         const raceSaveObj = instantiateOrReturnExisting(
             existingObjects,
             YachtBot.Race,
@@ -49,7 +47,7 @@ const xml2json = require('xml2json');
         }
 
         const pageUrl = 'http://www.yacht-bot.com/races/' + idx;
-
+        const transaction = await sequelize.transaction();
         try {
             console.log('about to go to page ' + pageUrl);
             await page.goto(pageUrl);
@@ -325,8 +323,10 @@ const xml2json = require('xml2json');
                             });
                         }
                     }
-
-                    if (device.type === 'buoy' || device.type === 'wind') {
+                    if (
+                        device &&
+                        (device.type === 'buoy' || device.type === 'wind')
+                    ) {
                         const id = device.uuid;
                         const originalId = s;
                         const race = raceSaveObj.obj.id;
@@ -390,7 +390,7 @@ const xml2json = require('xml2json');
                         });
 
                         buoys.push(bo);
-                    } else if (device.type === 'yacht') {
+                    } else if (device && device.type === 'yacht') {
                         const id = device.uuid;
                         const originalId = s;
                         const race = raceSaveObj.obj.id;
@@ -449,12 +449,19 @@ const xml2json = require('xml2json');
                     { objectType: YachtBot.Buoy, objects: buoys },
                 ];
                 console.log('Bulk saving objects.');
-
-                await bulkSave(newObjectsToSave, YachtBot.FailedUrl, pageUrl);
+                const transaction = await sequelize.transaction();
+                const saved = await bulkSave(newObjectsToSave, transaction);
+                if (!saved) {
+                    throw new Error('Failed to save bulk data');
+                }
+                console.log('Normalizing Race');
+                await normalizeRace(races[0], positions, boats, transaction);
+                await transaction.commit();
             } else {
                 console.log('Should not continue so going to next race.');
             }
         } catch (err) {
+            await transaction.rollback();
             console.log(err);
             await YachtBot.FailedUrl.create({
                 id: uuidv4(),
@@ -468,3 +475,90 @@ const xml2json = require('xml2json');
     browser.close();
     process.exit();
 })();
+
+const normalizeRace = async (race, allPositions, boats, transaction) => {
+    if (allPositions.length === 0) {
+        console.log('No positions so skipping.');
+        return;
+    }
+    const id = race.id;
+    const startTime = parseInt(race.start_time) * 1000;
+    const endTime = parseInt(race.end_time) * 1000;
+    const name = race.name;
+    const event = null;
+    const url = race.url;
+
+    const boatNames = [];
+    const boatModels = [];
+    const boatIdentifiers = [];
+    const handicapRules = [];
+    const unstructuredText = [];
+
+    boats.forEach((b) => {
+        boatIdentifiers.push(b.boat_number);
+    });
+
+    allPositions.forEach((p) => {
+        p.timestamp = p.time;
+    });
+
+    const boundingBox = turf.bbox(
+        positionsToFeatureCollection('lat', 'lon', allPositions)
+    );
+    const boatsToSortedPositions = createBoatToPositionDictionary(
+        allPositions.filter((p) => p.yacht),
+        'yacht',
+        'timestamp'
+    );
+
+    const first3Positions = collectFirstNPositionsFromBoatsToPositions(
+        boatsToSortedPositions,
+        3
+    );
+    const startPoint = getCenterOfMassOfPositions(
+        'lat',
+        'lon',
+        first3Positions
+    );
+
+    const last3Positions = collectLastNPositionsFromBoatsToPositions(
+        boatsToSortedPositions,
+        3
+    );
+    const endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
+
+    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
+    const raceMetadata = await createRace(
+        id,
+        name,
+        event,
+        YACHBOT_SOURCE,
+        url,
+        startTime,
+        endTime,
+        startPoint,
+        endPoint,
+        boundingBox,
+        roughLength,
+        boatsToSortedPositions,
+        boatNames,
+        boatModels,
+        boatIdentifiers,
+        handicapRules,
+        unstructuredText
+    );
+    const tracksGeojson = JSON.stringify(
+        allPositionsToFeatureCollection(boatsToSortedPositions)
+    );
+
+    await SearchSchema.RaceMetadata.create(raceMetadata, {
+        fields: Object.keys(raceMetadata),
+    });
+    console.log('Uploading to s3');
+    await uploadGeoJsonToS3(
+        race.id,
+        tracksGeojson,
+        YACHBOT_SOURCE,
+        transaction
+    );
+};
