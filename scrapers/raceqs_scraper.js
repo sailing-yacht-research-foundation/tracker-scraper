@@ -1,3 +1,4 @@
+const turf = require('@turf/turf');
 const moment = require('moment');
 const {
     RaceQs,
@@ -6,9 +7,24 @@ const {
     instantiateOrReturnExisting,
     bulkSave,
     sequelize,
+    SearchSchema,
 } = require('../tracker-schema/schema.js');
+const {
+    createBoatToPositionDictionary,
+    positionsToFeatureCollection,
+    collectFirstNPositionsFromBoatsToPositions,
+    collectLastNPositionsFromBoatsToPositions,
+    getCenterOfMassOfPositions,
+    findAverageLength,
+    createRace,
+    createTurfPoint,
+    allPositionsToFeatureCollection,
+} = require('../tracker-schema/gis_utils.js');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const { appendArray } = require('../utils/array');
+const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3');
+
+const RACEQS_SOURCE = 'RACEQS';
 
 async function fetchConfigData(eventId) {
     const configRequest = await axios.get(
@@ -23,21 +39,19 @@ function getRegattaObject(existingObjects, config) {
         RaceQs.Regatta,
         config.events[0].regattaId
     );
-    if (checkRegatta.shouldSave) {
-        checkRegatta.obj.club_original_id = config.regattas[0].club;
-        checkRegatta.obj.name = config.regattas[0].name;
-        checkRegatta.obj.url = config.regattas[0].url;
-        checkRegatta.obj.content = config.regattas[0].content;
-        checkRegatta.obj.attach1 = config.regattas[0].attach1;
-        checkRegatta.obj.attach2 = config.regattas[0].attach2;
-        checkRegatta.obj.attach3 = config.regattas[0].attach3;
-        checkRegatta.obj.attach4 = config.regattas[0].attach4;
-        checkRegatta.obj.type = config.regattas[0].type;
-        checkRegatta.obj.administrator = config.regattas[0].administrator;
-        checkRegatta.obj.updated_at = config.regattas[0].updatedAt;
-        checkRegatta.obj.contactor_name = config.regattas[0].ContactorName;
-        checkRegatta.obj.contactor_email = config.regattas[0].ContactorEmail;
-    }
+    checkRegatta.obj.club_original_id = config.regattas[0].club;
+    checkRegatta.obj.name = config.regattas[0].name;
+    checkRegatta.obj.url = config.regattas[0].url;
+    checkRegatta.obj.content = config.regattas[0].content;
+    checkRegatta.obj.attach1 = config.regattas[0].attach1;
+    checkRegatta.obj.attach2 = config.regattas[0].attach2;
+    checkRegatta.obj.attach3 = config.regattas[0].attach3;
+    checkRegatta.obj.attach4 = config.regattas[0].attach4;
+    checkRegatta.obj.type = config.regattas[0].type;
+    checkRegatta.obj.administrator = config.regattas[0].administrator;
+    checkRegatta.obj.updated_at = config.regattas[0].updatedAt;
+    checkRegatta.obj.contactor_name = config.regattas[0].ContactorName;
+    checkRegatta.obj.contactor_email = config.regattas[0].ContactorEmail;
     return checkRegatta;
 }
 
@@ -259,6 +273,108 @@ async function fetchUsersPositions(newEventStat, users, eventTimeString) {
     return positions;
 }
 
+async function normalizeRace({
+    event,
+    regatta,
+    waypoints,
+    positions,
+    participants,
+    transaction,
+}) {
+    console.log('Normalizing race');
+    const allPositions = [];
+    positions.forEach((p) => {
+        p.timestamp = parseInt(p.time) * 100;
+        if (p.lat && p.lon && p.timestamp) {
+            allPositions.push(p);
+        }
+    });
+    console.log(`Position length: ${allPositions.length}`);
+    if (allPositions.length === 0) {
+        console.log('No positions so skipping.');
+    }
+
+    const id = event.id;
+    const name = `${regatta.name} - ${event.name}`;
+    const regattaId = event.regatta;
+    const url = event.url;
+    const startTime = parseInt(event.from);
+    const endTime = parseInt(event.till);
+
+    const boatIdentifiers = [];
+    const boatNames = [];
+    const unstructuredText = [];
+    const classes = [];
+    const handicaps = [];
+    participants.forEach((p) => {
+        boatNames.push(p.boat);
+    });
+
+    let startPoint = null;
+    let endPoint = null;
+    waypoints.forEach((wpt) => {
+        if (wpt.type === 'Start') {
+            startPoint = createTurfPoint(wpt.lat, wpt.lon);
+        } else if (wpt.type === 'Finish') {
+            endPoint = createTurfPoint(wpt.lat, wpt.lon);
+        }
+    });
+
+    const fc = positionsToFeatureCollection('lat', 'lon', allPositions);
+    const boundingBox = turf.bbox(fc);
+    const boatsToSortedPositions = createBoatToPositionDictionary(
+        allPositions,
+        'participant',
+        'timestamp'
+    );
+
+    if (!startPoint) {
+        const first3Positions = collectFirstNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        startPoint = getCenterOfMassOfPositions('lat', 'lon', first3Positions);
+    }
+    if (!endPoint) {
+        const last3Positions = collectLastNPositionsFromBoatsToPositions(
+            boatsToSortedPositions,
+            3
+        );
+        endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
+    }
+
+    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
+    const raceMetadata = await createRace(
+        id,
+        name,
+        regattaId,
+        RACEQS_SOURCE,
+        url,
+        startTime,
+        endTime,
+        startPoint,
+        endPoint,
+        boundingBox,
+        roughLength,
+        boatsToSortedPositions,
+        boatNames,
+        classes,
+        boatIdentifiers,
+        handicaps,
+        unstructuredText
+    );
+
+    const tracksGeojson = JSON.stringify(
+        allPositionsToFeatureCollection(boatsToSortedPositions)
+    );
+    await uploadGeoJsonToS3(id, tracksGeojson, RACEQS_SOURCE, transaction);
+
+    await SearchSchema.RaceMetadata.create(raceMetadata, {
+        fields: Object.keys(raceMetadata),
+        transaction,
+    });
+}
+
 async function saveData({
     newEvents,
     newDivisions,
@@ -268,6 +384,7 @@ async function saveData({
     newUsers,
     newPositions,
     newRegattas,
+    checkRegatta,
 }) {
     let transaction = null;
     try {
@@ -285,6 +402,14 @@ async function saveData({
         ];
         console.log('Bulk saving objects.');
         await bulkSave(newObjectsToSave, transaction);
+        await normalizeRace({
+            event: newEvents[0],
+            regatta: checkRegatta,
+            waypoints: newWaypoints,
+            positions: newPositions,
+            participants: newUsers,
+            transaction,
+        });
         await transaction.commit();
     } catch (err) {
         if (transaction) {
