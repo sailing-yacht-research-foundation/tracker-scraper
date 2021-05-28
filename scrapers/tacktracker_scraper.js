@@ -1013,3 +1013,4 @@ if (require.main === module) {
     mainScript();
 }
 exports.normalizeRace = normalizeRace;
+exports.SOURCE = TACKTRACKER_SOURCE;
