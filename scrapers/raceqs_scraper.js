@@ -426,8 +426,8 @@ async function saveData({
     }
     const existingObjects = await findExistingObjects(RaceQs);
 
-    // const BEGIN_COUNTING_AT = 100000;
-    const BEGIN_COUNTING_AT = 62880;
+    const BEGIN_COUNTING_AT = 100000;
+    // const BEGIN_COUNTING_AT = 62880;
 
     let pageIndex = BEGIN_COUNTING_AT;
 
@@ -517,6 +517,7 @@ async function saveData({
                 newUsers,
                 newPositions,
                 newRegattas,
+                checkRegatta,
             });
             console.log('Finished saving race. On to the next one.');
         } catch (err) {
