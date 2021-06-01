@@ -2,13 +2,20 @@
 Hosts the code that crawls all supported trackers, pulls down the data, and uploads it to the sources database.
 
 # Running locally
-1. Run `npm install`
-2. Copy the tracker-schema config file in `tracker-index/tracker-schema/.env.sample` to `tracker-index/tracker-schema/.env`
-3. Set the correct database credentials and other environment variables
-4. Copy the tracker-index config file in `tracker-index/.env.sample` to `tracker-index/.env`
-5. Set the correct s3 bucket credentials and other environment variables
-6. Run the script. Example `node scrapers/bluewater_scraper.js`
+1. Run `npm install`.
+2. Initialize git submodule by running `git submodule init` and `git submodule update`.
+3. Copy the tracker-schema config file in `tracker-index/tracker-schema/.env.sample` to `tracker-index/tracker-schema/.env`.
+4. Set the correct database credentials and other environment variables.
+5. Copy the tracker-index config file in `tracker-index/.env.sample` to `tracker-index/.env`.
+6. Set the correct s3 bucket credentials and other environment variables
+7. Run the script. Example `node scrapers/bluewater_scraper.js`
 
+# Deploying in AWS ECR
+Prerequsisite installations in deploying
+1. docker cli
+2. aws cli
+
+To build and push the docker image, simply run `./deploy.sh`.
 
 # Introduction
 Each crawler must be schedulable and run daily as a job to pull in the latest races.

@@ -6,18 +6,31 @@ const { Op } = require('sequelize');
 (async () => {
     let raceId, raceUrl;
     try {
+        console.log('Getting races to be normalized');
         const racesToBeNormalized = await Kattack.Race.findAll({
             attributes: ['id', 'name', 'url', 'start', 'stop'],
             where: {
-                id: {
-                    [Op.notIn]: sequelize.literal(
-                        '(SELECT id FROM "ReadyAboutTrackGeoJsonLookups" WHERE source = \'KATTACK\')'
-                    ),
-                },
+                [Op.and]: [
+                    {
+                        id: {
+                            [Op.notIn]: sequelize.literal(
+                                '(SELECT id FROM "ReadyAboutTrackGeoJsonLookups" WHERE source = \'KATTACK\')'
+                            ),
+                        },
+                    },
+                    {
+                        id: {
+                            [Op.in]: sequelize.literal(
+                                '(SELECT race FROM "KattackPositions")'
+                            ),
+                        },
+                    },
+                ],
             },
         });
-        for (const raceIndex in Object.keys(racesToBeNormalized)) {
-            const race = racesToBeNormalized[raceIndex];
+        console.log('racesToBeNormalized length', racesToBeNormalized.length);
+        await racesToBeNormalized.reduce(async (prevEventPromise, race) => {
+            await prevEventPromise;
             raceUrl = race.url;
             raceId = race.id;
             const raceCondition = {
@@ -33,7 +46,7 @@ const { Op } = require('sequelize');
             const devices = await Kattack.Device.findAll(raceCondition);
             await normalizeRace(race, positions, waypoints, devices);
             console.log(`Finished normalizing race id ${raceId}`);
-        }
+        }, Promise.resolve());
     } catch (err) {
         console.log(`Failed normalizing race with id ${raceId}`, err);
         await Kattack.FailedUrl.create(
@@ -41,6 +54,7 @@ const { Op } = require('sequelize');
             { fields: ['id', 'url', 'error'] }
         );
     } finally {
+        console.log('Finished normalizing. Exiting...');
         process.exit();
     }
 })();
