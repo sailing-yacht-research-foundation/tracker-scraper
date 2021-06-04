@@ -1488,9 +1488,9 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                 );
             }
 
-            // // save all objects.
-            const transaction = await sequelize.transaction();
+            let transaction;
             try {
+                transaction = await sequelize.transaction();
                 const newObjectsToSave = [
                     {
                         objectType: Yellowbrick.YellowbrickRace,
@@ -1522,7 +1522,6 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                     },
                 ];
                 console.log('Bulk saving objects.');
-                const transaction = await sequelize.transaction();
                 const saved = await bulkSave(newObjectsToSave, transaction);
                 if (!saved) {
                     throw new Error('Failed to save bulk data');
@@ -1539,7 +1538,9 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                 await transaction.commit();
                 raceCodes.push(raceCode);
             } catch (err) {
-                await transaction.rollback();
+                if (transaction) {
+                    await transaction.rollback();
+                }
                 // Delete kml file on s3 since db transaction failed
                 await deleteObjectInS3({
                     Bucket: KML_BUCKET_NAME,
@@ -1549,10 +1550,18 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
             }
         } catch (err) {
             console.log(err);
-            await Yellowbrick.YellowbrickFailedUrl.create(
-                { url: codes[codeIndex], error: err.toString(), id: uuidv4() },
-                { fields: ['url', 'id', 'error'] }
-            );
+            try {
+                await Yellowbrick.YellowbrickFailedUrl.create(
+                    {
+                        url: codes[codeIndex],
+                        error: err.toString(),
+                        id: uuidv4(),
+                    },
+                    { fields: ['url', 'id', 'error'] }
+                );
+            } catch (err2) {
+                console.log('Failed inserting failed record in database', err2);
+            }
         }
     }
     process.exit();
@@ -1560,7 +1569,9 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
 
 async function getPositionsWithPuppeteer(raceId, teamIds, currentCode) {
     const url = `http://yb.tl/${currentCode}`;
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     const page = await browser.newPage();
     await page.goto(url, {
         waitUntil: 'networkidle2',

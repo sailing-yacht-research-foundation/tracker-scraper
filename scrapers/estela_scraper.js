@@ -20,7 +20,7 @@ const puppeteer = require('puppeteer');
 const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
 
 // TODO: automate this limit.
-const LIMIT = 270;
+const LIMIT = 3000;
 const ESTELA_RACE_PAGE_URL = 'https://www.estela.co/en?page={$PAGENUM$}#races';
 const PAGENUM = '{$PAGENUM$}';
 const ESTELA_SOURCE = 'ESTELA';
@@ -55,7 +55,9 @@ const ESTELA_SOURCE = 'ESTELA';
         existingRaces.push(r.url);
     });
 
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     const page = await browser.newPage();
     const allRaceUrls = [];
 
@@ -72,11 +74,14 @@ const ESTELA_SOURCE = 'ESTELA';
         try {
             await page.goto(pageUrl, { timeout: 0, waitUntil: 'networkidle0' });
 
-            const raceUrls = await page.evaluate(() => {
+            const { raceUrls, isNextBtnDisabled } = await page.evaluate(() => {
                 const refs = document.querySelectorAll(
                     'body > div > div.container > section > div > div > div > div > div > a'
                 );
-                const urls = [];
+                const isNextBtnDisabled = !document.querySelector(
+                    'body > div:nth-child(3) > div.container > section:nth-child(2) > div > div > ul > li:nth-child(2):not(.disabled)'
+                );
+                const raceUrls = [];
                 for (const index in refs) {
                     const ref = refs[index];
                     if (ref.href !== undefined) {
@@ -85,10 +90,10 @@ const ESTELA_SOURCE = 'ESTELA';
                             'https://www.estela.co/en/race',
                             'https://www.estela.co/en/tracking-race'
                         );
-                        urls.push(trackingUrl);
+                        raceUrls.push(trackingUrl);
                     }
                 }
-                return urls;
+                return { raceUrls, isNextBtnDisabled };
             });
 
             if (raceUrls.length === 0) {
@@ -105,15 +110,22 @@ const ESTELA_SOURCE = 'ESTELA';
                     allRaceUrls.push(u);
                 }
             });
+            if (isNextBtnDisabled) {
+                break;
+            }
         } catch (err) {
-            await Estela.EstelaFailedUrl.create(
-                { url: pageUrl, error: err.toString(), id: uuidv4() },
-                { fields: ['url', 'id', 'error'] }
-            );
             console.log(err);
+            try {
+                await Estela.EstelaFailedUrl.create(
+                    { url: pageUrl, error: err.toString(), id: uuidv4() },
+                    { fields: ['url', 'id', 'error'] }
+                );
+            } catch (err2) {
+                console.log('Failed inserting failed record in database', err2);
+            }
         }
         counter += 1;
-    } // Finished getting all race urls.
+    }
 
     console.log(
         `Beginning to parse race list with length ${allRaceUrls.length}`
@@ -547,8 +559,9 @@ const ESTELA_SOURCE = 'ESTELA';
                 });
             }
 
-            const transaction = await sequelize.transaction();
+            let transaction;
             try {
+                transaction = await sequelize.transaction();
                 const currentRace = await Estela.EstelaRace.create(newRace, {
                     fields: Object.keys(newRace),
                     transaction,
@@ -614,7 +627,15 @@ const ESTELA_SOURCE = 'ESTELA';
                 await transaction.commit();
                 console.log('Finished scraping race.');
             } catch (err) {
-                transaction.rollback();
+                if (transaction) {
+                    await transaction.rollback();
+                }
+                throw err;
+            }
+            // buoys, players, winds, race, dorsals, results, marks, positions,  initial_bounds then done!
+        } catch (err) {
+            console.log(err);
+            try {
                 await Estela.EstelaFailedUrl.create(
                     {
                         url: currentRaceUrl,
@@ -623,15 +644,9 @@ const ESTELA_SOURCE = 'ESTELA';
                     },
                     { fields: ['url', 'id', 'error'] }
                 );
-                console.log(err);
+            } catch (err2) {
+                console.log('Failed inserting failed record in database', err2);
             }
-            // buoys, players, winds, race, dorsals, results, marks, positions,  initial_bounds then done!
-        } catch (err) {
-            await Estela.EstelaFailedUrl.create(
-                { url: currentRaceUrl, error: err.toString(), id: uuidv4() },
-                { fields: ['url', 'id', 'error'] }
-            );
-            console.log(err);
         }
     }
 
