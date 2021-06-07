@@ -1,5 +1,4 @@
 const turf = require('@turf/turf');
-const puppeteer = require('puppeteer');
 const {
     Georacing,
     connect,
@@ -22,6 +21,7 @@ const {
     createTurfPoint,
     allPositionsToFeatureCollection,
 } = require('../tracker-schema/gis_utils.js');
+const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { appendArray } = require('../utils/array');
 const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3');
 
@@ -2468,16 +2468,29 @@ const allRacesURL =
 
 (async () => {
     await connect();
-    const existingObjects = await findExistingObjects(Georacing);
+    let existingObjects, allRacesRequest, browser, page;
+    try {
+        existingObjects = await findExistingObjects(Georacing);
+    } catch (err) {
+        console.log('Failed getting database metadata and races.', err);
+        process.exit();
+    }
 
-    const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    const page = await browser.newPage();
+    try {
+        browser = await launchBrowser();
+        page = await browser.newPage();
+    } catch (err) {
+        console.log('Failed in launching puppeteer.', err);
+        process.exit();
+    }
 
-    const allRacesRequest = await axios.get(allRacesURL);
+    try {
+        allRacesRequest = await axios.get(allRacesURL);
+    } catch (err) {
+        console.log('Failed in getting all race urls.', err);
+        process.exit();
+    }
     const allEvents = allRacesRequest.data.events;
-    // const allEvents = [allRacesRequest.data.events[9]];
     let count = 0;
 
     for (const eventsIndex in allEvents) {
@@ -2518,7 +2531,14 @@ const allRacesURL =
             eventObjSave.end_time = event.end_time;
 
             if (eventObj.shouldSave) {
-                await Georacing.Event.create(eventObjSave);
+                try {
+                    await Georacing.Event.create(eventObjSave);
+                } catch (err) {
+                    console.log(
+                        `Failed in creating event with name ${event.name}.`,
+                        err
+                    );
+                }
             }
 
             for (const raceIndex in races) {

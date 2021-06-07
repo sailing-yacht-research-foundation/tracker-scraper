@@ -17,25 +17,34 @@ const {
     createRace,
     allPositionsToFeatureCollection,
 } = require('../tracker-schema/gis_utils.js');
+const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
-const puppeteer = require('puppeteer');
 const xml2json = require('xml2json');
 const turf = require('@turf/turf');
 const YACHBOT_SOURCE = 'YACHTBOT';
 
 const mainScript = async () => {
     await connect();
-    const existingObjects = await findExistingObjects(YachtBot);
+    let existingObjects, browser, page;
+    try {
+        existingObjects = await findExistingObjects(YachtBot);
+    } catch (err) {
+        console.log('Failed getting database metadata and races.', err);
+        process.exit();
+    }
     const existingRaceIds = Object.keys(existingObjects[YachtBot.Race.name]);
     // Get the max index id in database and limit to 1000 more
     const maxRaceId = existingRaceIds.reduce((a, b) => Math.max(a, b));
     const MAX_RACE_INDEX = maxRaceId + 1000 || 1000;
 
-    const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    const page = await browser.newPage();
+    try {
+        browser = await launchBrowser();
+        page = await browser.newPage();
+    } catch (err) {
+        console.log('Failed in launching puppeteer.', err);
+        process.exit();
+    }
     let idx = 1;
 
     while (idx <= MAX_RACE_INDEX) {
@@ -52,8 +61,9 @@ const mainScript = async () => {
         }
 
         const pageUrl = 'http://www.yacht-bot.com/races/' + idx;
-        const transaction = await sequelize.transaction();
+        let transaction;
         try {
+            transaction = await sequelize.transaction();
             console.log('about to go to page ' + pageUrl);
             await page.goto(pageUrl);
             console.log('went to page ' + pageUrl);
@@ -466,7 +476,9 @@ const mainScript = async () => {
                 console.log('Should not continue so going to next race.');
             }
         } catch (err) {
-            await transaction.rollback();
+            if (transaction) {
+                await transaction.rollback();
+            }
             console.log(err);
             await YachtBot.FailedUrl.create({
                 id: uuidv4(),
@@ -476,6 +488,7 @@ const mainScript = async () => {
         }
         idx++;
     }
+    console.log('Finished scraping all races.');
     page.close();
     browser.close();
     process.exit();

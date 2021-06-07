@@ -18,20 +18,29 @@ const {
     createRace,
     allPositionsToFeatureCollection,
 } = require('../tracker-schema/gis_utils.js');
+const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
-const puppeteer = require('puppeteer');
 const turf = require('@turf/turf');
 const TRACTRAC_SOURCE = 'TRACTRAC';
 
 // Get all events.
 (async () => {
     await connect();
-    const existingObjects = await findExistingObjects(TracTrac);
+    let existingObjects, browser, page;
+    try {
+        existingObjects = await findExistingObjects(TracTrac);
+    } catch (err) {
+        console.log('Failed getting database metadata and races.', err);
+        process.exit();
+    }
 
-    const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    const page = await browser.newPage();
+    try {
+        browser = await launchBrowser();
+        page = await browser.newPage();
+    } catch (err) {
+        console.log('Failed in launching puppeteer.', err);
+        process.exit();
+    }
 
     const formatAndSaveRace = function (event, raceDetails) {
         const racesToSave = [];
@@ -796,11 +805,9 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                         ).href;
                     });
                 } catch (err) {
-                    await TracTrac.FailedUrl.create({
-                        id: uuidv4(),
-                        error: JSON.stringify(err.toString()),
-                        url: eventDetails.web_url,
-                    });
+                    console.log(
+                        `Failed visiting url ${eventDetails.web_url}. External website will not be saved.`
+                    );
                 }
 
                 eventSaveObj.name = eventDetails.name;

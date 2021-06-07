@@ -6,7 +6,6 @@ const {
     bulkSave,
 } = require('../tracker-schema/schema.js');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
-const puppeteer = require('puppeteer');
 const {
     createBoatToPositionDictionary,
     positionsToFeatureCollection,
@@ -18,6 +17,7 @@ const {
     allPositionsToFeatureCollection,
     findCenter,
 } = require('../tracker-schema/gis_utils.js');
+const { launchBrowser } = require('../utils/puppeteerLauncher');
 const turf = require('@turf/turf');
 const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
 
@@ -30,23 +30,26 @@ const ISAIL_SOURCE = 'ISAIL';
     }
 
     if (CONNECTED_TO_DB) {
-        const browser = await puppeteer.launch({
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        });
-        const page = await browser.newPage();
-
-        const existingEvents = await iSail.iSailEvent.findAll({
-            attributes: ['id', 'original_id', 'name', 'url'],
-        });
-        const existingClassObjects = await iSail.iSailClass.findAll({
-            attributes: ['id', 'original_id', 'name'],
-        });
+        let existingEvents, existingClassObjects, failedUrls, browser, page;
         const existingEventUrls = [];
         const existingClasses = {};
-        const failedUrls = await iSail.iSailFailedUrl.findAll({
-            attributes: ['url'],
-        });
         const existingFailures = [];
+
+        try {
+            existingEvents = await iSail.iSailEvent.findAll({
+                attributes: ['id', 'original_id', 'name', 'url'],
+            });
+            existingClassObjects = await iSail.iSailClass.findAll({
+                attributes: ['id', 'original_id', 'name'],
+            });
+            failedUrls = await iSail.iSailFailedUrl.findAll({
+                attributes: ['url'],
+            });
+        } catch (err) {
+            console.log('Failed getting database metadata and races.', err);
+            process.exit();
+        }
+
         for (const urlIndex in failedUrls) {
             const u = failedUrls[urlIndex];
             existingFailures.push(u);
@@ -60,16 +63,27 @@ const ISAIL_SOURCE = 'ISAIL';
             existingClasses[c.original_id] = c.id;
         }
 
+        try {
+            browser = await launchBrowser();
+            page = await browser.newPage();
+        } catch (err) {
+            console.log('Failed in launching puppeteer.', err);
+            process.exit();
+        }
+
         let counter = 1;
         const maximum = 500;
         while (counter < maximum) {
-            const url = 'http://app.i-sail.com/eventDetails/' + counter;
+            const url = `http://app.i-sail.com/eventDetails/${counter}`;
             console.log(`Getting new event with url ${url}`);
 
             if (
                 existingEventUrls.includes(url) ||
                 existingFailures.includes(url)
             ) {
+                console.log(
+                    `Event already exist in database. Skipping url ${url}`
+                );
                 counter += 1;
                 continue;
             }
@@ -81,11 +95,15 @@ const ISAIL_SOURCE = 'ISAIL';
                 });
 
                 if (result.status() === 404) {
-                    console.log('Error loading page so skipping.');
+                    console.log(
+                        `Error 404 in loading page. Skipping url ${url}`
+                    );
                     counter += 1;
                     continue;
                 }
+
                 let didError = false;
+                console.log(`Scraping page url ${url}`);
                 const allEventData = await page
                     .evaluate(() => {
                         const raceJSON = JSON.parse(
@@ -174,7 +192,7 @@ const ISAIL_SOURCE = 'ISAIL';
                     counter += 1;
                     continue;
                 }
-                console.log('Saving event because it is new and over.');
+                console.log(`Saving event url ${url}`);
 
                 const event = {
                     id: uuidv4(),
@@ -593,23 +611,27 @@ const ISAIL_SOURCE = 'ISAIL';
                     await transaction.commit();
                 } catch (err) {
                     transaction.rollback();
-                    console.log(err);
+                    throw err;
+                }
+            } catch (err) {
+                console.log(err);
+                try {
                     await iSail.iSailFailedUrl.create(
                         { id: uuidv4(), url: url, error: err.toString() },
                         { fields: ['id', 'url', 'error'] }
                     );
+                } catch (err2) {
+                    console.log(
+                        'Failed inserting failed record in database',
+                        err2
+                    );
                 }
-            } catch (err) {
-                console.log(err);
-                await iSail.iSailFailedUrl.create(
-                    { id: uuidv4(), url: url, error: err.toString() },
-                    { fields: ['id', 'url', 'error'] }
-                );
             }
 
             counter += 1;
         }
         await browser.close();
+        console.log('Finished scraping all events.');
     } else {
         console.log('Unable to connect to DB.');
     }
