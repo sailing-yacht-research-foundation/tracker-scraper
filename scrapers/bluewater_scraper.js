@@ -161,15 +161,22 @@ async function normalizeRace(race, positions, map, boats, transaction) {
         process.exit();
     }
 
-    const bluewaterMetadata = await Bluewater.BluewaterMetadata.findOne({
-        attributes: ['last_update_time', 'base_url', 'base_referral_url'],
-    });
-    const bluewaterRaces = await Bluewater.BluewaterRace.findAll({
-        attributes: ['original_id', 'name', 'referral_url', 'id'],
-    });
-    const bluewaterBoats = await Bluewater.BluewaterBoat.findAll({
-        attributes: ['original_id', 'id'],
-    });
+    let bluewaterMetadata, bluewaterRaces, bluewaterBoats;
+
+    try {
+        bluewaterMetadata = await Bluewater.BluewaterMetadata.findOne({
+            attributes: ['last_update_time', 'base_url', 'base_referral_url'],
+        });
+        bluewaterRaces = await Bluewater.BluewaterRace.findAll({
+            attributes: ['original_id', 'name', 'referral_url', 'id'],
+        });
+        bluewaterBoats = await Bluewater.BluewaterBoat.findAll({
+            attributes: ['original_id', 'id'],
+        });
+    } catch (err) {
+        console.log('Failed getting database metadata and races', err);
+        process.exit();
+    }
 
     const existingRaces = {};
     bluewaterRaces.forEach((r) => {
@@ -196,49 +203,55 @@ async function normalizeRace(race, positions, map, boats, transaction) {
         bluewaterMetadata.last_update_time +
         '/' +
         todayPlusMonth.toISOString();
-    console.log(raceListApiUrl);
-    const result = await axios.get(raceListApiUrl);
+    console.log(`Getting race list with url ${raceListApiUrl}`);
+    let result;
+    try {
+        result = await axios.get(raceListApiUrl);
+    } catch (err) {
+        console.log('An error occured getting the race list', err);
+        process.exit();
+    }
     const races = result.data.raceList;
 
     const baseUrl = bluewaterMetadata.base_url;
 
     for (const index in races) {
+        let transaction;
         const raceObj = races[index];
-        console.log({ raceObj });
         const raceUrl = baseUrl + raceObj.slug;
-        const result = await axios.get(raceUrl);
-        const resultData = result.data;
-
-        const positions = resultData.positions;
-        const race = resultData.race;
-
-        const trackTimeStart = race.trackTimeStart;
-        const trackTimeFinish = race.trackTimeFinish;
-        const startTimestamp = new Date(trackTimeStart).getTime();
-        const endTimestamp = new Date(trackTimeFinish).getTime();
-
-        const nowTimestamp = new Date().getTime();
-        if (
-            startTimestamp > nowTimestamp ||
-            endTimestamp === null ||
-            endTimestamp > nowTimestamp
-        ) {
-            console.log('future race');
-            continue;
-        }
-
-        console.log({
-            positionLength: positions.length,
-            raceExisted: existingRaces[raceObj._id],
-        });
-
-        if (positions.length === 0 || existingRaces[raceObj._id]) {
-            continue;
-        }
-
-        // Each race is it's own transaction:
-        const t = await sequelize.transaction();
         try {
+            console.log(`Getting race object with url ${raceUrl}`);
+            const result = await axios.get(raceUrl);
+            const resultData = result.data;
+            const positions = resultData.positions;
+            const race = resultData.race;
+
+            const trackTimeStart = race.trackTimeStart;
+            const trackTimeFinish = race.trackTimeFinish;
+            const startTimestamp = new Date(trackTimeStart).getTime();
+            const endTimestamp = new Date(trackTimeFinish).getTime();
+
+            const nowTimestamp = new Date().getTime();
+            if (
+                startTimestamp > nowTimestamp ||
+                endTimestamp === null ||
+                endTimestamp > nowTimestamp
+            ) {
+                console.log(`Future race with url ${raceUrl}`);
+                continue;
+            }
+
+            console.log({
+                positionLength: positions.length,
+                raceExisted: existingRaces[raceObj._id],
+            });
+
+            if (positions.length === 0 || existingRaces[raceObj._id]) {
+                console.log(
+                    `No positions or race already saved with race url ${raceUrl}. Skipping`
+                );
+                continue;
+            }
             const boats = race.boats;
             const map = race.map;
 
@@ -254,6 +267,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
             const raceNewId = uuidv4();
 
             // Create the Race
+            transaction = await sequelize.transaction();
             const currentRace = await Bluewater.BluewaterRace.create(
                 {
                     name: raceName,
@@ -291,7 +305,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                         'original_id',
                         'id',
                     ],
-                    transaction: t,
+                    transaction,
                 }
             );
 
@@ -306,11 +320,12 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                     },
                     {
                         fields: ['html', 'time', 'race', 'id'],
-                        transaction: t,
+                        transaction,
                     }
                 );
             }
 
+            console.log('Saving race data in database');
             // Map
             const centerLon = map.center[0];
             const centerLat = map.center[1];
@@ -340,7 +355,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                         'course',
                         'regions',
                     ],
-                    transaction: t,
+                    transaction,
                 }
             );
 
@@ -415,7 +430,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                             'race_original_id',
                             'message',
                         ],
-                        transaction: t,
+                        transaction,
                     }
                 );
                 boatModels.push(boatModel);
@@ -466,7 +481,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                                 'id',
                                 'role',
                             ],
-                            transaction: t,
+                            transaction,
                         }
                     );
 
@@ -482,7 +497,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                             },
                             {
                                 fields: ['crew', 'url', 'id'],
-                                transaction: t,
+                                transaction,
                             }
                         );
                     }
@@ -515,7 +530,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                                 'boat',
                                 'boat_original_id',
                             ],
-                            transaction: t,
+                            transaction,
                         }
                     );
                 }
@@ -544,7 +559,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                                 'race_original_id',
                                 'id',
                             ],
-                            transaction: t,
+                            transaction,
                         }
                     );
                 }
@@ -610,7 +625,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                                 'id',
                             ],
                             hooks: false,
-                            transaction: t,
+                            transaction,
                         }
                     ).then(() => {
                         console.log('100K Positions Inserted!');
@@ -637,7 +652,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                     'id',
                 ],
                 hooks: false,
-                transaction: t,
+                transaction,
             }).then(() => {
                 console.log('Positions Inserted!');
             });
@@ -647,7 +662,7 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                 positionEntries,
                 currentMap,
                 boatModels,
-                t
+                transaction
             );
 
             await Bluewater.BluewaterSuccessfulUrl.create(
@@ -658,24 +673,29 @@ async function normalizeRace(race, positions, map, boats, transaction) {
                 },
                 {
                     fields: ['id', 'date_attempted', 'url'],
-                    transaction: t,
+                    transaction,
                 }
             );
-            await t.commit();
+            await transaction.commit();
         } catch (error) {
-            console.log('ERROR IN TRANSACTION');
             console.log(error);
-            await t.rollback();
-            await Bluewater.BluewaterFailedUrl.create(
-                {
-                    id: uuidv4(),
-                    date_attempted: today.toISOString(),
-                    url: raceUrl,
-                },
-                { fields: ['id', 'date_attempted', 'url'] }
-            );
+            if (transaction) {
+                await transaction.rollback();
+            }
+            try {
+                await Bluewater.BluewaterFailedUrl.create(
+                    {
+                        id: uuidv4(),
+                        date_attempted: today.toISOString(),
+                        url: raceUrl,
+                    },
+                    { fields: ['id', 'date_attempted', 'url'] }
+                );
+            } catch (err2) {
+                console.log('Failed inserting failed record in database', err2);
+            }
         }
     }
-    await sequelize.close();
+    console.log('Finished scraping races');
     process.exit(0);
 })();

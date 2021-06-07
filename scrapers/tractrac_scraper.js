@@ -28,7 +28,9 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
     await connect();
     const existingObjects = await findExistingObjects(TracTrac);
 
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     const page = await browser.newPage();
 
     const formatAndSaveRace = function (event, raceDetails) {

@@ -32,7 +32,9 @@ const mainScript = async () => {
     const maxRaceId = existingRaceIds.reduce((a, b) => Math.max(a, b));
     const MAX_RACE_INDEX = maxRaceId + 1000 || 1000;
 
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     const page = await browser.newPage();
     let idx = 1;
 

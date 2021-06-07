@@ -2470,7 +2470,9 @@ const allRacesURL =
     await connect();
     const existingObjects = await findExistingObjects(Georacing);
 
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     const page = await browser.newPage();
 
     const allRacesRequest = await axios.get(allRacesURL);
