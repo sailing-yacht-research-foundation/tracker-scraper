@@ -554,16 +554,32 @@ const normalizeRace = async (race, allPositions, boats, transaction) => {
         allPositionsToFeatureCollection(boatsToSortedPositions)
     );
 
-    await SearchSchema.RaceMetadata.create(raceMetadata, {
-        fields: Object.keys(raceMetadata),
-    });
-    console.log('Uploading to s3');
-    await uploadGeoJsonToS3(
-        race.id,
-        tracksGeojson,
-        YACHBOT_SOURCE,
-        transaction
-    );
+    let isTransactionGiven = true;
+    if (!transaction) {
+        transaction = await sequelize.transaction();
+        isTransactionGiven = false;
+    }
+    try {
+        await SearchSchema.RaceMetadata.create(raceMetadata, {
+            fields: Object.keys(raceMetadata),
+            transaction,
+        });
+        console.log('Uploading to s3');
+        await uploadGeoJsonToS3(
+            race.id,
+            tracksGeojson,
+            YACHBOT_SOURCE,
+            transaction
+        );
+        if (!isTransactionGiven) {
+            await transaction.commit();
+        }
+    } catch (e) {
+        if (!isTransactionGiven) {
+            await transaction.rollback(); // only rollback transaction if it is not given otherwise caller's txn will handle rollback.
+        }
+        throw e;
+    }
 };
 
 if (require.main === module) {
