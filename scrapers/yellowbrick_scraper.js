@@ -21,9 +21,9 @@ const {
     deleteObjectInS3,
     uploadGeoJsonToS3,
 } = require('../utils/upload_racegeojson_to_s3.js');
+const { launchBrowser } = require('../utils/puppeteerLauncher');
 const turf = require('@turf/turf');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
-const puppeteer = require('puppeteer');
 const xml2json = require('xml2json');
 const axiosRetry = require('axios-retry');
 const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
@@ -1481,11 +1481,19 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                     `Failed getting positions using json api with url ${jsonApiUrl}. Falling back to puppeteer`,
                     err
                 );
-                allPositions = await getPositionsWithPuppeteer(
-                    raceNewId,
-                    teamIds,
-                    currentCode
-                );
+                try {
+                    allPositions = await getPositionsWithPuppeteer(
+                        raceNewId,
+                        teamIds,
+                        currentCode
+                    );
+                } catch (err) {
+                    console.log(
+                        'Failed getting positions with puppeteer.',
+                        err
+                    );
+                    continue;
+                }
             }
 
             let transaction;
@@ -1569,9 +1577,7 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
 
 async function getPositionsWithPuppeteer(raceId, teamIds, currentCode) {
     const url = `http://yb.tl/${currentCode}`;
-    const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const browser = await launchBrowser();
     const page = await browser.newPage();
     await page.goto(url, {
         waitUntil: 'networkidle2',

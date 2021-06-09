@@ -1,4 +1,3 @@
-const puppeteer = require('puppeteer');
 const AdmZip = require('adm-zip');
 const turf = require('@turf/turf');
 
@@ -18,10 +17,11 @@ const {
     createRace,
     allPositionsToFeatureCollection,
 } = require('../tracker-schema/gis_utils.js');
+const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3');
 
-const METASAIL_EVENT_URL = 'https://www.metasail.it/past/';
+const METASAIL_EVENT_URL = 'https://www.metasail.it';
 const NO_RACES_WARNING = 'No race still available';
 const METASAIL_SOURCE = 'METASAIL';
 
@@ -266,7 +266,7 @@ async function fetchRaceData(currentRaceUrl, browser) {
     }
 }
 
-function buildGateAndBuyoData(newRaceId, raceData, idgara) {
+function buildGateAndBuoyData(newRaceId, raceData, idgara) {
     const newGates = [];
     const newBuoys = [];
     const buoyIds = {};
@@ -577,7 +577,7 @@ async function normalizeRace(
     console.log('F');
     const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
     console.log('G');
-    const raceMetadata = createRace(
+    const raceMetadata = await createRace(
         id,
         name,
         eventId,
@@ -699,48 +699,69 @@ async function createFailureRecord(url, err) {
     );
 }
 
+async function getEventUrls(page) {
+    console.log('Getting event urls');
+    await page.goto(METASAIL_EVENT_URL, {
+        timeout: 0,
+        waitUntil: 'networkidle0',
+    });
+    const eventUrls = await page.evaluate(() => {
+        return [
+            ...document.querySelectorAll('#past-events > div > ul > ul > li>a'),
+        ]
+            .map((e) => e.getAttribute('href'))
+            .filter((url) => url);
+    });
+    return eventUrls;
+}
+
 (async () => {
     const dbConnected = await connect();
     if (!dbConnected) {
+        console.log("Couldn't connect to db.");
         process.exit();
     }
-
-    const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    const page = await browser.newPage();
-
-    const existingRaceObjects = await Metasail.MetasailRace.findAll({
-        attributes: ['id', 'original_id', 'url'],
-    });
-    const existingEventObjects = await Metasail.MetasailEvent.findAll({
-        attributes: ['id', 'original_id', 'url'],
-    });
-
+    let existingRaceObjects, existingEventObjects, browser, page, eventUrls;
     const existingEventIds = [];
     const existingEventIdsMap = {};
+    const existingRaceIds = [];
+    try {
+        existingRaceObjects = await Metasail.MetasailRace.findAll({
+            attributes: ['id', 'original_id', 'url'],
+        });
+        existingEventObjects = await Metasail.MetasailEvent.findAll({
+            attributes: ['id', 'original_id', 'url'],
+        });
+    } catch (err) {
+        console.log('Failed getting database metadata and races.', err);
+        process.exit();
+    }
     existingEventObjects.forEach((e) => {
         existingEventIds.push(e.original_id);
         existingEventIdsMap[e.original_id] = e.id;
     });
 
-    const existingRaceIds = [];
     existingRaceObjects.forEach((r) => {
         existingRaceIds.push(r.original_id);
     });
 
-    // Events decrement by 1
-    let counter = 159;
-    while (counter > 117) {
-        // Get Event
-        console.log('Loading page for event ' + counter + '.');
+    try {
+        browser = await launchBrowser();
+        page = await browser.newPage();
+        eventUrls = await getEventUrls(page);
+    } catch (err) {
+        console.log('Failed getting event urls', err);
+        process.exit();
+    }
+    for (const urlIndex in eventUrls) {
+        console.log(`Scraping event index ${urlIndex} of ${eventUrls.length}`);
 
-        const eventUrl = METASAIL_EVENT_URL + counter.toString();
+        const eventUrl = eventUrls[urlIndex];
+        const raceId = eventUrl.split('/').pop();
         try {
             const validEvent = await isValidEvent(eventUrl, page);
             if (!validEvent) {
                 console.log('No races associated with this event. Skipping.');
-                counter -= 1;
                 continue;
             }
 
@@ -755,13 +776,12 @@ async function createFailureRecord(url, err) {
             const now = new Date().getTime();
             if (startDate.getTime() > now || endDate.getTime() > now) {
                 console.log('Event starts or ends in future so skipping.');
-                counter -= 1;
                 continue;
             }
 
             const currentEvent = {
                 id: uuidv4(),
-                original_id: counter.toString(),
+                original_id: raceId,
                 name: eventName,
                 external_website: eventOfficialWebsite,
                 url: eventUrl,
@@ -769,12 +789,12 @@ async function createFailureRecord(url, err) {
                 start: startDate.getTime() / 1000,
                 end: endDate.getTime() / 1000,
             };
-            if (!existingEventIds.includes(counter.toString())) {
+            if (!existingEventIds.includes(raceId)) {
                 await Metasail.MetasailEvent.create(currentEvent, {
                     fields: Object.keys(currentEvent),
                 });
             } else {
-                currentEvent.id = existingEventIdsMap[counter.toString()];
+                currentEvent.id = existingEventIdsMap[raceId];
             }
 
             const raceUrls = await getRaceUrls(page, existingRaceIds);
@@ -801,7 +821,7 @@ async function createFailureRecord(url, err) {
                         newGates,
                         newBuoys,
                         buoyIds,
-                    } = buildGateAndBuyoData(newRaceId, raceData, idgara);
+                    } = buildGateAndBuoyData(newRaceId, raceData, idgara);
                     const { boatOldIdsToNewIds, newBoats } = buildBoatData(
                         newRaceId,
                         raceData,
@@ -865,7 +885,6 @@ async function createFailureRecord(url, err) {
             console.log(err);
             await createFailureRecord(eventUrl, err);
         }
-        counter -= 1;
     }
 
     page.close();

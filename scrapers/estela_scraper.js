@@ -14,9 +14,9 @@ const {
     createTurfPoint,
     allPositionsToFeatureCollection,
 } = require('../tracker-schema/gis_utils.js');
+const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const turf = require('@turf/turf');
-const puppeteer = require('puppeteer');
 const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
 
 // TODO: automate this limit.
@@ -31,19 +31,31 @@ const ESTELA_SOURCE = 'ESTELA';
         console.log("Couldn't connect to db.");
         process.exit();
     }
-
-    const existingFailureObjects = await Estela.EstelaFailedUrl.findAll({
-        attributes: ['url'],
-    });
-    const existingRaceObjects = await Estela.EstelaRace.findAll({
-        attributes: ['id', 'original_id', 'url', 'name'],
-    });
-    const existingClubObjects = await Estela.EstelaClub.findAll({
-        attributes: ['id', 'original_id'],
-    });
+    let existingFailureObjects,
+        existingRaceObjects,
+        existingClubObjects,
+        browser,
+        page;
     const existingClubs = {};
     const existingFailures = [];
     const existingRaces = [];
+    const allRaceUrls = [];
+
+    try {
+        existingFailureObjects = await Estela.EstelaFailedUrl.findAll({
+            attributes: ['url'],
+        });
+        existingRaceObjects = await Estela.EstelaRace.findAll({
+            attributes: ['id', 'original_id', 'url', 'name'],
+        });
+        existingClubObjects = await Estela.EstelaClub.findAll({
+            attributes: ['id', 'original_id'],
+        });
+    } catch (err) {
+        console.log('Failed getting database metadata and races.', err);
+        process.exit();
+    }
+
     existingClubObjects.forEach((c) => {
         existingClubs[c.original_id] = c.id;
     });
@@ -55,11 +67,13 @@ const ESTELA_SOURCE = 'ESTELA';
         existingRaces.push(r.url);
     });
 
-    const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    const page = await browser.newPage();
-    const allRaceUrls = [];
+    try {
+        browser = await launchBrowser();
+        page = await browser.newPage();
+    } catch (err) {
+        console.log('Failed in launching puppeteer.', err);
+        process.exit();
+    }
 
     // Pages increment by 1
     let counter = 1;
