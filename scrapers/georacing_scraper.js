@@ -2448,7 +2448,7 @@ async function saveData({
         await transaction.commit();
     } catch (err) {
         if (transaction) {
-            transaction.rollback();
+            await transaction.rollback();
         }
         // Rethrow the error so caller will catch it
         throw err;

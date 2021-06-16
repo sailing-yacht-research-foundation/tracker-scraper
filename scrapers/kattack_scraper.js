@@ -200,6 +200,18 @@ const mainScript = async () => {
         // Get the Feed data (feeds are like big races.) No need to check if this id exists in db since feedIds was already populated.
         for (const feedIndex in Object.keys(feedIds)) {
             const feedId = Object.keys(feedIds)[feedIndex];
+            const currentRaceTemp = instantiateOrReturnExisting(
+                existingObjects,
+                Kattack.Race,
+                feedId
+            );
+
+            if (!currentRaceTemp.shouldSave) {
+                console.log(
+                    `Race with feed id ${feedId} is already saved in database. Skipping...`
+                );
+                continue;
+            }
             console.log(`Scraping new feed id = ${feedId}`);
             const raceUrl =
                 'http://kws.kattack.com/GEPlayer/GMPosDisplay.aspx?FeedID=' +
@@ -257,17 +269,7 @@ const mainScript = async () => {
                     continue;
                 }
 
-                // BUG! Why is yachtclub almost always null?
-
                 console.log('Saving race...');
-                const currentRaceTemp = instantiateOrReturnExisting(
-                    existingObjects,
-                    Kattack.Race,
-                    feedId
-                );
-                if (!currentRaceTemp.shouldSave) {
-                    continue;
-                }
                 const currentRace = currentRaceTemp.obj;
 
                 currentRace.name = metadata.Name;
@@ -534,6 +536,7 @@ const mainScript = async () => {
                     });
                 }
 
+                let transaction;
                 try {
                     const newObjectsToSave = [
                         { objectType: Kattack.Race, objects: [currentRace] },
@@ -542,7 +545,7 @@ const mainScript = async () => {
                         { objectType: Kattack.Position, objects: positions },
                     ];
                     console.log('Bulk saving objects.');
-                    const transaction = await sequelize.transaction();
+                    transaction = await sequelize.transaction();
                     const saved = await bulkSave(newObjectsToSave, transaction);
                     if (!saved) {
                         throw new Error('Failed to save bulk data');
@@ -558,12 +561,10 @@ const mainScript = async () => {
                     );
                     await transaction.commit();
                 } catch (err) {
-                    console.log(err);
-
-                    await Kattack.FailedUrl.create(
-                        { id: uuidv4(), url: raceUrl, error: err.toString() },
-                        { fields: ['id', 'url', 'error'] }
-                    );
+                    if (transaction) {
+                        await transaction.rollback();
+                    }
+                    throw err;
                 }
                 console.log('Finished scraping race.');
             } catch (err) {
@@ -630,8 +631,19 @@ const mainScript = async () => {
                 'http://kws.kattack.com/BPlayer/BuoyPlayer.aspx?RaceID=' +
                 raceId;
 
+            const currentRaceTemp = instantiateOrReturnExisting(
+                existingObjects,
+                Kattack.Race,
+                raceId
+            );
+            if (!currentRaceTemp.shouldSave) {
+                console.log(
+                    `Race id ${raceId} is already saved in database. Skipping...`
+                );
+                continue;
+            }
             console.log(`Scraping new race with id ${raceId}`);
-            const transaction = await sequelize.transaction();
+            let transaction;
             try {
                 const raceMetadataRequest = await axios({
                     method: 'post',
@@ -679,16 +691,6 @@ const mainScript = async () => {
                 );
                 if (todaysDate < startDate || todaysDate < stopDate) {
                     console.log('This race is in the future so lets skip it.');
-                    continue;
-                }
-
-                console.log(`Getting race ${raceId}`);
-                const currentRaceTemp = instantiateOrReturnExisting(
-                    existingObjects,
-                    Kattack.Race,
-                    raceId
-                );
-                if (!currentRaceTemp.shouldSave) {
                     continue;
                 }
                 const currentRace = currentRaceTemp.obj;
@@ -930,6 +932,7 @@ const mainScript = async () => {
                     { objectType: Kattack.Position, objects: positions },
                 ];
                 console.log('Bulk saving objects.');
+                transaction = await sequelize.transaction();
                 const saved = await bulkSave(newObjectsToSave, transaction);
                 if (!saved) {
                     throw new Error('Failed to save bulk data');
@@ -945,7 +948,9 @@ const mainScript = async () => {
                 );
                 await transaction.commit();
             } catch (err) {
-                transaction.rollback();
+                if (transaction) {
+                    await transaction.rollback();
+                }
                 console.log(err);
                 await Kattack.FailedUrl.create(
                     { id: uuidv4(), url: raceUrl, error: err.toString() },

@@ -26,9 +26,13 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
 // Get all events.
 (async () => {
     await connect();
-    let existingObjects, browser, page;
+    let existingObjects, existingFailedUrls, browser, page;
     try {
         existingObjects = await findExistingObjects(TracTrac);
+        existingFailedUrls = await TracTrac.FailedUrl.findAll({
+            attributes: ['url'],
+            raw: true,
+        });
     } catch (err) {
         console.log('Failed getting database metadata and races.', err);
         process.exit();
@@ -42,7 +46,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
         process.exit();
     }
 
-    const formatAndSaveRace = function (event, raceDetails) {
+    const formatAndSaveRace = function (event, raceDetails, raceObj) {
         const racesToSave = [];
         const classesToSave = [];
         const raceClassesToSave = [];
@@ -50,39 +54,27 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
         const controlPointsToSave = [];
         const controlPointPositionsToSave = [];
         const routesToSave = [];
-
         const competitorsToSave = [];
         const competitorPassingsToSave = [];
         const competitorResultsToSave = [];
         const competitorPositionsToSave = [];
-
-        const raceObj = instantiateOrReturnExisting(
-            existingObjects,
-            TracTrac.Race,
-            raceDetails.race.id
-        );
         const raceObjSave = raceObj.obj;
 
-        if (raceObj.shouldSave) {
-            // Default we expect event to be null because club races have clubs not events.
-            raceObjSave.event = null;
-            raceObjSave.event_original_id = null;
-            raceObjSave.name = raceDetails.race.name;
-            raceObjSave.url = raceDetails.race.url_html;
-            raceObjSave.tracking_start = raceDetails.race.tracking_starttime;
-            raceObjSave.tracking_stop = raceDetails.race.tracking_endtime;
-            raceObjSave.race_start = raceDetails.race.race_starttime;
-            raceObjSave.race_end = raceDetails.assorted.endtime;
-            raceObjSave.status = raceDetails.race.status;
-            raceObjSave.lon = raceDetails.race.lon;
-            raceObjSave.lat = raceDetails.race.lat;
-            raceObjSave.calculated_start_time =
-                raceDetails.assorted.calculated_start_time;
-            raceObjSave.race_handicap = raceDetails.assorted.p_race_handicap;
-        } else {
-            console.log('Already saved so skipping.');
-            return null;
-        }
+        raceObjSave.event = null;
+        raceObjSave.event_original_id = null;
+        raceObjSave.name = raceDetails.race.name;
+        raceObjSave.url = raceDetails.race.url_html;
+        raceObjSave.tracking_start = raceDetails.race.tracking_starttime;
+        raceObjSave.tracking_stop = raceDetails.race.tracking_endtime;
+        raceObjSave.race_start = raceDetails.race.race_starttime;
+        raceObjSave.race_end = raceDetails.assorted.endtime;
+        raceObjSave.status = raceDetails.race.status;
+        raceObjSave.lon = raceDetails.race.lon;
+        raceObjSave.lat = raceDetails.race.lat;
+        raceObjSave.calculated_start_time =
+            raceDetails.assorted.calculated_start_time;
+        raceObjSave.race_handicap = raceDetails.assorted.p_race_handicap;
+
         if (event !== null) {
             raceObjSave.event = event.id;
             raceObjSave.event_original_id = event.original_id;
@@ -391,11 +383,11 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
         // console.log(raceMeta)
         // url_html is the race url to view.
 
-        if (raceMeta.params_json !== undefined) {
-            // const raceParamsRequest = await axios.get(raceMeta.params_json);
-            // This is HUGE
-            // console.log(Object.keys(raceParamsRequest.data))
-            /**
+        // if (raceMeta.params_json !== undefined) {
+        // const raceParamsRequest = await axios.get(raceMeta.params_json);
+        // This is HUGE
+        // console.log(Object.keys(raceParamsRequest.data))
+        /**
                      * [ 'parameters',
                         'dataservers',
                         'maps',
@@ -435,258 +427,283 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                         'course_area',
                         'raceTimeZone' ]
                      */
-        } else {
-            const raceParamsRequest = await axios.get(raceMeta.params_url);
+        // } else {
+        //     const raceParamsRequest = await axios.get(raceMeta.params_url);
 
-            // TODO: Do I need this?
-            const lines = raceParamsRequest.data.split('\n');
-            const values = {};
-            lines.forEach((l) => {
-                const kv = l.split(':');
-                if (kv.length > 0) {
-                    values[kv[0]] = kv[1];
-                }
-            });
-        }
+        //     // TODO: Do I need this?
+        //     const lines = raceParamsRequest.data.split('\n');
+        //     const values = {};
+        //     lines.forEach((l) => {
+        //         const kv = l.split(':');
+        //         if (kv.length > 0) {
+        //             values[kv[0]] = kv[1];
+        //         }
+        //     });
+        // }
 
         try {
             console.log(`Scraping race with url ${raceMeta.url_html}`);
             await page.goto(raceMeta.url_html, { waitUntil: 'networkidle2' });
+            console.log('Waiting for time control play');
             await page.waitForSelector('#time-control-play');
             await page.click('#time-control-play');
+            console.log('Waiting for section race');
             await page.waitForSelector('#contTop > div > section.race');
             const waitForFullyLoaded =
                 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"';
-            let skip = false;
-            await page
-                .waitForFunction(waitForFullyLoaded, { timeout: 60000 })
-                .catch((e) => {
-                    // TODO: save as failed race
-                    console.log('Skipping');
-                    console.log(raceMeta.url_html);
-                    skip = true;
-                });
-            if (!skip) {
-                console.log('Loaded race, beginning to parse from website.');
-                const raceDetails = await page.evaluate(() => {
-                    const context = document.querySelector(
-                        '#contTop > div > section.race'
-                    )[
-                        Object.keys(
-                            document.querySelector(
-                                '#contTop > div > section.race'
-                            )
-                        )[0]
-                    ][
-                        Object.keys(
-                            document.querySelector(
-                                '#contTop > div > section.race'
-                            )[
-                                Object.keys(
-                                    document.querySelector(
-                                        '#contTop > div > section.race'
-                                    )
-                                )[0]
-                            ]
-                        )[0]
-                    ].context;
-                    const race = context.$component.raceData.race;
-                    const name = race.name;
-                    const originalId = race.id;
-                    const calculatedStartTime = race.calculatedStartTime;
-                    const startTime = race.raceStartTime;
-                    const endTime = race.raceEndTime;
-                    const trackingStartTime = race.trackingStartTime;
-                    const trackingEndTime = race.trackingEndTime;
-                    const extent = race.extent;
-                    const timeZone = race.parameterSet.parameters.eventTimezone;
-                    const raceDateS = race.readableDate;
-                    const raceDateTimestamp = race.notReadableDate;
-                    const classes = race.parameterSet.parameters.classes;
-                    const params = race.parameterSet.parameters.parameters;
-                    const routes = Object.values(race.routes).map((route) => {
-                        const routeName = route.name;
-                        const routeId = route.id;
-                        const controls = [];
-                        route.controls.forEach((c) => {
-                            const originalId = c.id;
-                            const name = c.name;
+            console.log('Waiting for time slider to finish');
+            await page.waitForFunction(waitForFullyLoaded, { timeout: 120000 });
+            console.log('Loaded race, beginning to parse from website.');
+            const raceDetails = await page.evaluate(() => {
+                const context = document.querySelector(
+                    '#contTop > div > section.race'
+                )[
+                    Object.keys(
+                        document.querySelector('#contTop > div > section.race')
+                    )[0]
+                ][
+                    Object.keys(
+                        document.querySelector('#contTop > div > section.race')[
+                            Object.keys(
+                                document.querySelector(
+                                    '#contTop > div > section.race'
+                                )
+                            )[0]
+                        ]
+                    )[0]
+                ].context;
+                const race = context.$component.raceData.race;
+                const name = race.name;
+                const originalId = race.id;
+                const calculatedStartTime = race.calculatedStartTime;
+                const startTime = race.raceStartTime;
+                const endTime = race.raceEndTime;
+                const trackingStartTime = race.trackingStartTime;
+                const trackingEndTime = race.trackingEndTime;
+                const extent = race.extent;
+                const timeZone = race.parameterSet.parameters.eventTimezone;
+                const raceDateS = race.readableDate;
+                const raceDateTimestamp = race.notReadableDate;
+                const classes = race.parameterSet.parameters.classes;
+                const params = race.parameterSet.parameters.parameters;
+                const routes = Object.values(race.routes).map((route) => {
+                    const routeName = route.name;
+                    const routeId = route.id;
+                    const controls = [];
+                    route.controls.forEach((c) => {
+                        const originalId = c.id;
+                        const name = c.name;
 
-                            const controlPoints = [];
-                            c.controlPoints.forEach((cp) => {
-                                const controlId = cp.control.id;
-                                const controlName = cp.control.name;
-                                const positions = cp.positions.positions;
-                                controlPoints.push({
-                                    control_id: controlId,
-                                    control_name: controlName,
-                                    positions,
-                                });
-                            });
-                            controls.push({
-                                original_id: originalId,
-                                name,
-                                control_points: controlPoints,
+                        const controlPoints = [];
+                        c.controlPoints.forEach((cp) => {
+                            const controlId = cp.control.id;
+                            const controlName = cp.control.name;
+                            const positions = cp.positions.positions;
+                            controlPoints.push({
+                                control_id: controlId,
+                                control_name: controlName,
+                                positions,
                             });
                         });
-                        return {
-                            route_name: routeName,
-                            route_id: routeId,
-                            controls,
-                        };
-                        // Legs are all derrived values I think.
-                        //    let legs = []
-                        //    route.legs.forEach(l => {
-
-                        //    })
+                        controls.push({
+                            original_id: originalId,
+                            name,
+                            control_points: controlPoints,
+                        });
                     });
-
-                    const pEventId = race.parameterSet.parameters.eventId;
-                    const pEventSt =
-                        race.parameterSet.parameters.eventStartTime;
-                    const pEventEt = race.parameterSet.parameters.eventEndTime;
-                    const pRaceHandicap =
-                        race.parameterSet.parameters.raceHandicapSystem;
-                    const pWebId = race.parameterSet.parameters.webId;
-                    const pCourseArea =
-                        race.parameterSet.parameters.course_area;
-
-                    const assorted = {
-                        params,
-                        classes,
-                        routes,
-                        extent,
-                        end_time: endTime,
-                        calculated_start_time: calculatedStartTime,
-                        p_event_id: pEventId,
-                        p_event_st: pEventSt,
-                        p_event_et: pEventEt,
-                        p_web_id: pWebId,
-                        p_course_area: pCourseArea,
-                        p_race_handicap: pRaceHandicap,
+                    return {
+                        route_name: routeName,
+                        route_id: routeId,
+                        controls,
                     };
+                    // Legs are all derrived values I think.
+                    //    let legs = []
+                    //    route.legs.forEach(l => {
 
-                    const competitorsParams = Object.values(
-                        race.parameterSet.parameters.competitors
-                    );
+                    //    })
+                });
 
-                    const competitorsRace = [];
-                    Object.values(race.raceCompetitors).forEach((c) => {
-                        competitorsRace.push({
-                            classId: c.competitorClass.id,
-                            className: c.competitorClass.name,
-                            description: c.description,
-                            finishTime: c.finishTime,
-                            firstName: c.firstName,
-                            handicapToD: c.handicapToD,
-                            handicapToT: c.handicapToT,
-                            id: c.id,
-                            lastName: c.lastName,
-                            name: c.name,
-                            nameAlias: c.nameAlias,
-                            nationality: c.nationality,
-                            nonCompeting: c.nonCompeting,
-                            boatName: c.properties.boatName,
-                            boatId: c.properties.boatId,
-                            shortAlias: c.shortAlias,
-                            shortName: c.shortName,
-                            standingPos: c.standingPos,
-                            startTime: c.startTime,
-                            statusId: c.status.id,
-                            statusCodePointAt: c.statusCodePointAt,
-                            statusName: c.statusName,
-                            statusDescription: c.statusDesc,
-                            statusFull: c.status.full,
-                            statusTime: c.statusTime,
-                            stopTime: c.stopTime,
+                const pEventId = race.parameterSet.parameters.eventId;
+                const pEventSt = race.parameterSet.parameters.eventStartTime;
+                const pEventEt = race.parameterSet.parameters.eventEndTime;
+                const pRaceHandicap =
+                    race.parameterSet.parameters.raceHandicapSystem;
+                const pWebId = race.parameterSet.parameters.webId;
+                const pCourseArea = race.parameterSet.parameters.course_area;
+
+                const assorted = {
+                    params,
+                    classes,
+                    routes,
+                    extent,
+                    end_time: endTime,
+                    calculated_start_time: calculatedStartTime,
+                    p_event_id: pEventId,
+                    p_event_st: pEventSt,
+                    p_event_et: pEventEt,
+                    p_web_id: pWebId,
+                    p_course_area: pCourseArea,
+                    p_race_handicap: pRaceHandicap,
+                };
+
+                const competitorsParams = Object.values(
+                    race.parameterSet.parameters.competitors
+                );
+                const competitorsRace = [];
+                Object.values(race.raceCompetitors).forEach((c) => {
+                    competitorsRace.push({
+                        classId: c.competitorClass.id,
+                        className: c.competitorClass.name,
+                        description: c.description,
+                        finishTime: c.finishTime,
+                        firstName: c.firstName,
+                        handicapToD: c.handicapToD,
+                        handicapToT: c.handicapToT,
+                        id: c.id,
+                        lastName: c.lastName,
+                        name: c.name,
+                        nameAlias: c.nameAlias,
+                        nationality: c.nationality,
+                        nonCompeting: c.nonCompeting,
+                        boatName: c.properties.boatName,
+                        boatId: c.properties.boatId,
+                        shortAlias: c.shortAlias,
+                        shortName: c.shortName,
+                        standingPos: c.standingPos,
+                        startTime: c.startTime,
+                        statusId: c.status.id,
+                        statusCodePointAt: c.statusCodePointAt,
+                        statusName: c.statusName,
+                        statusDescription: c.statusDesc,
+                        statusFull: c.status.full,
+                        statusTime: c.statusTime,
+                        stopTime: c.stopTime,
+                    });
+                });
+
+                const teamPositionData = Object.values(
+                    context.$component.raceData.resultItems
+                ).map((resultItem) => {
+                    const team = resultItem.team.id;
+                    const competitorId = resultItem.id;
+                    const shortName = resultItem.shortName;
+                    const timeElapsed = resultItem.timeElapsed;
+                    const startTime = resultItem.startTime;
+                    const stopTime = resultItem.stopTime;
+                    const finishTime = resultItem.finishTime;
+                    const status = resultItem.status;
+
+                    let passings = null;
+                    if (resultItem.controlPassings !== null) {
+                        passings = resultItem.controlPassings.map((p) => {
+                            return {
+                                controlId: p.control.id,
+                                passingTime: p.passingTime,
+                                realPassingTime: p.realPassingTime,
+                                pos: p.pos,
+                                timeFromStart: p.timeFromStart,
+                            };
                         });
-                    });
+                    }
 
-                    const teamPositionData = Object.values(
-                        context.$component.raceData.resultItems
-                    ).map((resultItem) => {
-                        const positions = resultItem.positions.positions;
-                        const team = resultItem.team.id;
-                        const competitorId = resultItem.id;
-                        const shortName = resultItem.shortName;
-                        const timeElapsed = resultItem.timeElapsed;
-                        const startTime = resultItem.startTime;
-                        const stopTime = resultItem.stopTime;
-                        const finishTime = resultItem.finishTime;
-                        const status = resultItem.status;
-
-                        let passings = null;
-                        if (resultItem.controlPassings !== null) {
-                            passings = resultItem.controlPassings.map((p) => {
-                                return {
-                                    controlId: p.control.id,
-                                    passingTime: p.passingTime,
-                                    realPassingTime: p.realPassingTime,
-                                    pos: p.pos,
-                                    timeFromStart: p.timeFromStart,
-                                };
-                            });
-                        }
-
-                        const groupLeader = resultItem.groupLeader;
-                        const couseTimeHandicap = resultItem.courseTimeHandicap;
-                        const startLineAnalysis = resultItem.startLineAnalysis;
-
-                        return {
-                            group_leader: groupLeader,
-                            competitor_id: competitorId,
-                            course_time_handicap: couseTimeHandicap,
-                            start_line_analysis: startLineAnalysis,
-                            positions,
-                            team,
-                            short_name: shortName,
-                            time_elapsed: timeElapsed,
-                            start_time: startTime,
-                            stop_time: stopTime,
-                            finish_time: finishTime,
-                            status,
-                            passings,
-                        };
-                    });
+                    const groupLeader = resultItem.groupLeader;
+                    const couseTimeHandicap = resultItem.courseTimeHandicap;
+                    const startLineAnalysis = resultItem.startLineAnalysis;
 
                     return {
-                        competitors_params: competitorsParams,
-                        competitors_race: competitorsRace,
-                        team_position_data: teamPositionData,
-                        assorted,
-                        race_date_timestamp: raceDateTimestamp,
-                        name,
-                        original_id: originalId,
-                        calculated_start_time: calculatedStartTime,
+                        group_leader: groupLeader,
+                        competitor_id: competitorId,
+                        course_time_handicap: couseTimeHandicap,
+                        start_line_analysis: startLineAnalysis,
+                        team,
+                        short_name: shortName,
+                        time_elapsed: timeElapsed,
                         start_time: startTime,
-                        end_time: endTime,
-                        tracking_start_time: trackingStartTime,
-                        tracking_end_time: trackingEndTime,
-                        time_zone: timeZone,
-                        race_date_s: raceDateS,
+                        stop_time: stopTime,
+                        finish_time: finishTime,
+                        status,
+                        passings,
                     };
                 });
-                console.log('Finished parse.');
-                raceDetails.race = raceMeta;
-                return raceDetails;
-            } else {
-                return null;
+
+                return {
+                    competitors_params: competitorsParams,
+                    competitors_race: competitorsRace,
+                    team_position_data: teamPositionData,
+                    assorted,
+                    race_date_timestamp: raceDateTimestamp,
+                    name,
+                    original_id: originalId,
+                    calculated_start_time: calculatedStartTime,
+                    start_time: startTime,
+                    end_time: endTime,
+                    tracking_start_time: trackingStartTime,
+                    tracking_end_time: trackingEndTime,
+                    time_zone: timeZone,
+                    race_date_s: raceDateS,
+                };
+            });
+            // Get the positions by batch because there are races that are too big and puppeteer evaluate is limited to 100mb
+            // A sample race with huge positions data is https://live.tractrac.com/viewer/index.html?target=https://em.club.tractrac.com/events/399b7480-6e75-0137-f0a9-60a44ce903c3/races/0291cfa0-86c1-0137-b1c5-10bf48d758ce.json
+            for (const teamPositionIndex in raceDetails.team_position_data) {
+                const teamData =
+                    raceDetails.team_position_data[teamPositionIndex];
+                const competitorId = teamData?.competitor_id;
+                const competitorPositions = await page.evaluate(
+                    (competitorId) => {
+                        const context = document.querySelector(
+                            '#contTop > div > section.race'
+                        )[
+                            Object.keys(
+                                document.querySelector(
+                                    '#contTop > div > section.race'
+                                )
+                            )[0]
+                        ][
+                            Object.keys(
+                                document.querySelector(
+                                    '#contTop > div > section.race'
+                                )[
+                                    Object.keys(
+                                        document.querySelector(
+                                            '#contTop > div > section.race'
+                                        )
+                                    )[0]
+                                ]
+                            )[0]
+                        ].context;
+                        return context.$component.raceData.resultItems[
+                            competitorId
+                        ]?.positions?.positions;
+                    },
+                    competitorId
+                );
+                teamData.positions = competitorPositions;
             }
+            console.log('Finished parse.');
+            raceDetails.race = raceMeta;
+            return raceDetails;
         } catch (err) {
             console.log('Failed parsing race', err);
             await TracTrac.FailedUrl.create({
                 id: uuidv4(),
                 error: err.toString(),
-                url: JSON.stringify(raceMeta.url_html),
+                url: raceMeta.url_html,
             });
             return null;
         }
     };
 
     // Events and clubs are basically the same in this schema. So we need to check all races associated with an event or a club.
-    const allEventsRequest = await axios.get(
-        'http://live.tractrac.com/rest-api/events.json'
-    );
+    let allEventsRequest;
+    try {
+        allEventsRequest = await axios.get(
+            'http://live.tractrac.com/rest-api/events.json'
+        );
+    } catch (err) {
+        console.log('Failed getting events.', err);
+        process.exit();
+    }
     const allEvents = allEventsRequest.data.events;
 
     for (const eventIndex in allEvents) {
@@ -739,7 +756,17 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
         const eventHasEnded = true;
 
         if (eventObject.type === 'Sailing' && eventHasEnded) {
-            console.log('Attempting new event.');
+            if (
+                existingFailedUrls.some((i) => i.url === eventObject.races_url)
+            ) {
+                console.log(
+                    `Existing failed url ${eventObject.races_url}. Check database table for error message.`
+                );
+                continue;
+            }
+            console.log(
+                `Getting races from event url ${eventObject.races_url}`
+            );
             let racesRequest = null;
             try {
                 racesRequest = await axios.get(eventObject.races_url);
@@ -747,7 +774,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                 await TracTrac.FailedUrl.create({
                     id: uuidv4(),
                     error: err.toString(),
-                    url: JSON.stringify(eventObject),
+                    url: eventObject.races_url,
                 });
                 console.log(err);
                 continue;
@@ -757,6 +784,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
             const races = racesRequest.data.races;
 
             if (eventDetails === undefined) {
+                console.log('No event details. Skipping');
                 continue;
             }
 
@@ -823,19 +851,68 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                     eventDetails.sap_leaderboard_name;
                 eventSaveObj.lat = eventObject.lat;
                 eventSaveObj.lon = eventObject.lon;
-                await TracTrac.Event.create(eventSaveObj, {
-                    fields: Object.keys(eventSaveObj),
-                });
+                try {
+                    await TracTrac.Event.create(eventSaveObj, {
+                        fields: Object.keys(eventSaveObj),
+                    });
+                } catch (err) {
+                    console.log('Failed saving event', err);
+                    await TracTrac.FailedUrl.create({
+                        id: uuidv4(),
+                        error: err.toString(),
+                        url: JSON.stringify(eventObject),
+                    });
+                    continue;
+                }
             }
 
+            if (races.length === 0) {
+                console.log('No races on event');
+                continue;
+            }
             console.log('Got race list. Going through each race now.');
             for (const raceIndex in races) {
                 const raceObject = races[raceIndex];
-                const details = await parseRace(raceObject);
+                if (
+                    existingFailedUrls.some(
+                        (i) => i.url === raceObject.url_html
+                    )
+                ) {
+                    console.log(
+                        `Existing failed url ${raceObject.url_html}. Check database table for error message.`
+                    );
+                    continue;
+                }
+                let details;
+                const raceToFormat = instantiateOrReturnExisting(
+                    existingObjects,
+                    TracTrac.Race,
+                    raceObject.id
+                );
+
+                if (!raceToFormat.shouldSave) {
+                    console.log(
+                        `Already saved race with id ${raceObject.id}. Skipping`
+                    );
+                    continue;
+                }
+                try {
+                    console.log('Parsing race.');
+                    details = await parseRace(raceObject);
+                } catch (err) {
+                    console.log('Failed parsing race', err);
+                    await TracTrac.FailedUrl.create({
+                        id: uuidv4(),
+                        error: err.toString(),
+                        url: raceObject.url_html,
+                    });
+                    continue;
+                }
                 if (details !== null && details !== undefined) {
                     const thingsToSave = formatAndSaveRace(
                         eventSaveObj,
-                        details
+                        details,
+                        raceToFormat
                     );
                     console.log('Formatting objects.');
                     if (thingsToSave != null) {
@@ -886,9 +963,10 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                                 objects: thingsToSave.routesToSave,
                             },
                         ];
+                        let transaction;
                         try {
                             console.log('Bulk saving objects.');
-                            const transaction = await sequelize.transaction();
+                            transaction = await sequelize.transaction();
                             const saved = await bulkSave(
                                 newObjectsToSave,
                                 transaction
@@ -909,6 +987,9 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                             );
                             await transaction.commit();
                         } catch (err) {
+                            if (transaction) {
+                                await transaction.rollback();
+                            }
                             console.log(err);
                             await TracTrac.FailedUrl.create({
                                 id: uuidv4(),
@@ -925,13 +1006,25 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
     }
 
     // Clubs
-    const allClubsRequest = await axios.get(
-        'http://live.tractrac.com/rest-api/clubs.json'
-    );
+    let allClubsRequest;
+    try {
+        allClubsRequest = await axios.get(
+            'http://live.tractrac.com/rest-api/clubs.json'
+        );
+    } catch (err) {
+        console.log('Failed getting clubs.', err);
+        process.exit();
+    }
     const allClubs = allClubsRequest.data.events;
 
     for (const clubIndex in allClubs) {
         const clubObject = allClubs[clubIndex];
+        if (existingFailedUrls.some((i) => i.url === clubObject.races_url)) {
+            console.log(
+                `Existing failed url ${clubObject.races_url}. Check database table for error message.`
+            );
+            continue;
+        }
 
         // TODO: check if club exists.
 
@@ -954,12 +1047,16 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
         clubObject.email = clubObject.races_url.split('user=')[1];
 
         if (clubObject.email !== undefined) {
-            await TracTrac.Email.create({
-                id: uuidv4(),
-                email: clubObject.email,
-                country: clubObject.country,
-                source: 'TracTrac',
-            });
+            try {
+                await TracTrac.Email.create({
+                    id: uuidv4(),
+                    email: clubObject.email,
+                    country: clubObject.country,
+                    source: 'TracTrac',
+                });
+            } catch (err) {
+                console.log('Failed saving email', err);
+            }
         }
         let clubRacesRequest;
         try {
@@ -1017,11 +1114,28 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
             raceObject.event_id = null;
 
             if (raceObject.event_type === 'Sailing') {
+                const raceToFormat = instantiateOrReturnExisting(
+                    existingObjects,
+                    TracTrac.Race,
+                    raceObject.id
+                );
+
+                if (!raceToFormat.shouldSave) {
+                    console.log(
+                        `Already saved race with id ${raceObject.id}. Skipping`
+                    );
+                    continue;
+                }
                 const details = await parseRace(raceObject);
 
                 if (details !== null && details !== undefined) {
-                    const thingsToSave = formatAndSaveRace(null, details);
+                    const thingsToSave = formatAndSaveRace(
+                        null,
+                        details,
+                        raceToFormat
+                    );
 
+                    let transaction;
                     try {
                         if (thingsToSave != null) {
                             console.log('Formatting objects.');
@@ -1077,7 +1191,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                                 },
                             ];
                             console.log('Bulk saving objects.');
-                            const transaction = await sequelize.transaction();
+                            transaction = await sequelize.transaction();
                             const saved = await bulkSave(
                                 newObjectsToSave,
                                 transaction
@@ -1099,17 +1213,24 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                             await transaction.commit();
                         }
                     } catch (err) {
+                        if (transaction) {
+                            await transaction.rollback();
+                        }
                         console.log(err);
                         await TracTrac.FailedUrl.create({
                             id: uuidv4(),
                             error: JSON.stringify(err.toString()),
-                            url: JSON.stringify(raceObject.url_html),
+                            url: raceObject.url_html,
                         });
                     }
                 }
             }
         }
     }
+    console.log('Finished scraping all races');
+    page.close();
+    browser.close();
+    process.exit();
 })();
 
 const normalizeRace = async (

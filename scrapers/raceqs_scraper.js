@@ -232,7 +232,7 @@ async function fetchUsersPositions(newEventStat, users, eventTimeString) {
     for (const i in users) {
         const user = users[i];
         const positionUrl = `https://raceqs.com/rest/data?userId=${user.original_id}&dt=${eventTimeString}`;
-        console.log({ positionUrl });
+        console.log(`Getting positionUrl ${positionUrl}`);
 
         const positionsRequest = await axios.get(positionUrl);
         const uid = user.original_id;
@@ -269,6 +269,7 @@ async function fetchUsersPositions(newEventStat, users, eventTimeString) {
             };
             positions.push(position);
         });
+        console.log('positions length after appending', positions.length);
     }
     return positions;
 }
@@ -292,6 +293,7 @@ async function normalizeRace({
     console.log(`Position length: ${allPositions.length}`);
     if (allPositions.length === 0) {
         console.log('No positions so skipping.');
+        return;
     }
 
     const id = event.id;
@@ -424,7 +426,17 @@ async function saveData({
     if (!dbConnected) {
         process.exit();
     }
-    const existingObjects = await findExistingObjects(RaceQs);
+    let existingObjects, existingFailedUrls;
+    try {
+        existingObjects = await findExistingObjects(RaceQs);
+        existingFailedUrls = await RaceQs.FailedUrl.findAll({
+            attributes: ['url'],
+            raw: true,
+        });
+    } catch (err) {
+        console.log('Failed getting races and failed url in database.', err);
+        process.exit();
+    }
 
     const BEGIN_COUNTING_AT = 100000;
     // const BEGIN_COUNTING_AT = 62880;
@@ -435,6 +447,13 @@ async function saveData({
         const eventUrl =
             'https://raceqs.com/tv-beta/tv.htm#eventId=' + pageIndex;
 
+        if (existingFailedUrls.some((i) => i.url === eventUrl)) {
+            console.log(
+                `Existing failed url ${eventUrl}. Check database table for error message.`
+            );
+            pageIndex--;
+            continue;
+        }
         try {
             const eventId = pageIndex;
             console.log('Getting new race.');
@@ -531,4 +550,6 @@ async function saveData({
 
         pageIndex--;
     }
+    console.log('Finished scraping all events and races.');
+    process.exit();
 })();

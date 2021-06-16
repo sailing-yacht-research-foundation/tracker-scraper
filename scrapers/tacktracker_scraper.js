@@ -551,7 +551,7 @@ const mainScript = async () => {
         }
         const raceUrl = raceIdHash[raceId];
         console.log(`Race url is ${raceUrl}`);
-        const transaction = await sequelize.transaction();
+        let transaction;
         try {
             const raceFormData = new FormData();
             raceFormData.append('raceId', raceId);
@@ -588,6 +588,7 @@ const mainScript = async () => {
             console.log('Unzipped race data.');
 
             if (raceDataJson.EventData === undefined) {
+                console.log('No event data. Skipping');
                 continue;
             }
             const eventData = raceDataJson.EventData.TackTracker.Event;
@@ -869,6 +870,7 @@ const mainScript = async () => {
                 },
             ];
             console.log('Bulk saving objects.');
+            transaction = await sequelize.transaction();
             const saved = await bulkSave(newObjectsToSave, transaction);
             if (!saved) {
                 throw new Error('Failed to save bulk data');
@@ -885,7 +887,9 @@ const mainScript = async () => {
             await transaction.commit();
             console.log('Finished saving race');
         } catch (err) {
-            await transaction.rollback();
+            if (transaction) {
+                await transaction.rollback();
+            }
             console.log(err);
             await TackTracker.TackTrackerFailedUrl.create({
                 id: uuidv4(),
@@ -894,6 +898,8 @@ const mainScript = async () => {
             });
         }
     }
+    console.log('Finished scraping all races.');
+    process.exit();
 };
 
 const normalizeRace = async (
@@ -998,6 +1004,7 @@ const normalizeRace = async (
 
     await SearchSchema.RaceMetadata.create(raceMetadata, {
         fields: Object.keys(raceMetadata),
+        transaction,
     });
     console.log('Uploading to s3');
     await uploadGeoJsonToS3(
