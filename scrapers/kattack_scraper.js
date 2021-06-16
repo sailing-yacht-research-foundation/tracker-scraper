@@ -257,17 +257,20 @@ const mainScript = async () => {
                     continue;
                 }
 
-                // BUG! Why is yachtclub almost always null?
-
-                console.log('Saving race...');
                 const currentRaceTemp = instantiateOrReturnExisting(
                     existingObjects,
                     Kattack.Race,
                     feedId
                 );
+
                 if (!currentRaceTemp.shouldSave) {
+                    console.log(
+                        'Race is already saved in database. Skipping...'
+                    );
                     continue;
                 }
+
+                console.log('Saving race...');
                 const currentRace = currentRaceTemp.obj;
 
                 currentRace.name = metadata.Name;
@@ -534,6 +537,7 @@ const mainScript = async () => {
                     });
                 }
 
+                let transaction;
                 try {
                     const newObjectsToSave = [
                         { objectType: Kattack.Race, objects: [currentRace] },
@@ -542,7 +546,7 @@ const mainScript = async () => {
                         { objectType: Kattack.Position, objects: positions },
                     ];
                     console.log('Bulk saving objects.');
-                    const transaction = await sequelize.transaction();
+                    transaction = await sequelize.transaction();
                     const saved = await bulkSave(newObjectsToSave, transaction);
                     if (!saved) {
                         throw new Error('Failed to save bulk data');
@@ -558,12 +562,10 @@ const mainScript = async () => {
                     );
                     await transaction.commit();
                 } catch (err) {
-                    console.log(err);
-
-                    await Kattack.FailedUrl.create(
-                        { id: uuidv4(), url: raceUrl, error: err.toString() },
-                        { fields: ['id', 'url', 'error'] }
-                    );
+                    if (transaction) {
+                        await transaction.rollback();
+                    }
+                    throw err;
                 }
                 console.log('Finished scraping race.');
             } catch (err) {
@@ -631,7 +633,7 @@ const mainScript = async () => {
                 raceId;
 
             console.log(`Scraping new race with id ${raceId}`);
-            const transaction = await sequelize.transaction();
+            let transaction;
             try {
                 const raceMetadataRequest = await axios({
                     method: 'post',
@@ -689,6 +691,9 @@ const mainScript = async () => {
                     raceId
                 );
                 if (!currentRaceTemp.shouldSave) {
+                    console.log(
+                        'Race is already saved in database. Skipping...'
+                    );
                     continue;
                 }
                 const currentRace = currentRaceTemp.obj;
@@ -930,6 +935,7 @@ const mainScript = async () => {
                     { objectType: Kattack.Position, objects: positions },
                 ];
                 console.log('Bulk saving objects.');
+                transaction = await sequelize.transaction();
                 const saved = await bulkSave(newObjectsToSave, transaction);
                 if (!saved) {
                     throw new Error('Failed to save bulk data');
@@ -945,7 +951,9 @@ const mainScript = async () => {
                 );
                 await transaction.commit();
             } catch (err) {
-                transaction.rollback();
+                if (transaction) {
+                    await transaction.rollback();
+                }
                 console.log(err);
                 await Kattack.FailedUrl.create(
                     { id: uuidv4(), url: raceUrl, error: err.toString() },
