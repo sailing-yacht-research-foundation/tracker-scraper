@@ -26,9 +26,13 @@ const YACHBOT_SOURCE = 'YACHTBOT';
 
 const mainScript = async () => {
     await connect();
-    let existingObjects, browser, page;
+    let existingObjects, existingFailedUrls, browser, page;
     try {
         existingObjects = await findExistingObjects(YachtBot);
+        existingFailedUrls = await YachtBot.FailedUrl.findAll({
+            attributes: ['url'],
+            raw: true,
+        });
     } catch (err) {
         console.log('Failed getting database metadata and races.', err);
         process.exit();
@@ -59,11 +63,16 @@ const mainScript = async () => {
             console.log('Already saved this so skipping.');
             continue;
         }
-
         const pageUrl = 'http://www.yacht-bot.com/races/' + idx;
+        if (existingFailedUrls.some((i) => i.url === pageUrl)) {
+            idx++;
+            console.log(
+                `Existing failed url ${pageUrl}. Check database table for error message.`
+            );
+            continue;
+        }
         let transaction;
         try {
-            transaction = await sequelize.transaction();
             console.log('about to go to page ' + pageUrl);
             await page.goto(pageUrl);
             console.log('went to page ' + pageUrl);
@@ -110,8 +119,8 @@ const mainScript = async () => {
                         token
                 );
 
-                const logs = JSON.parse(xml2json.toJson(logsRequest.data))
-                    .session.content.log.log_entry;
+                let logs = JSON.parse(xml2json.toJson(logsRequest.data)).session
+                    .content.log.log_entry;
                 const windowsRequest = await axios.get(
                     'https://www.igtimi.com/api/v1/devices/data_access_windows?start_time=' +
                         startTime +
@@ -145,7 +154,9 @@ const mainScript = async () => {
                 const objectData = [];
                 // Devices have object ids and serial numbers.
                 const devices = [];
-
+                if (logs && !(logs instanceof Array)) {
+                    logs = [logs];
+                }
                 logs.forEach((entry) => {
                     const data = entry.data;
                     const firstKey = Object.keys(data)[0];
@@ -464,7 +475,7 @@ const mainScript = async () => {
                     { objectType: YachtBot.Buoy, objects: buoys },
                 ];
                 console.log('Bulk saving objects.');
-                const transaction = await sequelize.transaction();
+                transaction = await sequelize.transaction();
                 const saved = await bulkSave(newObjectsToSave, transaction);
                 if (!saved) {
                     throw new Error('Failed to save bulk data');
@@ -479,7 +490,11 @@ const mainScript = async () => {
             if (transaction) {
                 await transaction.rollback();
             }
-            console.log(err);
+            if (err?.response?.status === 401) {
+                console.log('Race is not public so skipping');
+            } else {
+                console.log(err);
+            }
             await YachtBot.FailedUrl.create({
                 id: uuidv4(),
                 url: pageUrl,

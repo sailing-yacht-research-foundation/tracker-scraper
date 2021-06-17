@@ -486,7 +486,7 @@ const ISAIL_SOURCE = 'ISAIL';
                     newStartlines = newStartlines.concat(raceExtra.startlines);
                     newResults = newResults.concat(raceExtra.results);
                 });
-                const transaction = await sequelize.transaction();
+                let transaction;
                 try {
                     const newObjectsToSave = [
                         {
@@ -541,6 +541,7 @@ const ISAIL_SOURCE = 'ISAIL';
                     console.log(
                         `Bulk saving data for event original id = ${event.original_id}`
                     );
+                    transaction = await sequelize.transaction();
                     const saved = await bulkSave(newObjectsToSave, transaction);
                     if (!saved) {
                         throw new Error('Failed to save bulk data');
@@ -610,7 +611,9 @@ const ISAIL_SOURCE = 'ISAIL';
                     );
                     await transaction.commit();
                 } catch (err) {
-                    transaction.rollback();
+                    if (transaction) {
+                        await transaction.rollback();
+                    }
                     throw err;
                 }
             } catch (err) {

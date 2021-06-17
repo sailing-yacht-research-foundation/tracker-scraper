@@ -33,24 +33,32 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
     if (!connect()) {
         process.exit();
     }
-
-    const existingOwnedRaces = await Yellowbrick.YellowbrickOwnedRace.findAll({
-        attributes: ['id', 'race_id'],
-    });
-    const owned = [];
-    existingOwnedRaces.forEach((r) => {
-        owned.push(r.race_id);
-    });
-    // GET CODES
-
-    // TODO: Put user-key, udid, urls in DB
-    // TODO: Save list of race-id and codes.
-    // TODO: Check to see if I need to even "purchase" the race id based on above mentioned saved list.
     const YB_RACE_LIST_URL = 'https://app.yb.tl/App/Races?version=3';
-    const ybRaceListResult = await axios.get(YB_RACE_LIST_URL);
-    const ybRaceListXML = ybRaceListResult.data;
-    const ybRaceListJSON = JSON.parse(xml2json.toJson(ybRaceListXML));
-    const raceList = ybRaceListJSON.r.races.race;
+    const owned = [];
+    let existingOwnedRaces, raceList;
+    try {
+        existingOwnedRaces = await Yellowbrick.YellowbrickOwnedRace.findAll({
+            attributes: ['id', 'race_id'],
+        });
+        existingOwnedRaces.forEach((r) => {
+            owned.push(r.race_id);
+        });
+        // GET CODES
+
+        // TODO: Put user-key, udid, urls in DB
+        // TODO: Save list of race-id and codes.
+        // TODO: Check to see if I need to even "purchase" the race id based on above mentioned saved list.
+        const ybRaceListResult = await axios.get(YB_RACE_LIST_URL);
+        const ybRaceListXML = ybRaceListResult.data;
+        const ybRaceListJSON = JSON.parse(xml2json.toJson(ybRaceListXML));
+        raceList = ybRaceListJSON.r.races.race;
+    } catch (err) {
+        console.log(
+            `Failed getting owned race in database or getting and parsing race list from ${YB_RACE_LIST_URL}`,
+            err
+        );
+        process.exit();
+    }
 
     for (const raceIndex in raceList) {
         console.log('Getting ' + raceIndex + ' of ' + raceList.length);
@@ -1545,6 +1553,7 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                 );
                 await transaction.commit();
                 raceCodes.push(raceCode);
+                console.log('Finished scraping race.');
             } catch (err) {
                 if (transaction) {
                     await transaction.rollback();
@@ -1572,6 +1581,7 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
             }
         }
     }
+    console.log('Finished scraping all races');
     process.exit();
 })();
 
@@ -1732,6 +1742,7 @@ const normalizeRace = async (
 
     await SearchSchema.RaceMetadata.create(raceMetadata, {
         fields: Object.keys(raceMetadata),
+        transaction,
     });
     console.log('Uploading to s3');
     await uploadGeoJsonToS3(

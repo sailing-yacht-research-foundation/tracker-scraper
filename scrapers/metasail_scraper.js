@@ -188,11 +188,13 @@ async function getRaceUrls(page, existingRaceIds) {
 async function fetchRaceData(currentRaceUrl, browser) {
     const racePage = await browser.newPage();
     try {
+        console.log(`Going to page ${currentRaceUrl}`);
         await racePage.goto(currentRaceUrl, {
             timeout: 680000,
             waitUntil: 'networkidle0',
         });
         const redirectedUrl = racePage.url();
+        console.log('Evaluating page');
         await racePage.evaluate(() => {
             /* eslint-disable no-undef */
             const storage = localStorage;
@@ -254,7 +256,6 @@ async function fetchRaceData(currentRaceUrl, browser) {
                 timeout: 680000,
             }
         );
-
         return {
             unknownIdentifier,
             idgara,
@@ -621,8 +622,9 @@ async function saveData(
     newBoats,
     allPointsForId
 ) {
-    const transaction = await sequelize.transaction();
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         await Metasail.MetasailRace.create(newRace, {
             fields: Object.keys(newRace),
             transaction,
@@ -681,7 +683,9 @@ async function saveData(
 
         await transaction.commit();
     } catch (err) {
-        await transaction.rollback();
+        if (transaction) {
+            await transaction.rollback();
+        }
         throw new Error('Failed to save data - ' + err.message);
     }
 }
@@ -815,7 +819,6 @@ async function getEventUrls(page) {
                         raceData,
                         redirectedUrl,
                     } = await fetchRaceData(currentRaceUrl, browser);
-
                     const newRaceId = uuidv4();
                     const {
                         newGates,
@@ -828,7 +831,6 @@ async function getEventUrls(page) {
                         idgara,
                         buoyIds
                     );
-
                     const allPointsForId = await fetchRaceAllPoints(
                         currentEvent,
                         newRaceId,
@@ -837,7 +839,6 @@ async function getEventUrls(page) {
                         unknownIdentifier,
                         idgara
                     );
-
                     const stats = await fetchRaceStats(
                         currentRaceUrl,
                         unknownIdentifier,
@@ -865,7 +866,7 @@ async function getEventUrls(page) {
                     //     newBuoys,
                     //     newGates,
                     // };
-
+                    console.log('Saving data');
                     await saveData(
                         currentEvent,
                         newRace,
@@ -887,6 +888,7 @@ async function getEventUrls(page) {
         }
     }
 
+    console.log('Finished scraping all events.');
     page.close();
     browser.close();
     process.exit();
