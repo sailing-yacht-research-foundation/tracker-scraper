@@ -515,8 +515,8 @@ const normalizeRace = async (race, allPositions, boats, transaction) => {
         return;
     }
     const id = race.id;
-    const startTime = parseInt(race.start_time) * 1000;
-    const endTime = parseInt(race.end_time) * 1000;
+    const startTime = parseInt(race.start_time);
+    const endTime = parseInt(race.end_time);
     const name = race.name;
     const event = null;
     const url = race.url;

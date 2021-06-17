@@ -449,6 +449,11 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
             await page.click('#time-control-play');
             console.log('Waiting for section race');
             await page.waitForSelector('#contTop > div > section.race');
+            console.log('Check if slider will load');
+            await page.waitForFunction(
+                'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] !== ""',
+                { timeout: 2000 }
+            );
             const waitForFullyLoaded =
                 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"';
             console.log('Waiting for time slider to finish');
@@ -498,11 +503,11 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                         c.controlPoints.forEach((cp) => {
                             const controlId = cp.control.id;
                             const controlName = cp.control.name;
-                            const positions = cp.positions.positions;
+                            // const positions = cp.positions.positions;
                             controlPoints.push({
                                 control_id: controlId,
                                 control_name: controlName,
-                                positions,
+                                // positions,
                             });
                         });
                         controls.push({
@@ -643,6 +648,52 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                     race_date_s: raceDateS,
                 };
             });
+
+            // Get the control points positions by batch because there are races that are too big and puppeteer evaluate is limited to 100mb
+            // A sample race with huge positions data is https://live.tractrac.com/viewer/index.html?target=https://em.event.tractrac.com/events/d87f1b20-3fcc-0136-c5b0-60a44ce903c3/races/1f28f610-42b0-0136-5a33-60a44ce903c3.json
+            for (const routeIndex in raceDetails.assorted.routes) {
+                const route = raceDetails.assorted.routes[routeIndex];
+                const routeId = route.route_id;
+                for (const controlIndex in route.controls) {
+                    const control = route.controls[controlIndex];
+                    for (const controlPointIndex in control.control_points) {
+                        const controlPoint =
+                            control.control_points[controlPointIndex];
+                        const controlPointPositions = await page.evaluate(
+                            ({ routeId, controlIndex, controlPointIndex }) => {
+                                const context = document.querySelector(
+                                    '#contTop > div > section.race'
+                                )[
+                                    Object.keys(
+                                        document.querySelector(
+                                            '#contTop > div > section.race'
+                                        )
+                                    )[0]
+                                ][
+                                    Object.keys(
+                                        document.querySelector(
+                                            '#contTop > div > section.race'
+                                        )[
+                                            Object.keys(
+                                                document.querySelector(
+                                                    '#contTop > div > section.race'
+                                                )
+                                            )[0]
+                                        ]
+                                    )[0]
+                                ].context;
+                                return context.$component.raceData.race.routes[
+                                    routeId
+                                ]?.controls[controlIndex]?.controlPoints[
+                                    controlPointIndex
+                                ]?.positions?.positions;
+                            },
+                            { routeId, controlIndex, controlPointIndex }
+                        );
+                        controlPoint.positions = controlPointPositions;
+                    }
+                }
+            }
             // Get the positions by batch because there are races that are too big and puppeteer evaluate is limited to 100mb
             // A sample race with huge positions data is https://live.tractrac.com/viewer/index.html?target=https://em.club.tractrac.com/events/399b7480-6e75-0137-f0a9-60a44ce903c3/races/0291cfa0-86c1-0137-b1c5-10bf48d758ce.json
             for (const teamPositionIndex in raceDetails.team_position_data) {
@@ -897,7 +948,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                     continue;
                 }
                 try {
-                    console.log('Parsing race.');
+                    console.log(`Parsing race ${raceObject.url_html}.`);
                     details = await parseRace(raceObject);
                 } catch (err) {
                     console.log('Failed parsing race', err);
@@ -1114,6 +1165,16 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
             raceObject.event_id = null;
 
             if (raceObject.event_type === 'Sailing') {
+                if (
+                    existingFailedUrls.some(
+                        (i) => i.url === raceObject.url_html
+                    )
+                ) {
+                    console.log(
+                        `Existing failed url ${raceObject.url_html}. Check database table for error message.`
+                    );
+                    continue;
+                }
                 const raceToFormat = instantiateOrReturnExisting(
                     existingObjects,
                     TracTrac.Race,
@@ -1126,6 +1187,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                     );
                     continue;
                 }
+                console.log(`Parsing club race ${raceObject.url_html}.`);
                 const details = await parseRace(raceObject);
 
                 if (details !== null && details !== undefined) {

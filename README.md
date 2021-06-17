@@ -29,6 +29,20 @@ For each run, the general process is as follows:
 7) If the race has completed, save it to the sources database using the tracker data model (dependency).
 8) Capture any timeouts, exceptions, and log them as failures.
 
+# Scrapers scraping method
+1. Bluewater - Uses API. Gets races from `https://api.bluewatertracks.com/api/racelist/<START_DATE>/<END_DATE>`. Eg. `https://api.bluewatertracks.com/api/racelist/2012-05-17T04:51:16.106Z/2021-07-17T04:51:16.106Z`
+2. Estela       - Uses Puppeteer. Gets races from `https://www.estela.co/en?page=<PAGE_NUMBER>#races`.
+3. Georacing    - Uses Puppeteer and API. Gets events using API `http://player.georacing.com/datas/applications/app_12.json` then gets the race info using Puppeteer.
+4. iSail        - Uses Puppeteer. Gets events from `http://app.i-sail.com/eventDetails/<COUNTER>`
+5. Kattack      - Uses API. Gets races from `http://kws.kattack.com/GEPlayer/GMPosDisplay.aspx?FeedID=<FEED_ID>`.
+6. Kwindoo      - Uses API. Gets regattas by sending POST request to `https://api.kwindoo.com/api/regatta/all`.
+7. Metasail     - Uses Puppeteer. Gets events from `https://www.metasail.it`.
+8. RaceQs       - Uses API. Gets events from `https://raceqs.com/rest/meta?id=<EVENT_ID>`.
+9. TackTracker  - Uses API. Gets regattas by sending POST request to `https://tacktracker.com/cloud/regattas/search` with a fixed list of words.
+10. TracTrac    - Uses Puppeteer and API. Gets events from `http://live.tractrac.com/rest-api/events.json` then gets the race info using Puppeteer.
+11. YachtBot    - Uses Puppeteer. Gets races from `http://www.yacht-bot.com/races/<RACE_ID`.
+12. Yellowbrick - Uses API fallback to Puppeteer to get positions. Gets races from `https://app.yb.tl/App/Races?version=3`.
+
 TODO:
 1) Jobify
 2) Add unit tests with known good races.
