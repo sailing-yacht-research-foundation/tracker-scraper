@@ -274,14 +274,14 @@ async function fetchUsersPositions(newEventStat, users, eventTimeString) {
     return positions;
 }
 
-async function normalizeRace({
+const normalizeRace = async ({
     event,
     regatta,
     waypoints,
     positions,
     participants,
     transaction,
-}) {
+}) => {
     console.log('Normalizing race');
     const allPositions = [];
     positions.forEach((p) => {
@@ -375,7 +375,7 @@ async function normalizeRace({
         fields: Object.keys(raceMetadata),
         transaction,
     });
-}
+};
 
 async function saveData({
     newEvents,
@@ -421,7 +421,7 @@ async function saveData({
     }
 }
 
-(async () => {
+const mainScript = async () => {
     const dbConnected = await connect();
     if (!dbConnected) {
         process.exit();
@@ -552,4 +552,10 @@ async function saveData({
     }
     console.log('Finished scraping all events and races.');
     process.exit();
-})();
+};
+
+if (require.main === module) {
+    // Only run the main script if not added as a dependency module
+    mainScript();
+}
+exports.normalizeRace = normalizeRace;
