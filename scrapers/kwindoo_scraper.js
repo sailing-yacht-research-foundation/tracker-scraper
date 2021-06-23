@@ -667,7 +667,10 @@ async function saveRaceData({
             },
         ];
         console.log('Bulk saving objects.');
-        await bulkSave(newObjectsToSave, transaction);
+        const saved = await bulkSave(newObjectsToSave, transaction);
+        if (!saved) {
+            throw new Error('Failed to save bulk data');
+        }
         await normalizeRace({
             race: newRace,
             regatta: newOrExistingRegatta,
