@@ -36,6 +36,8 @@ const createAndSendTempJsonFile = async (api, data) => {
 
     const secret = generateRawDataServerSecret();
     await axios.post(api, formData, {
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
         headers: {
             authorization: secret,
             'content-type': `multipart/form-data; boundary=${formData._boundary}`,
@@ -46,5 +48,6 @@ const createAndSendTempJsonFile = async (api, data) => {
 };
 
 module.exports = {
+    generateRawDataServerSecret,
     createAndSendTempJsonFile,
 };
