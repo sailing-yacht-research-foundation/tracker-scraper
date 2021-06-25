@@ -463,8 +463,12 @@ const mainScript = async () => {
             console.log(eventUrl);
             const config = await fetchConfigData(eventId);
 
-            if (config.events.length === 0) {
-                console.log('No events, so skip.');
+            if (
+                config.events.length === 0 ||
+                !config.events[0]?.tillDtm ||
+                config.events[0]?.tillDtm > new Date().getTime()
+            ) {
+                console.log('No events or future event. So skipping.');
                 pageIndex--;
                 continue;
             }
