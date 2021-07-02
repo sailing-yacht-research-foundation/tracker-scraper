@@ -1,12 +1,10 @@
-const path = require('path');
-require('dotenv').config({
-    path: path.resolve(__dirname, '..', '.env'),
-});
-
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { appendArray } = require('../utils/array');
-const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+} = require('../utils/raw-data-server-utils');
 
 // WARNING: GEORACING HAS THE CHARTS http://player.georacing.com/?event=101887&race=97651
 function peekUint8(bytes) {
@@ -2139,7 +2137,6 @@ const allRacesURL =
     'http://player.georacing.com/datas/applications/app_12.json';
 
 (async () => {
-    const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
     let allRacesRequest, browser, page;
 
     if (!RAW_DATA_SERVER_API) {
@@ -2593,10 +2590,7 @@ const allRacesURL =
 
                     try {
                         console.log('Creating temp json file');
-                        await createAndSendTempJsonFile(
-                            `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
-                            objectsToSave
-                        );
+                        await createAndSendTempJsonFile(objectsToSave);
                         console.log('Finished sending file');
                     } catch (err) {
                         console.log(

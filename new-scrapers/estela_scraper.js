@@ -1,18 +1,15 @@
-const path = require('path');
-require('dotenv').config({
-    path: path.resolve(__dirname, '..', '.env'),
-});
-
 const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
-const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+} = require('../utils/raw-data-server-utils');
 
 const LIMIT = 3000;
 const ESTELA_RACE_PAGE_URL = 'https://www.estela.co/en?page={$PAGENUM$}#races';
 const PAGENUM = '{$PAGENUM$}';
 
 (async () => {
-    const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
@@ -514,10 +511,7 @@ const PAGENUM = '{$PAGENUM$}';
             objectsToSave.EstelaPosition = newPositions;
 
             try {
-                await createAndSendTempJsonFile(
-                    `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
-                    objectsToSave
-                );
+                await createAndSendTempJsonFile(objectsToSave);
             } catch (err) {
                 console.log(
                     `Failed creating and sending temp json file for url ${currentRaceUrl}`,

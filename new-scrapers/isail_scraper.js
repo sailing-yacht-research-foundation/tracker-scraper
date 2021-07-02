@@ -1,13 +1,11 @@
-const path = require('path');
-require('dotenv').config({
-    path: path.resolve(__dirname, '..', '.env'),
-});
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
-const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+} = require('../utils/raw-data-server-utils');
 
 (async () => {
-    const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();

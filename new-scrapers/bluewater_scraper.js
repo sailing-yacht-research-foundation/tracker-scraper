@@ -1,14 +1,11 @@
-const path = require('path');
-require('dotenv').config({
-    path: path.resolve(__dirname, '..', '.env'),
-});
-
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+} = require('../utils/raw-data-server-utils');
 
 (async () => {
-    const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
     const BASE_URL = 'https://api.bluewatertracks.com/api/race/';
     const BASE_REFERRAL_URL = 'https://race.bluewatertracks.com/';
     const FROM_UPDATE_TIME = '2015-03-12T19:33:50.187Z';
@@ -228,10 +225,7 @@ const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
 
         try {
             console.log('Creating temp json file');
-            await createAndSendTempJsonFile(
-                `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
-                objectsToSave
-            );
+            await createAndSendTempJsonFile(objectsToSave);
             console.log('Finished sending file');
         } catch (err) {
             console.log(
