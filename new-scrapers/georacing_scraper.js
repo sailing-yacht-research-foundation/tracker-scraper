@@ -4,6 +4,8 @@ const { appendArray } = require('../utils/array');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
+    getExistingUrls,
+    registerFailedUrl,
 } = require('../utils/raw-data-server-utils');
 
 // WARNING: GEORACING HAS THE CHARTS http://player.georacing.com/?event=101887&race=97651
@@ -2137,6 +2139,7 @@ const allRacesURL =
     'http://player.georacing.com/datas/applications/app_12.json';
 
 (async () => {
+    const SOURCE = 'georacing';
     let allRacesRequest, browser, page;
 
     if (!RAW_DATA_SERVER_API) {
@@ -2149,6 +2152,14 @@ const allRacesURL =
         page = await browser.newPage();
     } catch (err) {
         console.log('Failed in launching puppeteer.', err);
+        process.exit();
+    }
+
+    let existingUrls;
+    try {
+        existingUrls = await getExistingUrls(SOURCE);
+    } catch (err) {
+        console.log('Error getting existing urls', err);
         process.exit();
     }
 
@@ -2165,6 +2176,10 @@ const allRacesURL =
         const startDateStamp = new Date(event.start_time).getTime();
         const endDateStamp = new Date(event.end_time).getTime();
         const nowStamp = new Date().getTime();
+
+        if (existingUrls.includes(event.id)) {
+            continue;
+        }
 
         console.log(`Processing event with id ${event.id}`);
         if (startDateStamp > nowStamp || endDateStamp > nowStamp) {
@@ -2217,6 +2232,12 @@ const allRacesURL =
                         eventObjSave.original_id,
                         race.id
                     );
+                }
+                if (existingUrls.includes(race.player_name)) {
+                    console.log(
+                        `Race url already saved in database ${race.player_name}. Skipping`
+                    );
+                    continue;
                 }
                 console.log(
                     `Scraping race ${raceIndex} of ${races.length} with url ${race.player_name}`
@@ -2589,26 +2610,28 @@ const allRacesURL =
                     );
 
                     try {
-                        console.log('Creating temp json file');
                         await createAndSendTempJsonFile(objectsToSave);
-                        console.log('Finished sending file');
                     } catch (err) {
                         console.log(
-                            `Failed creating and sending temp json file for event id ${event.id}`,
-                            err
+                            `Failed creating and sending temp json file for event id ${event.id}`
                         );
-                        continue;
+                        throw err;
                     }
                 } catch (err) {
                     console.log('Failed scraping race', err);
-                    // TODO: Record Failure
+                    await registerFailedUrl(
+                        SOURCE,
+                        race.player_name,
+                        err.toString()
+                    );
                 }
             }
         } catch (err) {
             console.log(
-                'Something went wrong with event ' + event.id,
+                `Something went wrong with event ${event.id}`,
                 err.toString()
             );
+            await registerFailedUrl(SOURCE, event.id, err.toString());
         }
     }
     process.exit();
