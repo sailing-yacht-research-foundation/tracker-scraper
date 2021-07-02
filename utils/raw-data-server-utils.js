@@ -28,7 +28,17 @@ const createAndSendTempJsonFile = async (api, data) => {
         dirPath,
         `scraper_raw_data_${new Date().getTime()}.json`
     );
-    fs.writeFileSync(inputPath, JSON.stringify(data));
+    try {
+        fs.writeFileSync(inputPath, JSON.stringify(data));
+    } catch (err) {
+        console.log('Failed writing file. Trying bulkStringify');
+        const dataArr = bulkStringifyJson(data);
+        fs.writeFileSync(inputPath, dataArr.splice(0, 1)[0]);
+        while (dataArr.length > 0) {
+            fs.appendFileSync(inputPath, dataArr.splice(0, 1)[0]);
+        }
+        console.log('Finished bulk saving');
+    }
 
     console.log('Sending temp file');
     const formData = new FormData();
@@ -43,8 +53,45 @@ const createAndSendTempJsonFile = async (api, data) => {
             'content-type': `multipart/form-data; boundary=${formData._boundary}`,
         },
     });
-    console.log('Finished creating and sending temp file');
+    console.log('Finished creating and sending temp file', inputPath);
     temp.cleanup();
+};
+
+// Stringify for large data to avoid RangeError on string. The function returns an array to prevent the string rangeError
+const bulkStringifyJson = (data) => {
+    const out = [];
+    out.push('{');
+    Object.keys(data).forEach((key) => {
+        out.push(`${JSON.stringify(key)}:`);
+        if (data[key] instanceof Array) {
+            const arr = data[key];
+            let arrStr = [];
+            while (arr.length > 0) {
+                // Chunk stringify large arrays to prevent RangeError
+                arrStr.push(JSON.stringify(arr.splice(0, 100000)));
+            }
+            arrStr = arrStr.map((str, index) => {
+                if (index !== 0) {
+                    str = str.substr(1, str.length); // exclude the open bracket
+                }
+                if (index !== arrStr.length - 1) {
+                    str = str.substr(0, str.length - 1) + ','; // exclude the close bracket
+                }
+                return str;
+            });
+            if (arrStr.length === 0) {
+                out.push('[]');
+            } else {
+                out.push(...arrStr);
+            }
+        } else {
+            out.push(JSON.stringify(data[key]));
+        }
+        out.push(',');
+    });
+    out.pop(); // remove last comma
+    out.push('}');
+    return out;
 };
 
 module.exports = {

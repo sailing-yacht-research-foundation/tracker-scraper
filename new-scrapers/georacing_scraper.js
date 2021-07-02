@@ -1,31 +1,12 @@
-const turf = require('@turf/turf');
-const {
-    Georacing,
-    connect,
-    findExistingObjects,
-    instantiateOrReturnExisting,
-    getUUIDForOriginalId,
-    bulkSave,
-    sequelize,
-    SearchSchema,
-} = require('../tracker-schema/schema.js');
+const path = require('path');
+require('dotenv').config({
+    path: path.resolve(__dirname, '..', '.env'),
+});
+
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
-const {
-    createBoatToPositionDictionary,
-    positionsToFeatureCollection,
-    collectFirstNPositionsFromBoatsToPositions,
-    collectLastNPositionsFromBoatsToPositions,
-    getCenterOfMassOfPositions,
-    findAverageLength,
-    createRace,
-    createTurfPoint,
-    allPositionsToFeatureCollection,
-} = require('../tracker-schema/gis_utils.js');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { appendArray } = require('../utils/array');
-const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3');
-
-const GEORACING_SOURCE = 'GEORACING';
+const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
 
 // WARNING: GEORACING HAS THE CHARTS http://player.georacing.com/?event=101887&race=97651
 function peekUint8(bytes) {
@@ -1536,7 +1517,7 @@ function getWeatherData(weathers, raceObjSave) {
     }
     return null;
 }
-function getActorsData(actors, existingObjects, raceObjSave) {
+function getActorsData(actors, raceObjSave) {
     if (!actors) {
         return null;
     }
@@ -1604,13 +1585,9 @@ function getActorsData(actors, existingObjects, raceObjSave) {
         *
         */
     return actors.map((a) => {
-        const actorObj = instantiateOrReturnExisting(
-            existingObjects,
-            Georacing.Actor,
-            a.id
-        );
-        const actorObjSave = actorObj.obj;
-
+        const actorObjSave = {};
+        actorObjSave.id = uuidv4();
+        actorObjSave.original_id = a.id;
         actorObjSave.race = raceObjSave.id;
         actorObjSave.race_original_id = raceObjSave.original_id;
         actorObjSave.event = raceObjSave.event;
@@ -1662,7 +1639,7 @@ function getActorsData(actors, existingObjects, raceObjSave) {
     });
 }
 
-function getSplittimesData(splittimes, existingObjects, raceObjSave) {
+function getSplittimesData(splittimes, actorsData, raceObjSave) {
     if (!splittimes) {
         return null;
     }
@@ -1708,62 +1685,53 @@ function getSplittimesData(splittimes, existingObjects, raceObjSave) {
     const splittimesSave = [];
     const splittimeObjectsSave = [];
     splittimes.forEach((st) => {
-        const splittime = instantiateOrReturnExisting(
-            existingObjects,
-            Georacing.Splittime,
-            st.id
-        );
+        const splittime = {};
+        splittime.id = uuidv4();
+        splittime.original_id = st.id;
+        splittime.race = raceObjSave.id;
+        splittime.race_original_id = raceObjSave.original_id;
+        splittime.event = raceObjSave.event;
+        splittime.event_original_id = raceObjSave.event_original_id;
+        splittime.name = st.name;
+        splittime.short_name = st.short_name;
+        splittime.splittimes_visible = st.splittimes_visible;
+        splittime.hide_on_timeline = st.hide_on_timeline;
+        splittime.lap_number = st.lap_number;
+        splittime.role = st.role;
 
-        splittime.obj.race = raceObjSave.id;
-        splittime.obj.race_original_id = raceObjSave.original_id;
-        splittime.obj.event = raceObjSave.event;
-        splittime.obj.event_original_id = raceObjSave.event_original_id;
-        splittime.obj.name = st.name;
-        splittime.obj.short_name = st.short_name;
-        splittime.obj.splittimes_visible = st.splittimes_visible;
-        splittime.obj.hide_on_timeline = st.hide_on_timeline;
-        splittime.obj.lap_number = st.lap_number;
-        splittime.obj.role = st.role;
-
-        splittimesSave.push(splittime.obj);
+        splittimesSave.push(splittime);
 
         if (!st.splittimes) {
             return;
         }
         st.splittimes.forEach((s) => {
-            const splittimeObject = instantiateOrReturnExisting(
-                existingObjects,
-                Georacing.SplittimeObject,
-                s.id
-            );
+            const splittimeObject = {};
+            splittimeObject.id = uuidv4();
+            splittimeObject.original_id = s.id;
+            splittimeObject.splittime = splittime.id;
+            splittimeObject.splittime_original_id = splittime.original_id;
+            splittimeObject.actor = actorsData.find(
+                (a) => a.original_id === s.actor_id
+            )?.id;
+            splittimeObject.actor_original_id = s.actor_id;
+            splittimeObject.capital = s.capital;
+            splittimeObject.max_speed = s.max_speed;
+            splittimeObject.duration = s.duration;
+            splittimeObject.detection_method_id = s.detection_method_id;
+            splittimeObject.is_pit_lap = s.is_pit_lap;
+            splittimeObject.run = s.run;
+            splittimeObject.value_in = s.value_in;
+            splittimeObject.value_out = s.value_out;
+            splittimeObject.official = s.official;
+            splittimeObject.hours_mandatory_rest = s.hours_mandatory_rest;
+            splittimeObject.rest_not_in_cp = s.rest_not_in_cp;
+            splittimeObject.rank = s.rank;
+            splittimeObject.rr = s.rr;
+            splittimeObject.gap = s.gap;
+            splittimeObject.time = s.time;
+            splittimeObject.time_out = s.time_out;
 
-            splittimeObject.obj.splittime = splittime.obj.id;
-            splittimeObject.obj.splittime_original_id =
-                splittime.obj.original_id;
-            splittimeObject.obj.actor = getUUIDForOriginalId(
-                existingObjects,
-                Georacing.Actor,
-                s.actor_id
-            );
-            splittimeObject.obj.actor_original_id = s.actor_id;
-            splittimeObject.obj.capital = s.capital;
-            splittimeObject.obj.max_speed = s.max_speed;
-            splittimeObject.obj.duration = s.duration;
-            splittimeObject.obj.detection_method_id = s.detection_method_id;
-            splittimeObject.obj.is_pit_lap = s.is_pit_lap;
-            splittimeObject.obj.run = s.run;
-            splittimeObject.obj.value_in = s.value_in;
-            splittimeObject.obj.value_out = s.value_out;
-            splittimeObject.obj.official = s.official;
-            splittimeObject.obj.hours_mandatory_rest = s.hours_mandatory_rest;
-            splittimeObject.obj.rest_not_in_cp = s.rest_not_in_cp;
-            splittimeObject.obj.rank = s.rank;
-            splittimeObject.obj.rr = s.rr;
-            splittimeObject.obj.gap = s.gap;
-            splittimeObject.obj.time = s.time;
-            splittimeObject.obj.time_out = s.time_out;
-
-            splittimeObjectsSave.push(splittimeObject.obj);
+            splittimeObjectsSave.push(splittimeObject);
         });
     });
     return {
@@ -1772,7 +1740,7 @@ function getSplittimesData(splittimes, existingObjects, raceObjSave) {
     };
 }
 
-function getCoursesData(courses, existingObjects, raceObjSave) {
+function getCoursesData(courses, raceObjSave) {
     if (!courses) {
         return null;
     }
@@ -1834,12 +1802,9 @@ function getCoursesData(courses, existingObjects, raceObjSave) {
     const coursesObjectSave = [];
     const coursesElementSave = [];
     courses.forEach((c) => {
-        const courseObj = instantiateOrReturnExisting(
-            existingObjects,
-            Georacing.Course,
-            c.id
-        );
-        const course = courseObj.obj;
+        const course = {};
+        course.id = uuidv4();
+        course.original_id = c.id;
         course.race = raceObjSave.id;
         course.race_original_id = raceObjSave.original_id;
         course.name = c.name;
@@ -1850,12 +1815,9 @@ function getCoursesData(courses, existingObjects, raceObjSave) {
         coursesSave.push(course);
         if (c.course_objects) {
             c.course_objects.forEach((co) => {
-                const courseObjectObj = instantiateOrReturnExisting(
-                    existingObjects,
-                    Georacing.CourseObject,
-                    co.id
-                );
-                const coSave = courseObjectObj.obj;
+                const coSave = {};
+                coSave.id = uuidv4();
+                coSave.original_id = co.id;
                 coSave.race = raceObjSave.id;
                 coSave.race_original_id = raceObjSave.original_id;
                 coSave.course = course.id;
@@ -1956,7 +1918,6 @@ async function fetchVirtualitiesData(dataUrl, raceObjSave) {
 async function fetchPositionsData(
     posUrl,
     raceObjSave,
-    existingObjects,
     race,
     binary,
     trackables
@@ -1986,25 +1947,20 @@ async function fetchPositionsData(
         let aid = trackables[aoid];
 
         if (aid === undefined) {
-            console.log('TODO: why is this undefined?');
-            const unknownActor = instantiateOrReturnExisting(
-                existingObjects,
-                Georacing.Actor,
-                aoid
-            );
-            const actorObjSave = unknownActor.obj;
-            if (unknownActor.shouldSave) {
-                actorObjSave.race = raceObjSave.id;
-                actorObjSave.race_original_id = raceObjSave.original_id;
-                actorObjSave.event = raceObjSave.event;
-                actorObjSave.event_original_id = raceObjSave.event_original_id;
+            const actorObjSave = {
+                id: uuidv4(),
+                original_id: aoid,
+            };
+            actorObjSave.race = raceObjSave.id;
+            actorObjSave.race_original_id = raceObjSave.original_id;
+            actorObjSave.event = raceObjSave.event;
+            actorObjSave.event_original_id = raceObjSave.event_original_id;
 
-                actorSave.push(actorObjSave);
-            }
+            actorSave.push(actorObjSave);
             trackables[aoid] = {
                 trackable_type: 'unknown_actor',
-                id: unknownActor.obj.id,
-                original_id: unknownActor.obj.original_id,
+                id: actorObjSave.id,
+                original_id: actorObjSave.original_id,
             };
             aid = trackables[aoid];
         }
@@ -2116,202 +2072,6 @@ function buildActorObject(a, raceObjSave) {
     };
 }
 
-async function normalizeRace(
-    eventObj,
-    race,
-    actors,
-    positions,
-    courseObjects,
-    courseElements,
-    lines,
-    transaction
-) {
-    console.log('Normalizing georacing');
-    const id = race.id;
-    const name = eventObj.name + ' - ' + race.name;
-    const event = race.event;
-    const url = race.url;
-    const startTime = new Date(race.start_time).getTime();
-    const endTime = new Date(race.end_time).getTime();
-
-    const boatNames = [];
-    const boatModels = [];
-    const handicapRules = [];
-    const boatIdentifiers = [];
-    const unstructuredText = [];
-    unstructuredText.push(race.short_description);
-
-    actors.forEach((a) => {
-        boatIdentifiers.push(a.start_number);
-        boatNames.push(a.name);
-        boatModels.push(a.model);
-    });
-
-    let allPositions = positions.filter(
-        (p) =>
-            p.trackable_type === 'actor' && !!p.lat && !!p.lon && !!p.timestamp
-    );
-
-    if (allPositions.length === 0) {
-        console.log('No positions so skipping.');
-        return;
-    }
-    console.log({ totalPositionCount: allPositions.length });
-    console.log(race.id);
-    console.log('A');
-    const fc = positionsToFeatureCollection('lat', 'lon', allPositions);
-    console.log('B');
-    const boundingBox = turf.bbox(fc);
-    console.log('C');
-    const boatsToSortedPositions = createBoatToPositionDictionary(
-        allPositions,
-        'trackable_id',
-        'timestamp'
-    );
-    allPositions = null;
-    console.log('D');
-    const first3Positions = collectFirstNPositionsFromBoatsToPositions(
-        boatsToSortedPositions,
-        3
-    );
-    let startPoint = getCenterOfMassOfPositions('lat', 'lon', first3Positions);
-    console.log('E');
-    const last3Positions = collectLastNPositionsFromBoatsToPositions(
-        boatsToSortedPositions,
-        3
-    );
-    let endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
-
-    for (const coIndex in courseObjects) {
-        const co = courseObjects[coIndex];
-        if (
-            co.name === 'Finish' ||
-            co.name === 'Arrivée' ||
-            co.name === 'Arrivee'
-        ) {
-            const courseElement = courseElements.find(
-                (ce) => ce.course_object_original_id === co.id
-            );
-
-            if (
-                !!courseElement &&
-                !!courseElement.latitude &&
-                !!courseElement.longitude
-            ) {
-                endPoint = createTurfPoint(
-                    courseElement.latitude,
-                    courseElement.longitude
-                );
-            }
-        }
-    }
-
-    lines.forEach((lineT) => {
-        if (
-            lineT.name.toLowerCase() === '"arrivee"' ||
-            lineT.name.toLowerCase() === '"arrivée"'
-        ) {
-            console.log(lineT.points);
-            const coords = lineT.points.split('\r\n');
-            console.log(coords);
-            let last = coords[coords.length - 1];
-            if (last === '') {
-                last = coords[coords.length - 2];
-            }
-            if (last.includes(',')) {
-                const lat = last.split(',')[1];
-                const lon = last.split(',')[0];
-                endPoint = createTurfPoint(lat, lon);
-            } else if (last.includes(';')) {
-                const lat = last.split(';')[1];
-                const lon = last.split(';')[0];
-                endPoint = createTurfPoint(lat, lon);
-            }
-        } else if (lineT.name.toLowerCase() === '"départ"') {
-            console.log(lineT.points);
-            const coords = lineT.points.split('\r\n');
-            console.log(coords);
-            const first = coords[0];
-            if (first.includes(',')) {
-                const latf = first.split(',')[1];
-                const lonf = first.split(',')[0];
-                startPoint = createTurfPoint(latf, lonf);
-            } else if (first.includes(';')) {
-                const latf = first.split(';')[1];
-                const lonf = first.split(';')[0];
-                startPoint = createTurfPoint(latf, lonf);
-            }
-        } else if (lineT.name.toLowerCase() === '"orthodromie"') {
-            console.log(lineT.points);
-            const coords = lineT.points.split('\r\n');
-            console.log(coords);
-            let last = coords[coords.length - 1];
-            if (last === '') {
-                last = coords[coords.length - 2];
-            }
-            if (last.includes(',')) {
-                const lat = last.split(',')[1];
-                const lon = last.split(',')[0];
-                endPoint = createTurfPoint(lat, lon);
-            } else if (last.includes(';')) {
-                const lat = last.split(';')[1];
-                const lon = last.split(';')[0];
-                endPoint = createTurfPoint(lat, lon);
-            }
-
-            const first = coords[0];
-            if (first.includes(',')) {
-                const latf = first.split(',')[1];
-                const lonf = first.split(',')[0];
-                startPoint = createTurfPoint(latf, lonf);
-            } else if (first.includes(';')) {
-                const latf = first.split(';')[1];
-                const lonf = first.split(';')[0];
-                startPoint = createTurfPoint(latf, lonf);
-            }
-        }
-    });
-
-    console.log('F');
-    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
-    console.log('G');
-    const raceMetadata = await createRace(
-        id,
-        name,
-        event,
-        GEORACING_SOURCE,
-        url,
-        startTime,
-        endTime,
-        startPoint,
-        endPoint,
-        boundingBox,
-        roughLength,
-        boatsToSortedPositions,
-        boatNames,
-        boatModels,
-        boatIdentifiers,
-        handicapRules,
-        unstructuredText
-    );
-    console.log('H', { raceMetadata });
-    const tracksGeojson = JSON.stringify(
-        allPositionsToFeatureCollection(boatsToSortedPositions)
-    );
-    // console.log('I', { tracksGeojson });
-
-    await SearchSchema.RaceMetadata.create(raceMetadata, {
-        fields: Object.keys(raceMetadata),
-        transaction,
-    });
-    await uploadGeoJsonToS3(
-        race.id,
-        tracksGeojson,
-        GEORACING_SOURCE,
-        transaction
-    );
-}
-
 async function waitPlayerPageLoadAndGetPlayerVersion(page, race) {
     try {
         await page.goto(race.player_name, {
@@ -2367,94 +2127,6 @@ async function waitForPlayerVersion2Ready(page) {
     });
 }
 
-async function saveData({
-    eventObjSave,
-    raceObjSave,
-    raceSave,
-    actorSave,
-    lineSave,
-    courseSave,
-    courseElementSave,
-    courseObjectSave,
-    groundPlaceSave,
-    positionSave,
-    splittimeSave,
-    splittimeObjectSave,
-    weatherSave,
-}) {
-    const newObjectsToSave = [
-        {
-            objectType: Georacing.Actor,
-            objects: actorSave,
-        },
-        {
-            objectType: Georacing.Race,
-            objects: raceSave,
-        },
-        {
-            objectType: Georacing.Line,
-            objects: lineSave,
-        },
-        {
-            objectType: Georacing.Course,
-            objects: courseSave,
-        },
-        {
-            objectType: Georacing.CourseElement,
-            objects: courseElementSave,
-        },
-        {
-            objectType: Georacing.CourseObject,
-            objects: courseObjectSave,
-        },
-        {
-            objectType: Georacing.GroundPlace,
-            objects: groundPlaceSave,
-        },
-        {
-            objectType: Georacing.Position,
-            objects: positionSave,
-        },
-        {
-            objectType: Georacing.Splittime,
-            objects: splittimeSave,
-        },
-        {
-            objectType: Georacing.SplittimeObject,
-            objects: splittimeObjectSave,
-        },
-        {
-            objectType: Georacing.Weather,
-            objects: weatherSave,
-        },
-    ];
-    let transaction = null;
-    try {
-        transaction = await sequelize.transaction();
-        const saved = await bulkSave(newObjectsToSave, transaction);
-        if (!saved) {
-            throw new Error('Failed to save bulk data');
-        }
-        await normalizeRace(
-            eventObjSave,
-            raceObjSave,
-            actorSave,
-            positionSave,
-            courseObjectSave,
-            courseElementSave,
-            lineSave,
-            transaction
-        );
-        await transaction.commit();
-    } catch (err) {
-        if (transaction) {
-            await transaction.rollback();
-        }
-        // Rethrow the error so caller will catch it
-        throw err;
-    }
-}
-
 function getRacePlayerNameURL(eventId, raceId) {
     return `http://player.georacing.com/?event=${eventId}&race=${raceId}`;
 }
@@ -2467,12 +2139,11 @@ const allRacesURL =
     'http://player.georacing.com/datas/applications/app_12.json';
 
 (async () => {
-    await connect();
-    let existingObjects, allRacesRequest, browser, page;
-    try {
-        existingObjects = await findExistingObjects(Georacing);
-    } catch (err) {
-        console.log('Failed getting database metadata and races.', err);
+    const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
+    let allRacesRequest, browser, page;
+
+    if (!RAW_DATA_SERVER_API) {
+        console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
     }
 
@@ -2491,59 +2162,48 @@ const allRacesURL =
         process.exit();
     }
     const allEvents = allRacesRequest.data.events;
-    let count = 0;
 
     for (const eventsIndex in allEvents) {
         const event = allEvents[eventsIndex];
         const startDateStamp = new Date(event.start_time).getTime();
         const endDateStamp = new Date(event.end_time).getTime();
-
         const nowStamp = new Date().getTime();
 
+        console.log(`Processing event with id ${event.id}`);
         if (startDateStamp > nowStamp || endDateStamp > nowStamp) {
             console.log('Future event so skipping');
             continue;
         }
 
         const races = event.races;
-        count = count + races.length;
 
         try {
-            const eventObj = instantiateOrReturnExisting(
-                existingObjects,
-                Georacing.Event,
-                event.id
-            );
-
-            // if (!eventObj.shouldSave) {
-            //     console.log('Already saved this event so skipping.');
-            //     continue;
-            // }
-
-            const eventObjSave = eventObj.obj;
-            eventObjSave.name = event.name;
-            eventObjSave.short_name = event.short_name;
-            eventObjSave.time_zone = event.time_zone;
-            eventObjSave.description_en = event.description_en;
-            eventObjSave.description_fr = event.description_fr;
-            eventObjSave.short_description = event.short_description;
-            eventObjSave.start_time = event.start_time;
-            eventObjSave.end_time = event.end_time;
-
-            if (eventObj.shouldSave) {
-                try {
-                    await Georacing.Event.create(eventObjSave);
-                } catch (err) {
-                    console.log(
-                        `Failed in creating event with name ${event.name}.`,
-                        err
-                    );
-                }
-            }
-
+            const objectsToSave = {};
+            const eventObjSave = {
+                id: uuidv4(),
+                original_id: event.id,
+                name: event.name,
+                short_name: event.short_name,
+                time_zone: event.time_zone,
+                description_en: event.description_en,
+                description_fr: event.description_fr,
+                start_time: event.start_time,
+                end_time: event.end_time,
+            };
+            objectsToSave.GeoracingEvent = [eventObjSave];
             for (const raceIndex in races) {
+                objectsToSave.GeoracingRace = [];
+                objectsToSave.GeoracingActor = [];
+                objectsToSave.GeoracingWeather = [];
+                objectsToSave.GeoracingCourse = [];
+                objectsToSave.GeoracingCourseObject = [];
+                objectsToSave.GeoracingCourseElement = [];
+                objectsToSave.GeoracingGroundPlace = [];
+                objectsToSave.GeoracingPosition = [];
+                objectsToSave.GeoracingLine = [];
+                objectsToSave.GeoracingSplittime = [];
+                objectsToSave.GeoracingSplittimeObject = [];
                 const race = races[raceIndex];
-
                 const raceStartDateStamp = new Date(race.start_time).getTime();
                 const raceEndDateStamp = new Date(race.end_time).getTime();
 
@@ -2554,7 +2214,7 @@ const allRacesURL =
                     console.log('Future race so skipping');
                     continue;
                 }
-                // console.log(race.player_name)
+
                 if (!race.player_name) {
                     race.player_name = getRacePlayerNameURL(
                         eventObjSave.original_id,
@@ -2566,35 +2226,27 @@ const allRacesURL =
                 );
 
                 try {
-                    const raceObj = instantiateOrReturnExisting(
-                        existingObjects,
-                        Georacing.Race,
-                        race.id
-                    );
-                    if (!raceObj.shouldSave) {
-                        console.log('Already saved this race so skipping.');
-                        continue;
-                    }
-
                     const playerVersion = await waitPlayerPageLoadAndGetPlayerVersion(
                         page,
                         race
                     );
 
-                    const raceObjSave = raceObj.obj;
-                    raceObjSave.event = eventObjSave.id;
-                    raceObjSave.event_original_id = eventObjSave.original_id;
-                    raceObjSave.name = race.name;
-                    raceObjSave.short_name = race.short_name;
-                    raceObjSave.short_description = race.short_description;
-                    raceObjSave.time_zone = race.time_zone;
-                    raceObjSave.available_time = race.available_time;
-                    raceObjSave.start_time = race.start_time;
-                    raceObjSave.end_time = race.end_time;
-                    raceObjSave.url = race.player_name;
-                    raceObjSave.player_version = playerVersion;
+                    const raceObjSave = {
+                        id: uuidv4(),
+                        original_id: race.id,
+                        event: eventObjSave.id,
+                        event_original_id: eventObjSave.original_id,
+                        name: race.name,
+                        short_name: race.short_name,
+                        short_description: race.short_description,
+                        time_zone: race.time_zone,
+                        available_time: race.available_time,
+                        start_time: race.start_time,
+                        end_time: race.end_time,
+                        url: race.player_name,
+                        player_version: playerVersion,
+                    };
 
-                    const raceSave = [raceObjSave];
                     const lineSave = [];
                     const groundPlaceSave = [];
                     const positionSave = [];
@@ -2687,7 +2339,6 @@ const allRacesURL =
 
                         const actorsData = getActorsData(
                             allRequest.data.actors,
-                            existingObjects,
                             raceObjSave
                         );
                         if (actorsData) {
@@ -2705,7 +2356,7 @@ const allRacesURL =
 
                         const splittimeData = getSplittimesData(
                             allRequest.data.splittimes,
-                            existingObjects,
+                            actorsData,
                             raceObjSave
                         );
                         if (splittimeData) {
@@ -2721,7 +2372,6 @@ const allRacesURL =
 
                         const coursesData = getCoursesData(
                             allRequest.data.courses,
-                            existingObjects,
                             raceObjSave
                         );
                         if (coursesData) {
@@ -2756,7 +2406,6 @@ const allRacesURL =
                                 const positionData = await fetchPositionsData(
                                     posUrl,
                                     raceObjSave,
-                                    existingObjects,
                                     race,
                                     binaryUrls[posIndex],
                                     trackables
@@ -2887,7 +2536,6 @@ const allRacesURL =
                                 const positionData = await fetchPositionsData(
                                     url,
                                     raceObjSave,
-                                    existingObjects,
                                     race,
                                     null,
                                     trackables
@@ -2906,36 +2554,60 @@ const allRacesURL =
                             }
                         }
                     } else {
-                        console.log('WHAT VERSION ' + race.player_name);
-                        console.log(playerVersion);
+                        console.log(
+                            `Race player has version ${playerVersion} url is ${race.player_name}`
+                        );
                     }
 
                     if (positionSave.length === 0) {
                         console.log('No positions. Skipping.');
                         continue;
                     }
-                    await saveData({
-                        eventObjSave,
-                        raceObjSave,
-                        raceSave,
-                        actorSave,
-                        lineSave,
-                        courseSave,
-                        courseElementSave,
-                        courseObjectSave,
-                        groundPlaceSave,
-                        positionSave,
-                        splittimeSave,
-                        splittimeObjectSave,
-                        weatherSave,
-                    });
+
+                    objectsToSave.GeoracingRace.push(raceObjSave);
+                    appendArray(objectsToSave.GeoracingActor, actorSave);
+                    appendArray(objectsToSave.GeoracingWeather, weatherSave);
+                    appendArray(objectsToSave.GeoracingCourse, courseSave);
+                    appendArray(
+                        objectsToSave.GeoracingCourseObject,
+                        courseObjectSave
+                    );
+                    appendArray(
+                        objectsToSave.GeoracingCourseElement,
+                        courseElementSave
+                    );
+                    appendArray(
+                        objectsToSave.GeoracingGroundPlace,
+                        groundPlaceSave
+                    );
+                    appendArray(objectsToSave.GeoracingPosition, positionSave);
+                    appendArray(objectsToSave.GeoracingLine, lineSave);
+                    appendArray(
+                        objectsToSave.GeoracingSplittime,
+                        splittimeSave
+                    );
+                    appendArray(
+                        objectsToSave.GeoracingSplittimeObject,
+                        splittimeObjectSave
+                    );
+
+                    try {
+                        console.log('Creating temp json file');
+                        await createAndSendTempJsonFile(
+                            `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
+                            objectsToSave
+                        );
+                        console.log('Finished sending file');
+                    } catch (err) {
+                        console.log(
+                            `Failed creating and sending temp json file for event id ${event.id}`,
+                            err
+                        );
+                        continue;
+                    }
                 } catch (err) {
-                    console.log(err);
-                    await Georacing.FailedUrl.create({
-                        id: uuidv4(),
-                        error: err.toString(),
-                        url: race.player_name,
-                    });
+                    console.log('Failed scraping race', err);
+                    // TODO: Record Failure
                 }
             }
         } catch (err) {
