@@ -1,6 +1,7 @@
-const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { appendArray } = require('../utils/array');
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
