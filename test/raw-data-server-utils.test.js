@@ -2,11 +2,13 @@ const sinon = require('sinon');
 const expect = require('chai').expect;
 const axios = require('axios');
 const {
+    RAW_DATA_SERVER_API,
     generateRawDataServerSecret,
     createAndSendTempJsonFile,
+    bulkStringifyJson,
 } = require('../utils/raw-data-server-utils');
 
-describe('When calling generateRawDataServerSecret', () => {
+describe('Testing raw-data-server-utils', () => {
     let fakeDate;
     beforeEach(() => {
         const dateString = '2021-01-22';
@@ -25,12 +27,30 @@ describe('When calling generateRawDataServerSecret', () => {
     });
 
     describe('When calling createAndSendTempJsonFile', () => {
-        it('should send a post request to the given api with a FormData and a raw_data field', async () => {
+        it('should send a post request with the raw-data-server api', async () => {
             const postSpy = sinon.spy(axios, 'post');
-            const fakeApi = 'http://example.com';
-            await createAndSendTempJsonFile(fakeApi, { test: 'test' });
-            expect(postSpy.calledOnceWith(fakeApi)).to.equal(true);
+            const testJson = { a: 1, b: 2, c: 3 };
+            await createAndSendTempJsonFile(testJson);
+            expect(
+                postSpy.calledOnceWith(
+                    `${RAW_DATA_SERVER_API}/api/v1/upload-file`
+                )
+            ).to.equal(true);
             postSpy.restore();
+        });
+    });
+
+    describe('When calling bulkStringifyJson', () => {
+        it('should return a json of strings that can be joined with same result as a JSON.stringify', async () => {
+            const testJson = {
+                a: 1,
+                b: 2,
+                c: 3,
+                d: [11, 22, 33, 44],
+                e: { f: 10, g: 20 },
+            };
+            const result = bulkStringifyJson(testJson);
+            expect(result.join('')).to.equal(JSON.stringify(testJson));
         });
     });
 });

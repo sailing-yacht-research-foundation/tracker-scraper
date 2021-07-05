@@ -1,19 +1,20 @@
-const path = require('path');
-require('dotenv').config({
-    path: path.resolve(__dirname, '..', '.env'),
-});
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
-const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+    getExistingUrls,
+    registerFailedUrl,
+} = require('../utils/raw-data-server-utils');
 
 (async () => {
-    const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
+    const SOURCE = 'isail';
+    const existingClasses = {};
+    let browser, page;
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
     }
-    let browser, page;
-    const existingClasses = {};
 
     try {
         browser = await launchBrowser();
@@ -23,10 +24,23 @@ const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
         process.exit();
     }
 
+    let existingUrls;
+    try {
+        existingUrls = await getExistingUrls(SOURCE);
+    } catch (err) {
+        console.log('Error getting existing urls', err);
+        process.exit();
+    }
+
     let counter = 1;
     const maximum = 500;
     while (counter < maximum) {
         const url = `http://app.i-sail.com/eventDetails/${counter}`;
+        if (existingUrls.includes(url)) {
+            console.log(`Url already exist in database ${url}. Skipping.`);
+            counter++;
+            continue;
+        }
         console.log(`Getting new event with url ${url}`);
 
         try {
@@ -37,74 +51,68 @@ const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
 
             if (result.status() === 404) {
                 console.log(`Error 404 in loading page. Skipping url ${url}`);
-                counter += 1;
+                counter++;
                 continue;
             }
 
-            let didError = false;
             console.log(`Scraping page url ${url}`);
-            const allEventData = await page
-                .evaluate(() => {
-                    const raceJSON = JSON.parse(
-                        document.getElementsByName('raceJSON')[0].content
-                    );
-                    let idx = 0;
-                    while (idx < raceJSON.length) {
-                        const race = raceJSON[idx];
+            const allEventData = await page.evaluate(() => {
+                const raceJSON = JSON.parse(
+                    document.getElementsByName('raceJSON')[0].content
+                );
+                let idx = 0;
+                while (idx < raceJSON.length) {
+                    const race = raceJSON[idx];
 
-                        race.url =
-                            'http://app.i-sail.com' +
-                            window.Routing.generate('race_details', {
-                                id: race.event,
-                                race: race.name,
-                            });
-                        idx += 1;
-                    }
+                    race.url =
+                        'http://app.i-sail.com' +
+                        window.Routing.generate('race_details', {
+                            id: race.event,
+                            race: race.name,
+                        });
+                    idx += 1;
+                }
 
-                    const eventJSON = JSON.parse(
-                        document.getElementsByName('eventJSON')[0].content
-                    );
-                    const participantJSON = JSON.parse(
-                        document.getElementsByName('participantJSON')[0].content
-                    );
-                    const trackJSON = JSON.parse(
-                        document.getElementsByName('trackJSON')[0].content
-                    );
-                    const courseMarkJSON = JSON.parse(
-                        document.getElementsByName('courseMarkJSON')[0].content
-                    );
-                    const markJSON = JSON.parse(
-                        document.getElementsByName('markJSON')[0].content
-                    );
-                    const startlineJSON = JSON.parse(
-                        document.getElementsByName('startlineJSON')[0].content
-                    );
-                    const roundingJSON = JSON.parse(
-                        document.getElementsByName('roundingJSON')[0].content
-                    );
-                    const resultJSON = JSON.parse(
-                        document.getElementsByName('resultJSON')[0].content
-                    );
+                const eventJSON = JSON.parse(
+                    document.getElementsByName('eventJSON')[0].content
+                );
+                const participantJSON = JSON.parse(
+                    document.getElementsByName('participantJSON')[0].content
+                );
+                const trackJSON = JSON.parse(
+                    document.getElementsByName('trackJSON')[0].content
+                );
+                const courseMarkJSON = JSON.parse(
+                    document.getElementsByName('courseMarkJSON')[0].content
+                );
+                const markJSON = JSON.parse(
+                    document.getElementsByName('markJSON')[0].content
+                );
+                const startlineJSON = JSON.parse(
+                    document.getElementsByName('startlineJSON')[0].content
+                );
+                const roundingJSON = JSON.parse(
+                    document.getElementsByName('roundingJSON')[0].content
+                );
+                const resultJSON = JSON.parse(
+                    document.getElementsByName('resultJSON')[0].content
+                );
 
-                    return {
-                        raceJSON,
-                        eventJSON,
-                        participantJSON,
-                        trackJSON,
-                        courseMarkJSON,
-                        markJSON,
-                        startlineJSON,
-                        roundingJSON,
-                        resultJSON,
-                    };
-                })
-                .catch((error) => {
-                    console.log(error);
-                    didError = true;
-                });
+                return {
+                    raceJSON,
+                    eventJSON,
+                    participantJSON,
+                    trackJSON,
+                    courseMarkJSON,
+                    markJSON,
+                    startlineJSON,
+                    roundingJSON,
+                    resultJSON,
+                };
+            });
 
-            if (allEventData === null || didError) {
-                counter += 1;
+            if (allEventData === null) {
+                counter++;
                 continue;
             }
             // Check start time and end time of event.
@@ -124,7 +132,7 @@ const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
                 console.log(
                     'Skipping this event because it is not over yet or no tracks available'
                 );
-                counter += 1;
+                counter++;
                 continue;
             }
             console.log(`Saving event url ${url}`);
@@ -433,25 +441,18 @@ const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
                 iSailRounding: roundings,
             };
             try {
-                console.log('Creating temp json file');
-                await createAndSendTempJsonFile(
-                    `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
-                    objectsToSave
-                );
-                console.log('Finished sending file');
+                await createAndSendTempJsonFile(objectsToSave);
             } catch (err) {
                 console.log(
-                    `Failed creating and sending temp json file for url ${url}`,
-                    err
+                    `Failed creating and sending temp json file for url ${url}`
                 );
-                continue;
+                throw err;
             }
         } catch (err) {
             console.log(`Failed scraping race url ${url}`, err);
-            // TODO: Record Failure
+            await registerFailedUrl(SOURCE, url, err.toString());
         }
-
-        counter += 1;
+        counter++;
     }
     await browser.close();
     console.log('Finished scraping all events.');

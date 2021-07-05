@@ -1,30 +1,38 @@
-const path = require('path');
-require('dotenv').config({
-    path: path.resolve(__dirname, '..', '.env'),
-});
-
 const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { axios, uuidv4 } = require('../tracker-schema/utils.js');
-const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+    getExistingUrls,
+    registerFailedUrl,
+} = require('../utils/raw-data-server-utils');
 
 const LIMIT = 3000;
 const ESTELA_RACE_PAGE_URL = 'https://www.estela.co/en?page={$PAGENUM$}#races';
 const PAGENUM = '{$PAGENUM$}';
 
 (async () => {
-    const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
+    const SOURCE = 'estela';
+    const existingClubs = {};
+    let browser, page;
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
     }
-    let browser, page;
-    const existingClubs = {};
 
     try {
         browser = await launchBrowser();
         page = await browser.newPage();
     } catch (err) {
         console.log('Failed in launching puppeteer.', err);
+        process.exit();
+    }
+
+    let existingUrls;
+    try {
+        existingUrls = await getExistingUrls(SOURCE);
+    } catch (err) {
+        console.log('Error getting existing urls', err);
         process.exit();
     }
 
@@ -35,6 +43,10 @@ const PAGENUM = '{$PAGENUM$}';
             PAGENUM,
             counter.toString()
         );
+        if (existingUrls.includes(pageUrl)) {
+            counter++;
+            continue;
+        }
         console.log(`Getting race list with url ${pageUrl}`);
         try {
             await page.goto(pageUrl, { timeout: 0, waitUntil: 'networkidle0' });
@@ -62,8 +74,10 @@ const PAGENUM = '{$PAGENUM$}';
             });
 
             if (raceUrls.length === 0) {
-                console.log('No races associated with this event. Skipping.');
-                counter += 1;
+                const errMsg = 'No races associated with this event. Skipping.';
+                console.log(errMsg);
+                await registerFailedUrl(SOURCE, pageUrl, errMsg);
+                counter++;
                 continue;
             } else {
                 allRaceUrls.push(...raceUrls);
@@ -73,9 +87,9 @@ const PAGENUM = '{$PAGENUM$}';
             }
         } catch (err) {
             console.log('Failed scraping race list', err);
-            // TODO: Record failure
+            await registerFailedUrl(SOURCE, pageUrl, err.toString());
         }
-        counter += 1;
+        counter++;
     }
 
     console.log(
@@ -85,6 +99,9 @@ const PAGENUM = '{$PAGENUM$}';
     for (const raceIndex in allRaceUrls) {
         const objectsToSave = {};
         const currentRaceUrl = allRaceUrls[raceIndex];
+        if (existingUrls.includes(currentRaceUrl)) {
+            continue;
+        }
         console.log(`Scraping race with url ${currentRaceUrl}`);
         try {
             await page.goto(currentRaceUrl, {
@@ -514,20 +531,16 @@ const PAGENUM = '{$PAGENUM$}';
             objectsToSave.EstelaPosition = newPositions;
 
             try {
-                await createAndSendTempJsonFile(
-                    `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
-                    objectsToSave
-                );
+                await createAndSendTempJsonFile(objectsToSave);
             } catch (err) {
                 console.log(
-                    `Failed creating and sending temp json file for url ${currentRaceUrl}`,
-                    err
+                    `Failed creating and sending temp json file for url ${currentRaceUrl}`
                 );
-                continue;
+                throw err;
             }
         } catch (err) {
             console.log(err);
-            // TODO: Record Failure
+            await registerFailedUrl(SOURCE, currentRaceUrl, err.toString());
         }
     }
 
