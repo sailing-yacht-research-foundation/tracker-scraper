@@ -27,38 +27,45 @@ const generateSecret = function (plainText) {
 
 const createAndSendTempJsonFile = async (data) => {
     console.log('Creating temp file');
-    const dirPath = temp.mkdirSync('scraper_raw_data');
-    const inputPath = path.join(
-        dirPath,
-        `scraper_raw_data_${new Date().getTime()}.json`
-    );
     try {
-        fs.writeFileSync(inputPath, JSON.stringify(data));
-    } catch (err) {
-        console.log('Failed writing file. Trying bulkStringify');
-        const dataArr = bulkStringifyJson(data);
-        fs.writeFileSync(inputPath, dataArr.splice(0, 1)[0]);
-        while (dataArr.length > 0) {
-            fs.appendFileSync(inputPath, dataArr.splice(0, 1)[0]);
+        const dirPath = temp.mkdirSync('scraper_raw_data');
+        const inputPath = path.join(
+            dirPath,
+            `scraper_raw_data_${new Date().getTime()}.json`
+        );
+        try {
+            fs.writeFileSync(inputPath, JSON.stringify(data));
+        } catch (err) {
+            console.log('Failed writing file. Trying bulkStringify');
+            const dataArr = bulkStringifyJson(data);
+            fs.writeFileSync(inputPath, dataArr.splice(0, 1)[0]);
+            while (dataArr.length > 0) {
+                fs.appendFileSync(inputPath, dataArr.splice(0, 1)[0]);
+            }
+            console.log('Finished bulk saving');
         }
-        console.log('Finished bulk saving');
+
+        console.log('Sending temp file');
+        const formData = new FormData();
+        formData.append('raw_data', fs.createReadStream(inputPath));
+
+        const secret = generateRawDataServerSecret();
+        await axios.post(
+            `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
+            formData,
+            {
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity,
+                headers: {
+                    authorization: secret,
+                    'content-type': `multipart/form-data; boundary=${formData._boundary}`,
+                },
+            }
+        );
+        console.log('Finished creating and sending temp file', inputPath);
+    } finally {
+        temp.cleanupSync();
     }
-
-    console.log('Sending temp file');
-    const formData = new FormData();
-    formData.append('raw_data', fs.createReadStream(inputPath));
-
-    const secret = generateRawDataServerSecret();
-    await axios.post(`${RAW_DATA_SERVER_API}/api/v1/upload-file`, formData, {
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity,
-        headers: {
-            authorization: secret,
-            'content-type': `multipart/form-data; boundary=${formData._boundary}`,
-        },
-    });
-    console.log('Finished creating and sending temp file', inputPath);
-    temp.cleanupSync();
 };
 
 // Stringify for large data to avoid RangeError on string. The function returns an array to prevent the string rangeError
