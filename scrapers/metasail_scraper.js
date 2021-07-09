@@ -90,12 +90,14 @@ function getEventStartAndEndDate(eventDates) {
     let startDay = first
         .split(' ')[1]
         .replace('th', '')
+        .replace('rd', '')
         .replace('nd', '')
         .replace('st', '');
     let endMonth = startMonth;
     let endDay = second
         .split(' ')[0]
         .replace('th', '')
+        .replace('rd', '')
         .replace('nd', '')
         .replace('st', '');
     let year = second.split(' ')[1];
@@ -104,6 +106,7 @@ function getEventStartAndEndDate(eventDates) {
         endDay = second
             .split(' ')[1]
             .replace('th', '')
+            .replace('rd', '')
             .replace('nd', '')
             .replace('st', '');
         year = second.split(' ')[2];
@@ -172,12 +175,7 @@ async function getRaceUrls(page, existingRaceIds) {
     // Only parse races that don't exist.
     const raceUrls = [];
     tempRaceUrls.forEach((u) => {
-        const currentId = u
-            .split('&token=')[0]
-            .replace(
-                'http://app.metasail.it/ViewRecordedRace2018.aspx?idgara=',
-                ''
-            );
+        const currentId = u.split('idgara=')[1]?.split('&token=')[0];
         if (!existingRaceIds.includes(currentId)) {
             raceUrls.push(u);
         }
@@ -206,14 +204,12 @@ async function fetchRaceData(currentRaceUrl, browser) {
         });
 
         const unknownIdentifier = redirectedUrl.match(
-            /http:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace2018New\.aspx\?idgara=([0-9]+)&token=(.*)/
+            /http:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
         )[1];
         const idgara = redirectedUrl.match(
-            /http:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace2018New\.aspx\?idgara=([0-9]+)&token=(.*)/
-        )[2];
-        // const token = redirectedUrl.match(
-        //     /http:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace2018New\.aspx\?idgara=([0-9]+)&token=(.*)/
-        // )[3];
+            /http:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
+        )[3];
+
         await racePage.waitForFunction(() => 'garaList' in window, {
             timeout: 300000,
         });
