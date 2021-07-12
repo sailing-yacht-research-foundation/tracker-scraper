@@ -2,31 +2,240 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const xml2json = require('xml2json');
 
-const { launchBrowser } = require('../utils/puppeteerLauncher');
+const {
+    launchBrowser,
+    closePageAndBrowser,
+} = require('../utils/puppeteerLauncher');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
-    getExistingUrls,
+    getExistingData,
     registerFailedUrl,
 } = require('../utils/raw-data-server-utils');
 
 const SOURCE = 'yachtbot';
 
+(async () => {
+    if (!RAW_DATA_SERVER_API) {
+        console.log('Please set environment variable RAW_DATA_SERVER_API');
+        return -1;
+    }
+
+    let browser;
+    let page;
+    try {
+        const existingData = await getExistingData(SOURCE);
+        const successRaceIds = existingData
+            .map((u) => u.original_id)
+            .filter((id) => !!id);
+        const existingRaceIds = {};
+        successRaceIds.forEach((id) => {
+            existingRaceIds[id] = true;
+        });
+        const prevMaxRaceId = successRaceIds.reduce(
+            (a, b) => Math.max(a, b),
+            0
+        );
+        const MAX_RACE_INDEX = prevMaxRaceId + 1000 || 1000;
+
+        browser = await launchBrowser();
+        page = await browser.newPage();
+
+        let idx = 1;
+        while (idx <= MAX_RACE_INDEX) {
+            console.log(`Scraping race index ${idx} of ${MAX_RACE_INDEX}`);
+            if (existingRaceIds[idx]) {
+                idx++;
+                console.log('Already saved this so skipping.');
+                continue;
+            }
+
+            const pageUrl = `http://www.yacht-bot.com/races/${idx}`;
+            const existingUrl = existingData.find((u) => u.url === pageUrl);
+            if (existingUrl) {
+                idx++;
+                if (existingUrl.status === 'failed') {
+                    console.log(
+                        `Existing failed url ${pageUrl}. Check database table for error message.`
+                    );
+                } else {
+                    console.log(`Already visited url ${pageUrl}`);
+                }
+                continue;
+            }
+
+            try {
+                const token = await openRacePageAndGetAccessToken(
+                    page,
+                    pageUrl
+                );
+                if (token) {
+                    const raceSaveObj = {
+                        id: uuidv4(),
+                        original_id: idx,
+                    };
+
+                    const session = await fetchSession(idx, token);
+                    const startTime = session.data.session.start_time;
+                    const endTime = session.data.session.end_time;
+
+                    if (
+                        startTime > new Date().getTime() ||
+                        endTime > new Date().getTime()
+                    ) {
+                        console.log('Future race so skipping.');
+                        idx++;
+                        continue;
+                    }
+
+                    session.data.session.url = pageUrl;
+
+                    let logs = await fetchLogs(idx, token);
+
+                    const metadatas = [];
+                    const objects = [];
+                    const objectData = [];
+                    // Devices have object ids and serial numbers.
+                    const devices = [];
+                    if (logs && !(logs instanceof Array)) {
+                        logs = [logs];
+                    }
+                    logs.forEach((entry) => {
+                        const data = entry.data;
+                        const firstKey = Object.keys(data)[0];
+                        if (firstKey === 'object_data') {
+                            objectData.push(data.object_data);
+                        } else if (firstKey === 'object') {
+                            objects.push(data.object);
+                        } else if (firstKey === 'device') {
+                            devices.push(data.device);
+                        } else if (firstKey === 'metadata') {
+                            metadatas.push(data.metadata);
+                        }
+                    });
+
+                    metadatas.forEach((m) => {
+                        if (
+                            m.manual_wind !== null &&
+                            m.manual_wind !== undefined
+                        ) {
+                            session.data.session.manual_wind = JSON.stringify(
+                                m.manual_wind
+                            );
+                        } else if (
+                            m.course_direction !== null &&
+                            m.course_direction !== undefined
+                        ) {
+                            session.data.session.course_direction =
+                                m.course_direction;
+                        }
+                    });
+
+                    const oidsToSerial = {};
+                    devices.forEach((d) => {
+                        oidsToSerial[d.object_id] = d.serial_number;
+                    });
+
+                    // http://support.igtimi.com/support/solutions/articles/8000009993-api-communication-fundamentals
+                    let positionRequestData =
+                        'start_time=' +
+                        startTime +
+                        '&end_time=' +
+                        endTime +
+                        '&types%5B1%5D=0&types%5B2%5D=0&types%5B3%5D=0&types%5B4%5D=0&types%5B5%5D=0&types%5B6%5D=0&types%5B7%5D=0&types%5B8%5D=0&types%5B9%5D=0&types%5B10%5D=0&types%5B11%5D=0&types%5B12%5D=0&types%5B13%5D=0&types%5B14%5D=0&types%5B15%5D=0&types%5B16%5D=0&types%5B17%5D=0&types%5B18%5D=0&types%5B19%5D=0&types%5B20%5D=0&types%5B21%5D=0&types%5B22%5D=0&types%5B23%5D=0&types%5B24%5D=0&types%5B25%5D=0&types%5B26%5D=0&types%5B27%5D=0&types%5B28%5D=0&types%5B29%5D=0&types%5B30%5D=0&types%5B31%5D=0&types%5B32%5D=0&types%5B33%5D=0&types%5B34%5D=0&types%5B35%5D=0&types%5B36%5D=0&types%5B37%5D=0&types%5B38%5D=0&types%5B39%5D=0&types%5B40%5D=0&types%5B41%5D=0&types%5B42%5D=0&types%5B43%5D=0&types%5B44%5D=0&types%5B45%5D=0&types%5B46%5D=0&types%5B47%5D=0&types%5B48%5D=0&types%5B49%5D=0&types%5B50%5D=0&types%5B51%5D=0&types%5B52%5D=0&types%5B53%5D=0&types%5B54%5D=0&types%5B55%5D=0&types%5B56%5D=0&types%5B57%5D=0&types%5B23%5D=0&restore_archives=true';
+                    const serials = {};
+                    objectData.forEach((o) => {
+                        const serialNumber = oidsToSerial[o.object_id];
+                        o.object_content.serial_number = serialNumber;
+                        o.object_content.uuid = uuidv4();
+
+                        if (
+                            serialNumber !== null &&
+                            serialNumber !== undefined
+                        ) {
+                            positionRequestData =
+                                positionRequestData +
+                                '&serial_numbers%5B%5D=' +
+                                serialNumber;
+                            serials[serialNumber] = o.object_content;
+                        } else {
+                            serials[o.object_id] = o.object_content;
+                        }
+                    });
+
+                    positionRequestData =
+                        positionRequestData +
+                        '&_method=GET&restore_archives=true&access_token=' +
+                        token;
+                    const positionsRequest = await fetchPositions(
+                        positionRequestData,
+                        token
+                    );
+
+                    const { boats, buoys, positions } = parsePositionsData(
+                        positionsRequest,
+                        serials,
+                        oidsToSerial,
+                        raceSaveObj
+                    );
+
+                    // NOW SAVE session.data.session , things, and maybe serials?
+                    session.data.session.name = decodeURI(
+                        session.data.session.name
+                    );
+
+                    raceSaveObj.name = session.data.session.name;
+                    raceSaveObj.start_time = startTime;
+                    raceSaveObj.end_time = endTime;
+                    raceSaveObj.url = pageUrl;
+                    raceSaveObj.manual_wind = session.data.session.manual_wind;
+                    raceSaveObj.course_direction =
+                        session.data.session.course_direction;
+
+                    const races = [raceSaveObj];
+
+                    const objectsToSave = {
+                        YachtBotRace: races,
+                        YachtBotYacht: boats,
+                        YachtBotBuoy: buoys,
+                        YachtBotPosition: positions,
+                    };
+
+                    console.log('Uploading data file');
+                    await createAndSendTempJsonFile(objectsToSave);
+                    console.log('Finished sending file');
+                } else {
+                    console.log('Should not continue so going to next race.');
+                }
+            } catch (err) {
+                console.log(err);
+                await registerFailedUrl(SOURCE, pageUrl, err.toString());
+            }
+            idx++;
+        }
+    } catch (err) {
+        console.log('yachtbot scraper error', err);
+        return -1;
+    } finally {
+        console.log('Finished scraping all races.');
+        await closePageAndBrowser({ page, browser });
+    }
+})();
+
 const openRacePageAndGetAccessToken = async (page, pageUrl) => {
     console.log('about to go to page ' + pageUrl);
     await page.goto(pageUrl);
     console.log('went to page ' + pageUrl);
-    const shouldContinue = await page
+    const errorShown = await page
         .waitForFunction(
-            "document.querySelector('#overlay > div.error-state').style.display === 'none'"
+            "document.querySelector('#overlay > div.error-state').style.display === 'block'",
+            {
+                timeout: 2000,
+            }
         )
-        .then(() => {
-            return true;
-        })
-        .catch((e) => {
-            return false;
-        });
-    if (!shouldContinue) {
+        .then(() => true)
+        .catch(() => false);
+    if (errorShown) {
         return null;
     }
 
@@ -295,228 +504,3 @@ const parsePositionsData = (
 //     });
 //     return { windows, groups };
 // };
-
-const mainScript = async () => {
-    if (!RAW_DATA_SERVER_API) {
-        console.log('Please set environment variable RAW_DATA_SERVER_API');
-        return -1;
-    }
-
-    let browser;
-    let page;
-    try {
-        const existingUrls = await getExistingUrls(SOURCE);
-        const successRaceIds = existingUrls
-            .map((u) => u.original_id)
-            .filter((id) => !!id);
-        const existingRaceIds = {};
-        successRaceIds.forEach((id) => {
-            existingRaceIds[id] = true;
-        });
-        const prevMaxRaceId = successRaceIds.reduce(
-            (a, b) => Math.max(a, b),
-            0
-        );
-        const MAX_RACE_INDEX = prevMaxRaceId + 1000 || 1000;
-
-        browser = await launchBrowser();
-        page = await browser.newPage();
-
-        let idx = 1;
-        while (idx <= MAX_RACE_INDEX) {
-            console.log(`Scraping race index ${idx} of ${MAX_RACE_INDEX}`);
-            if (existingRaceIds[idx]) {
-                idx++;
-                console.log('Already saved this so skipping.');
-                continue;
-            }
-
-            const pageUrl = `http://www.yacht-bot.com/races/${idx}`;
-            const existingUrl = existingUrls.find((u) => u.url === pageUrl);
-            if (existingUrl) {
-                idx++;
-                if (existingUrl.status === 'failed') {
-                    console.log(
-                        `Existing failed url ${pageUrl}. Check database table for error message.`
-                    );
-                } else {
-                    console.log(`Already visited url ${pageUrl}`);
-                }
-                continue;
-            }
-
-            try {
-                const token = await openRacePageAndGetAccessToken(
-                    page,
-                    pageUrl
-                );
-                if (token) {
-                    const raceSaveObj = {
-                        id: uuidv4(),
-                        original_id: idx,
-                    };
-
-                    const session = await fetchSession(idx, token);
-                    const startTime = session.data.session.start_time;
-                    const endTime = session.data.session.end_time;
-
-                    if (
-                        startTime > new Date().getTime() ||
-                        endTime > new Date().getTime()
-                    ) {
-                        console.log('Future race so skipping.');
-                        idx++;
-                        continue;
-                    }
-
-                    session.data.session.url = pageUrl;
-
-                    let logs = await fetchLogs(idx, token);
-
-                    const metadatas = [];
-                    const objects = [];
-                    const objectData = [];
-                    // Devices have object ids and serial numbers.
-                    const devices = [];
-                    if (logs && !(logs instanceof Array)) {
-                        logs = [logs];
-                    }
-                    logs.forEach((entry) => {
-                        const data = entry.data;
-                        const firstKey = Object.keys(data)[0];
-                        if (firstKey === 'object_data') {
-                            objectData.push(data.object_data);
-                        } else if (firstKey === 'object') {
-                            objects.push(data.object);
-                        } else if (firstKey === 'device') {
-                            devices.push(data.device);
-                        } else if (firstKey === 'metadata') {
-                            metadatas.push(data.metadata);
-                        }
-                    });
-
-                    metadatas.forEach((m) => {
-                        if (
-                            m.manual_wind !== null &&
-                            m.manual_wind !== undefined
-                        ) {
-                            session.data.session.manual_wind = JSON.stringify(
-                                m.manual_wind
-                            );
-                        } else if (
-                            m.course_direction !== null &&
-                            m.course_direction !== undefined
-                        ) {
-                            session.data.session.course_direction =
-                                m.course_direction;
-                        }
-                    });
-
-                    const oidsToSerial = {};
-                    devices.forEach((d) => {
-                        oidsToSerial[d.object_id] = d.serial_number;
-                    });
-
-                    // http://support.igtimi.com/support/solutions/articles/8000009993-api-communication-fundamentals
-                    let positionRequestData =
-                        'start_time=' +
-                        startTime +
-                        '&end_time=' +
-                        endTime +
-                        '&types%5B1%5D=0&types%5B2%5D=0&types%5B3%5D=0&types%5B4%5D=0&types%5B5%5D=0&types%5B6%5D=0&types%5B7%5D=0&types%5B8%5D=0&types%5B9%5D=0&types%5B10%5D=0&types%5B11%5D=0&types%5B12%5D=0&types%5B13%5D=0&types%5B14%5D=0&types%5B15%5D=0&types%5B16%5D=0&types%5B17%5D=0&types%5B18%5D=0&types%5B19%5D=0&types%5B20%5D=0&types%5B21%5D=0&types%5B22%5D=0&types%5B23%5D=0&types%5B24%5D=0&types%5B25%5D=0&types%5B26%5D=0&types%5B27%5D=0&types%5B28%5D=0&types%5B29%5D=0&types%5B30%5D=0&types%5B31%5D=0&types%5B32%5D=0&types%5B33%5D=0&types%5B34%5D=0&types%5B35%5D=0&types%5B36%5D=0&types%5B37%5D=0&types%5B38%5D=0&types%5B39%5D=0&types%5B40%5D=0&types%5B41%5D=0&types%5B42%5D=0&types%5B43%5D=0&types%5B44%5D=0&types%5B45%5D=0&types%5B46%5D=0&types%5B47%5D=0&types%5B48%5D=0&types%5B49%5D=0&types%5B50%5D=0&types%5B51%5D=0&types%5B52%5D=0&types%5B53%5D=0&types%5B54%5D=0&types%5B55%5D=0&types%5B56%5D=0&types%5B57%5D=0&types%5B23%5D=0&restore_archives=true';
-                    const serials = {};
-                    objectData.forEach((o) => {
-                        const serialNumber = oidsToSerial[o.object_id];
-                        o.object_content.serial_number = serialNumber;
-                        o.object_content.uuid = uuidv4();
-
-                        if (
-                            serialNumber !== null &&
-                            serialNumber !== undefined
-                        ) {
-                            positionRequestData =
-                                positionRequestData +
-                                '&serial_numbers%5B%5D=' +
-                                serialNumber;
-                            serials[serialNumber] = o.object_content;
-                        } else {
-                            serials[o.object_id] = o.object_content;
-                        }
-                    });
-
-                    positionRequestData =
-                        positionRequestData +
-                        '&_method=GET&restore_archives=true&access_token=' +
-                        token;
-                    const positionsRequest = await fetchPositions(
-                        positionRequestData,
-                        token
-                    );
-
-                    const { boats, buoys, positions } = parsePositionsData(
-                        positionsRequest,
-                        serials,
-                        oidsToSerial,
-                        raceSaveObj
-                    );
-
-                    // NOW SAVE session.data.session , things, and maybe serials?
-                    session.data.session.name = decodeURI(
-                        session.data.session.name
-                    );
-
-                    raceSaveObj.name = session.data.session.name;
-                    raceSaveObj.start_time = startTime;
-                    raceSaveObj.end_time = endTime;
-                    raceSaveObj.url = pageUrl;
-                    raceSaveObj.manual_wind = session.data.session.manual_wind;
-                    raceSaveObj.course_direction =
-                        session.data.session.course_direction;
-
-                    const races = [raceSaveObj];
-
-                    const objectsToSave = {
-                        YachtBotRace: races,
-                        YachtBotYacht: boats,
-                        YachtBotBuoy: buoys,
-                        YachtBotPosition: positions,
-                    };
-
-                    console.log('Uploading data file');
-                    await createAndSendTempJsonFile(
-                        `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
-                        objectsToSave
-                    );
-                    console.log('Finished sending file');
-                } else {
-                    console.log('Should not continue so going to next race.');
-                }
-            } catch (err) {
-                console.log(err);
-                if (err.response?.status === 401) {
-                    console.log('Race is not public so skipping');
-                } else {
-                    console.log(err);
-                }
-                await registerFailedUrl(SOURCE, pageUrl, err.toString());
-            }
-            idx++;
-        }
-    } catch (err) {
-        console.log('yatbot scraper error', err);
-        return -1;
-    } finally {
-        if (page) {
-            page.close();
-        }
-        if (browser) {
-            browser.close();
-        }
-    }
-};
-
-if (require.main === module) {
-    mainScript();
-}
-
-exports.yatbotScraper = mainScript;

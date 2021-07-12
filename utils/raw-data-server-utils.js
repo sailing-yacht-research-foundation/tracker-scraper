@@ -105,7 +105,7 @@ const bulkStringifyJson = (data) => {
     return out;
 };
 
-const getExistingUrls = async (tracker) => {
+const getExistingData = async (tracker) => {
     const secret = generateRawDataServerSecret();
     const result = await axios.get(
         `${RAW_DATA_SERVER_API}/api/v1/scraped-url/${tracker}`,
@@ -115,7 +115,12 @@ const getExistingUrls = async (tracker) => {
             },
         }
     );
-    return result.data?.urlList?.map((i) => i.url) || [];
+    return result.data?.urlList;
+};
+
+const getExistingUrls = async (tracker) => {
+    const result = await getExistingData(tracker);
+    return result?.map((i) => i.url) || [];
 };
 
 const checkExistingUrl = async (tracker, url) => {
@@ -166,6 +171,7 @@ module.exports = {
     generateRawDataServerSecret,
     createAndSendTempJsonFile,
     bulkStringifyJson,
+    getExistingData,
     getExistingUrls,
     checkExistingUrl,
     registerFailedUrl,
