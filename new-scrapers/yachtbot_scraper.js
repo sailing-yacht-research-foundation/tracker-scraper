@@ -322,7 +322,7 @@ const mainScript = async () => {
         browser = await launchBrowser();
         page = await browser.newPage();
 
-        let idx = 362;
+        let idx = 1;
         while (idx <= MAX_RACE_INDEX) {
             console.log(`Scraping race index ${idx} of ${MAX_RACE_INDEX}`);
             if (existingRaceIds[idx]) {
@@ -481,8 +481,6 @@ const mainScript = async () => {
                         YachtBotBuoy: buoys,
                         YachtBotPosition: positions,
                     };
-
-                    console.log({ objectsToSave });
 
                     console.log('Uploading data file');
                     await createAndSendTempJsonFile(
