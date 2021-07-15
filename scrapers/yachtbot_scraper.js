@@ -76,17 +76,16 @@ const mainScript = async () => {
             console.log('about to go to page ' + pageUrl);
             await page.goto(pageUrl);
             console.log('went to page ' + pageUrl);
-            const shouldContinue = await page
+            const errorShown = await page
                 .waitForFunction(
-                    "document.querySelector('#overlay > div.error-state').style.display === 'none'"
+                    "document.querySelector('#overlay > div.error-state').style.display === 'block'",
+                    {
+                        timeout: 2000,
+                    }
                 )
-                .then(() => {
-                    return true;
-                })
-                .catch((e) => {
-                    return false;
-                });
-            if (shouldContinue) {
+                .then(() => true)
+                .catch(() => false);
+            if (!errorShown) {
                 const token = await page.evaluate(
                     () => window.oauth_access_token
                 );
@@ -432,7 +431,10 @@ const mainScript = async () => {
                             race,
                             race_original_id: raceOriginalId,
                             name,
-                            boat_number: boatNumber,
+                            boat_number:
+                                boatNumber && typeof boatNumber === 'object'
+                                    ? boatNumber.toString()
+                                    : boatNumber,
                             crew,
                             country,
                             metas,

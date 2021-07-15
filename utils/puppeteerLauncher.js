@@ -6,6 +6,16 @@ async function launchBrowser() {
     });
 }
 
+async function closePageAndBrowser({ page, browser }) {
+    if (page) {
+        await page.close();
+    }
+    if (browser) {
+        await browser.close();
+    }
+}
+
 module.exports = {
     launchBrowser,
+    closePageAndBrowser,
 };
