@@ -7,8 +7,10 @@ const temp = require('temp').track();
 const fs = require('fs');
 const axios = require('axios');
 const FormData = require('form-data');
+const doGzipObject = require('./zipFile');
 
 const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
+
 const generateRawDataServerSecret = () => {
     const todayDate = new Date();
     // Example format: 2021 Jun 21, Mon
@@ -29,25 +31,15 @@ const createAndSendTempJsonFile = async (data) => {
     console.log('Creating temp file');
     try {
         const dirPath = temp.mkdirSync('scraper_raw_data');
-        const inputPath = path.join(
+        const filePath = path.join(
             dirPath,
-            `scraper_raw_data_${new Date().getTime()}.json`
+            `scraper_raw_data_${new Date().getTime()}.json.gz`
         );
-        try {
-            fs.writeFileSync(inputPath, JSON.stringify(data));
-        } catch (err) {
-            console.log('Failed writing file. Trying bulkStringify');
-            const dataArr = bulkStringifyJson(data);
-            fs.writeFileSync(inputPath, dataArr.splice(0, 1)[0]);
-            while (dataArr.length > 0) {
-                fs.appendFileSync(inputPath, dataArr.splice(0, 1)[0]);
-            }
-            console.log('Finished bulk saving');
-        }
+        await doGzipObject(data, filePath);
 
         console.log('Sending temp file');
         const formData = new FormData();
-        formData.append('raw_data', fs.createReadStream(inputPath));
+        formData.append('raw_data', fs.createReadStream(filePath));
 
         const secret = generateRawDataServerSecret();
         await axios.post(
@@ -62,7 +54,7 @@ const createAndSendTempJsonFile = async (data) => {
                 },
             }
         );
-        console.log('Finished creating and sending temp file', inputPath);
+        console.log('Finished creating and sending temp file', filePath);
     } finally {
         temp.cleanupSync();
     }
