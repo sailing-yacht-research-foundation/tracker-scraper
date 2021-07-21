@@ -428,11 +428,11 @@ const {
                 newResults = newResults.concat(raceExtra.results);
             });
             const objectsToSave = {
-                iSailEvent: event,
+                iSailEvent: [event],
                 iSailRace: newRaces,
                 iSailClass: newClasses,
                 iSailEventParticipant: participants,
-                iSailEventTracksData: trackData,
+                iSailEventTracksData: [trackData],
                 iSailTrack: tracks,
                 iSailPosition: positions,
                 iSailMark: newMarks,

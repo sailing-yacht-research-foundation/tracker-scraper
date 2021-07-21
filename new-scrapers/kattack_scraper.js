@@ -380,9 +380,9 @@ const {
                 });
             }
             objectsToSave.KattackRace = [currentRace];
-            objectsToSave.KattackDevice = waypoints;
-            objectsToSave.KattackPosition = devices;
-            objectsToSave.KattackWaypoint = positions;
+            objectsToSave.KattackDevice = devices;
+            objectsToSave.KattackPosition = positions;
+            objectsToSave.KattackWaypoint = waypoints;
 
             try {
                 await createAndSendTempJsonFile(objectsToSave);
@@ -736,9 +736,9 @@ const {
             }
 
             objectsToSave.KattackRace = [currentRace];
-            objectsToSave.KattackDevice = waypoints;
-            objectsToSave.KattackPosition = devices;
-            objectsToSave.KattackWaypoint = positions;
+            objectsToSave.KattackDevice = devices;
+            objectsToSave.KattackPosition = positions;
+            objectsToSave.KattackWaypoint = waypoints;
             try {
                 await createAndSendTempJsonFile(objectsToSave);
             } catch (err) {
