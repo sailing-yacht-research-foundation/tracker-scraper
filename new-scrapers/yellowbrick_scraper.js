@@ -1,11 +1,11 @@
 const { launchBrowser } = require('../utils/puppeteerLauncher');
-const { axios, uuidv4 } = require('../tracker-schema/utils.js');
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 const xml2json = require('xml2json');
 
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
-    getExistingUrls,
     registerFailedUrl,
     getExistingData,
 } = require('../utils/raw-data-server-utils');
@@ -20,7 +20,7 @@ const {
     const owned = [];
     let existingOwnedRaces, raceList;
     try {
-        existingOwnedRaces = await getExistingUrls(SOURCE);
+        existingOwnedRaces = await getExistingData(SOURCE);
         existingOwnedRaces.forEach((r) => {
             owned.push(r.race_id);
         });
@@ -41,7 +41,7 @@ const {
         process.exit();
     }
 
-    for (let raceIndex = 0; raceIndex < 2; raceIndex++) {
+    for (let raceIndex = 0; raceIndex < raceList.length; raceIndex++) {
         console.log('Getting ' + raceIndex + ' of ' + raceList.length);
         const raceMetadata = raceList[raceIndex];
         const raceId = raceMetadata['race-id'];
@@ -1200,7 +1200,7 @@ const {
     const existingRaceCodes = await getExistingData(SOURCE);
     const raceCodes = [];
     existingRaceCodes.forEach((r) => {
-        raceCodes.push(r.race_code);
+        raceCodes.push(r.original_id);
     });
 
     for (const codeIndex in codes) {
