@@ -85,6 +85,14 @@ const SOURCE = 'metasail';
                 console.log('No race associated to event. Skipping.');
                 continue;
             }
+            const objectsToSave = {
+                MetasailEvent: [currentEvent],
+                MetasailRace: [],
+                MetasailBoat: [],
+                MetasailBuoy: [],
+                MetasailGate: [],
+                MetasailPosition: [],
+            };
             for (const urlIndex in raceUrls) {
                 const currentRaceUrl = raceUrls[urlIndex];
                 if (existingUrls.includes(eventUrl)) {
@@ -141,22 +149,18 @@ const SOURCE = 'metasail';
                         passings: JSON.stringify(raceData.buoyPasses),
                     };
 
-                    // const raceExtra = {
-                    //     allPointsForId,
-                    //     raceData,
-                    //     newRace,
-                    //     newBoats,
-                    //     newBuoys,
-                    //     newGates,
-                    // };
-                    console.log('Saving data');
-                    await saveData(
-                        currentEvent,
-                        newRace,
-                        newBuoys,
-                        newGates,
-                        newBoats,
-                        allPointsForId
+                    objectsToSave.MetasailRace.push(newRace);
+                    objectsToSave.MetasailBuoy = objectsToSave.MetasailBuoy.concat(
+                        newBuoys
+                    );
+                    objectsToSave.MetasailBoat = objectsToSave.MetasailBoat.concat(
+                        newBoats
+                    );
+                    objectsToSave.MetasailGate = objectsToSave.MetasailGate.concat(
+                        newGates
+                    );
+                    objectsToSave.MetasailPosition = objectsToSave.MetasailPosition.concat(
+                        Object.values(allPointsForId).flat()
                     );
                     console.log('Finished scraping race.');
                 } catch (err) {
@@ -169,6 +173,20 @@ const SOURCE = 'metasail';
                 }
             } // End of visiting all races
             console.log('Finished visiting all race urls.');
+            console.log('Saving data');
+            try {
+                await createAndSendTempJsonFile(objectsToSave);
+            } catch (err) {
+                console.log(
+                    `Failed creating and sending temp json file for url ${currentEvent.url}`,
+                    err
+                );
+                await registerFailedUrl(
+                    SOURCE,
+                    currentEvent.url,
+                    err.toString()
+                );
+            }
         } catch (err) {
             console.log(err);
             await registerFailedUrl(SOURCE, eventUrl, err.toString());
@@ -660,33 +678,6 @@ async function fetchRaceStats(currentRaceUrl, unknownIdentifier, idgara) {
     });
 
     return statsRequest.data;
-}
-
-async function saveData(
-    event,
-    newRace,
-    newBuoys,
-    newGates,
-    newBoats,
-    allPointsForId
-) {
-    const objectsToSave = {
-        MetasailEvent: [event],
-        MetasailRace: [newRace],
-        MetasailBoat: newBoats,
-        MetasailBuoy: newBuoys,
-        MetasailGate: newGates,
-        MetasailPosition: Object.values(allPointsForId).flat(),
-    };
-    try {
-        await createAndSendTempJsonFile(objectsToSave);
-    } catch (err) {
-        console.log(
-            `Failed creating and sending temp json file for url ${newRace.url}`,
-            err
-        );
-        await registerFailedUrl(SOURCE, newRace.url, err.toString());
-    }
 }
 
 async function getEventUrls(page) {
