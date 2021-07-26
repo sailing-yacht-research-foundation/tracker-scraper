@@ -456,7 +456,10 @@ const parsePositionsData = (
                 race,
                 race_original_id: raceOriginalId,
                 name,
-                boat_number: boatNumber,
+                boat_number:
+                    typeof boatNumber === 'object'
+                        ? String(boatNumber)
+                        : boatNumber,
                 crew,
                 country,
                 metas,
