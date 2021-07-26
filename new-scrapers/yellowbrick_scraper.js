@@ -44,19 +44,16 @@ const {
     for (let raceIndex = 0; raceIndex < raceList.length; raceIndex++) {
         console.log('Getting ' + raceIndex + ' of ' + raceList.length);
         const raceMetadata = raceList[raceIndex];
-        const raceId = raceMetadata['race-id'];
         const productId = raceMetadata['ios-productid'];
-        if (!owned.includes(raceId)) {
-            console.log('Associating ' + raceIndex + ' of ' + raceList.length);
-            const associateUrl =
-                'https://app.yb.tl/App/purchase?version=2&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&product-id=' +
-                productId +
-                '&receipt=' +
-                productId +
-                '&try=0';
+        console.log('Associating ' + raceIndex + ' of ' + raceList.length);
+        const associateUrl =
+            'https://app.yb.tl/App/purchase?version=2&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&product-id=' +
+            productId +
+            '&receipt=' +
+            productId +
+            '&try=0';
 
-            await axios.get(associateUrl);
-        }
+        await axios.get(associateUrl);
     }
 
     const ybCodeListXMLResult = await axios.get(
@@ -1200,7 +1197,9 @@ const {
     const existingRaceCodes = await getExistingData(SOURCE);
     const raceCodes = [];
     existingRaceCodes.forEach((r) => {
-        raceCodes.push(r.original_id);
+        if (r.status === 'success') {
+            raceCodes.push(r.original_id);
+        }
     });
 
     for (const codeIndex in codes) {
