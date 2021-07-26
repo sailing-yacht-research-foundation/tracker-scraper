@@ -212,6 +212,7 @@ const {
                     stop: race.stopTime,
                     wind_direction: race.windDirection,
                     url: race.url,
+                    track_ids: race.trackIds,
                 };
 
                 const courseMarks = [];

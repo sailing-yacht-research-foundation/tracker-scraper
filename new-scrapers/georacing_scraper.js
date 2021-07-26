@@ -383,6 +383,7 @@ const {
                         race.player_name,
                         err.toString()
                     );
+                    continue;
                 }
             }
 
