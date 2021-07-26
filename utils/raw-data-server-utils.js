@@ -7,7 +7,7 @@ const temp = require('temp').track();
 const fs = require('fs');
 const axios = require('axios');
 const FormData = require('form-data');
-const doGzipObject = require('./zipFile');
+const { doGzipObject } = require('./zipFile');
 
 const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
 
@@ -29,72 +29,27 @@ const generateSecret = function (plainText) {
 
 const createAndSendTempJsonFile = async (data) => {
     console.log('Creating temp file');
-    try {
-        const dirPath = temp.mkdirSync('scraper_raw_data');
-        const filePath = path.join(
-            dirPath,
-            `scraper_raw_data_${new Date().getTime()}.json.gz`
-        );
-        await doGzipObject(data, filePath);
+    const dirPath = temp.mkdirSync('scraper_raw_data');
+    const filePath = path.join(
+        dirPath,
+        `scraper_raw_data_${new Date().getTime()}.json.gz`
+    );
+    await doGzipObject(data, filePath);
 
-        console.log('Sending temp file');
-        const formData = new FormData();
-        formData.append('raw_data', fs.createReadStream(filePath));
+    console.log('Sending temp file');
+    const formData = new FormData();
+    formData.append('raw_data', fs.createReadStream(filePath));
 
-        const secret = generateRawDataServerSecret();
-        await axios.post(
-            `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
-            formData,
-            {
-                maxContentLength: Infinity,
-                maxBodyLength: Infinity,
-                headers: {
-                    authorization: secret,
-                    'content-type': `multipart/form-data; boundary=${formData._boundary}`,
-                },
-            }
-        );
-        console.log('Finished creating and sending temp file', filePath);
-    } finally {
-        temp.cleanupSync();
-    }
-};
-
-// Stringify for large data to avoid RangeError on string. The function returns an array to prevent the string rangeError
-const bulkStringifyJson = (data) => {
-    const out = [];
-    out.push('{');
-    Object.keys(data).forEach((key) => {
-        out.push(`${JSON.stringify(key)}:`);
-        if (data[key] instanceof Array) {
-            const arr = [...data[key]]; // clone the array since splice mutates array
-            let arrStr = [];
-            while (arr.length > 0) {
-                // Chunk stringify large arrays to prevent RangeError
-                arrStr.push(JSON.stringify(arr.splice(0, 100000)));
-            }
-            arrStr = arrStr.map((str, index) => {
-                if (index !== 0) {
-                    str = str.substr(1, str.length); // exclude the open bracket
-                }
-                if (index !== arrStr.length - 1) {
-                    str = str.substr(0, str.length - 1) + ','; // exclude the close bracket
-                }
-                return str;
-            });
-            if (arrStr.length === 0) {
-                out.push('[]');
-            } else {
-                out.push(...arrStr);
-            }
-        } else {
-            out.push(JSON.stringify(data[key]));
-        }
-        out.push(',');
+    const secret = generateRawDataServerSecret();
+    await axios.post(`${RAW_DATA_SERVER_API}/api/v1/upload-file`, formData, {
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+        headers: {
+            authorization: secret,
+            'content-type': `multipart/form-data; boundary=${formData._boundary}`,
+        },
     });
-    out.pop(); // remove last comma
-    out.push('}');
-    return out;
+    console.log('Finished creating and sending temp file', filePath);
 };
 
 const getExistingData = async (tracker) => {
@@ -162,7 +117,6 @@ module.exports = {
     RAW_DATA_SERVER_API,
     generateRawDataServerSecret,
     createAndSendTempJsonFile,
-    bulkStringifyJson,
     getExistingData,
     getExistingUrls,
     checkExistingUrl,
