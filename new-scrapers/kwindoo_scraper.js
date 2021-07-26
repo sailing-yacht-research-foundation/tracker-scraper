@@ -6,6 +6,7 @@ const {
     getExistingUrls,
     registerFailedUrl,
 } = require('../utils/raw-data-server-utils');
+const { appendArray } = require('../utils/array');
 const SOURCE = 'kwindoo';
 
 (async () => {
@@ -65,6 +66,21 @@ const SOURCE = 'kwindoo';
                 `Going through all races, length ${regattaDetails.races.length}... `
             );
 
+            const objectsToSave = {
+                KwindooRegatta: [newOrExistingRegatta],
+                KwindooRegattaOwner: [regattaOwner],
+                KwindooRace: [],
+                KwindooBoat: [],
+                KwindooComment: [],
+                KwindooHomeportLocation: [homeportLocation],
+                KwindooMarker: [],
+                KwindooMIA: [],
+                KwindooPOI: pois,
+                KwindooPosition: [],
+                KwindooRunningGroup: runningGroups,
+                KwindooVideoStream: videoStreams,
+                KwindooWaypoint: [],
+            };
             for (const raceIndex in regattaDetails.races) {
                 const currentRace = regattaDetails.races[raceIndex];
                 const raceUrl = `https://www.kwindoo.com/tracking/${newOrExistingRegatta.original_id}-${newOrExistingRegatta.name_slug}?race_id=${currentRace.id}`;
@@ -130,25 +146,26 @@ const SOURCE = 'kwindoo';
                         boats,
                         newOrExistingRegatta
                     );
-
-                    await saveRaceData({
-                        newOrExistingRegatta,
-                        regattaOwner,
-                        homeportLocation,
-                        pois,
-                        videoStreams,
-                        runningGroups,
-                        newRace,
-                        boats,
-                        mias,
-                        waypoints,
-                        comments,
-                        markers,
-                        positions,
-                    });
+                    objectsToSave.KwindooRace.push(newRace);
+                    appendArray(objectsToSave.KwindooBoat, boats);
+                    appendArray(objectsToSave.KwindooComment, comments);
+                    appendArray(objectsToSave.KwindooMarker, markers);
+                    appendArray(objectsToSave.KwindooMIA, mias);
+                    appendArray(objectsToSave.KwindooPosition, positions);
+                    appendArray(objectsToSave.KwindooWaypoint, waypoints);
                 } catch (err) {
                     console.log('Error downloading and saving race data.', err);
                     await registerFailedUrl(SOURCE, raceUrl, err.toString());
+                }
+            }
+            if (objectsToSave.KwindooRace.length > 0) {
+                try {
+                    await createAndSendTempJsonFile(objectsToSave);
+                } catch (err) {
+                    console.log(
+                        `Failed creating and sending temp json file for regatta url ${regattaUrl}`
+                    );
+                    throw err;
                 }
             }
         } catch (err) {
@@ -527,46 +544,4 @@ async function fetchRacePositions(
         });
     });
     return positionObjects;
-}
-
-async function saveRaceData({
-    newOrExistingRegatta,
-    regattaOwner,
-    homeportLocation,
-    pois,
-    videoStreams,
-    runningGroups,
-    newRace,
-    boats,
-    mias,
-    waypoints,
-    comments,
-    markers,
-    positions,
-}) {
-    const objectsToSave = {
-        KwindooRegatta: [newOrExistingRegatta],
-        KwindooRegattaOwner: [regattaOwner],
-        KwindooRace: [newRace],
-        KwindooBoat: boats,
-        KwindooComment: comments,
-        KwindooHomeportLocation: [homeportLocation],
-        KwindooMarker: markers,
-        KwindooMIA: mias,
-        KwindooPOI: pois,
-        KwindooPosition: positions,
-        KwindooRunningGroup: runningGroups,
-        KwindooVideoStream: videoStreams,
-        KwindooWaypoint: waypoints,
-    };
-
-    try {
-        await createAndSendTempJsonFile(objectsToSave);
-    } catch (err) {
-        console.log(
-            `Failed creating and sending temp json file for url ${newRace.url}`,
-            err
-        );
-        await registerFailedUrl(SOURCE, newRace.url, err.toString());
-    }
 }
