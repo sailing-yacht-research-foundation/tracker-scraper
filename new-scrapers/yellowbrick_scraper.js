@@ -17,13 +17,8 @@ const {
         process.exit();
     }
     const YB_RACE_LIST_URL = 'https://app.yb.tl/App/Races?version=3';
-    const owned = [];
-    let existingOwnedRaces, raceList;
+    let raceList;
     try {
-        existingOwnedRaces = await getExistingData(SOURCE);
-        existingOwnedRaces.forEach((r) => {
-            owned.push(r.race_id);
-        });
         // GET CODES
 
         // TODO: Put user-key, udid, urls in DB
@@ -1235,12 +1230,10 @@ const {
             const raceNewId = uuidv4();
 
             const kml = await axios.get(`http://yb.tl/${currentCode}.kml`);
-            // Uploading files to the bucket
-            const KML_BUCKET_NAME = process.env.YELLOWBRICK_KML_S3_BUCKET;
-            await {
-                Bucket: KML_BUCKET_NAME,
-                Key: `${kmlLookupId}.kml`, // File name you want to save as in S3
-                Body: kml.data,
+
+            const kmlToSave = {
+                id: kmlLookupId,
+                data: kml.data,
             };
 
             const leaderBoardUrl = `http://yb.tl/l/${currentCode}`;
@@ -1485,8 +1478,8 @@ const {
             objectsToSave.YellowbrickTeam = teamsSave;
             objectsToSave.YellowbrickLeaderboardTeam = leaderboardTeams;
             objectsToSave.YellowbrickPosition = allPositions;
+            objectsToSave.YellowbrickKml = [kmlToSave];
 
-            console.log('Bulk saving objects.');
             await createAndSendTempJsonFile(objectsToSave);
             raceCodes.push(raceCode);
             console.log('Finished scraping race.');
