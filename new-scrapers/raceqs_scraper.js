@@ -8,10 +8,18 @@ const {
     registerFailedUrl,
 } = require('../utils/raw-data-server-utils');
 const { appendArray } = require('../utils/array');
+const axiosRetry = require('axios-retry');
 
 const SOURCE = 'raceqs';
 
 (async () => {
+    axiosRetry(axios, {
+        retryDelay: (retryCount) => {
+            console.log(`retry attempt: ${retryCount}`);
+            return retryCount * 2000; // time interval between retries
+        },
+        retries: 5,
+    });
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
@@ -94,18 +102,6 @@ const SOURCE = 'raceqs';
                 timestring
             );
             appendArray(newPositions, positions);
-
-            // let startUrls = []
-            // config.starts.forEach(s=>{
-            //     let startUrl = 'https://raceqs.com/rest/start?id=' + s.id
-            //     startUrls.push(startUrl)
-            // })
-
-            // for(startUrlIndex in startUrls){
-            //     let startUrl = startUrls[startUrlIndex]
-            //     let startConfigRequest = await axios.get(startUrl)
-            //     console.log(startConfigRequest.data)
-            // }
 
             await saveData({
                 newEvents,
@@ -361,7 +357,6 @@ async function fetchUsersPositions(newEventStat, users, eventTimeString) {
             };
             positions.push(position);
         });
-        console.log('positions length after appending', positions.length);
     }
     return positions;
 }
