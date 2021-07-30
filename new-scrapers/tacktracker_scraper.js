@@ -297,6 +297,9 @@ const parser = require('xml2json');
     const regattasToRaces = {};
     for (const userUrlIndex in allUserUrls) {
         const currentUrl = allUserUrls[userUrlIndex];
+        console.log(
+            `Getting race connected to user ${userUrlIndex} of ${allUserUrls.length} with url ${currentUrl}.`
+        );
         const result = await axios.get(currentUrl);
         const resultData = result.data;
         const regexp = /onclick="viewRace\('[0-9]*'/g;
@@ -320,9 +323,12 @@ const parser = require('xml2json');
 
     for (const regattaUrlIndex in allRegattaUrls) {
         const currentUrl = allRegattaUrls[regattaUrlIndex];
+        console.log(
+            `Getting race connected to regatta ${regattaUrlIndex} of ${allRegattaUrls.length} with url ${currentUrl}.`
+        );
         const result = await axios.get(currentUrl);
         const resultData = result.data;
-        const regexp = /onclick="viewRace\('[0-9]*'/g;
+        const regexp = /onclick="viewRace\('\d+', '\d+'/g;
 
         const matches = resultData.toString().match(regexp);
         const currentRegatta = urlToRegatta[currentUrl];
@@ -333,9 +339,11 @@ const parser = require('xml2json');
         if (matches !== null) {
             for (const matchIndex in matches) {
                 const match = matches[matchIndex];
-                const regex2 = /[0-9]+/;
-                const raceId = match.match(regex2)[0];
-                raceIdHash[raceId] = currentUrl;
+                const regex2 = /\d+/g;
+                const ids = match.match(regex2);
+                const raceId = ids[0];
+                const raceOrder = ids[1];
+                raceIdHash[raceId] = `${currentUrl}/${raceOrder}`;
                 regattasToRaces[currentRegatta].push(raceId);
             }
         }
@@ -409,7 +417,8 @@ const parser = require('xml2json');
                 userOriginalId === undefined
             ) {
                 if (raceUrl.includes('regattas')) {
-                    regattaOriginalId = raceUrl.replace(REGATTA_URL_PREFIX, '');
+                    const parts = raceUrl.split('/');
+                    regattaOriginalId = parts[parts.length - 2];
                 } else {
                     userOriginalId = raceUrl
                         .split('home/')[1]
