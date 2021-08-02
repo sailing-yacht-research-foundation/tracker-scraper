@@ -181,11 +181,7 @@ const SOURCE = 'metasail';
                     `Failed creating and sending temp json file for url ${currentEvent.url}`,
                     err
                 );
-                await registerFailedUrl(
-                    SOURCE,
-                    currentEvent.url,
-                    err.toString()
-                );
+                throw err;
             }
         } catch (err) {
             console.log(err);
