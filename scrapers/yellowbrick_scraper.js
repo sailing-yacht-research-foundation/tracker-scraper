@@ -29,7 +29,14 @@ const axiosRetry = require('axios-retry');
 const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
 
 (async () => {
-    axiosRetry(axios, { retryDelay: axiosRetry.exponentialDelay, retries: 10 });
+    // Axios retry is used in yellowbrick because the url http://yb.tl/JSON/{code}/RaceSetup sometimes returns 503 on the first try and succeeds on the next req
+    axiosRetry(axios, {
+        retryDelay: (retryCount) => {
+            console.log(`retry attempt: ${retryCount}`);
+            return retryCount * 2000; // time interval between retries
+        },
+        retries: 5,
+    });
     if (!connect()) {
         process.exit();
     }
@@ -1496,11 +1503,8 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                         currentCode
                     );
                 } catch (err) {
-                    console.log(
-                        'Failed getting positions with puppeteer.',
-                        err
-                    );
-                    continue;
+                    console.log('Failed getting positions with puppeteer.');
+                    throw err;
                 }
             }
 

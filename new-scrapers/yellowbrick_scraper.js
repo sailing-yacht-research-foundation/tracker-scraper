@@ -2,6 +2,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const xml2json = require('xml2json');
+const axiosRetry = require('axios-retry');
 
 const {
     RAW_DATA_SERVER_API,
@@ -11,6 +12,14 @@ const {
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
+    // Axios retry is used in yellowbrick because the url http://yb.tl/JSON/{code}/RaceSetup sometimes returns 503 on the first try and succeeds on the next req
+    axiosRetry(axios, {
+        retryDelay: (retryCount) => {
+            console.log(`retry attempt: ${retryCount}`);
+            return retryCount * 2000; // time interval between retries
+        },
+        retries: 5,
+    });
     const SOURCE = 'yellowbrick';
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
@@ -1463,11 +1472,8 @@ const {
                         currentCode
                     );
                 } catch (err) {
-                    console.log(
-                        'Failed getting positions with puppeteer.',
-                        err
-                    );
-                    continue;
+                    console.log('Failed getting positions with puppeteer.');
+                    throw err;
                 }
             }
             const objectsToSave = {};
