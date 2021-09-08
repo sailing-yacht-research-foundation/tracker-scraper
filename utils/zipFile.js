@@ -19,6 +19,7 @@ const doGzipObject = (data, destination) => {
             const gzip = createGzip();
             const stream = transformStream.pipe(gzip).pipe(outputStream);
             stream.on('finish', () => {
+                fs.unlinkSync(inputPath);
                 console.log('Succesfully created gzip file', destination);
                 resolve();
             });
@@ -27,9 +28,8 @@ const doGzipObject = (data, destination) => {
             stream.on('error', errorHandler);
         } catch (err) {
             console.log('Failed bulkStringifyJson');
-            reject(err);
-        } finally {
             fs.unlinkSync(inputPath);
+            reject(err);
         }
     });
 };

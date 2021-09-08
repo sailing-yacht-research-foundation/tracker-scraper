@@ -38,8 +38,8 @@ const createAndSendTempJsonFile = async (data) => {
 
     console.log('Sending temp file');
     const formData = new FormData();
-    formData.append('raw_data', fs.createReadStream(filePath));
-
+    const zipReadStream = fs.createReadStream(filePath);
+    formData.append('raw_data', zipReadStream);
     const secret = generateRawDataServerSecret();
     await axios.post(`${RAW_DATA_SERVER_API}/api/v1/upload-file`, formData, {
         maxContentLength: Infinity,
@@ -49,6 +49,7 @@ const createAndSendTempJsonFile = async (data) => {
             'content-type': `multipart/form-data; boundary=${formData._boundary}`,
         },
     });
+    zipReadStream.destroy();
     console.log('Finished creating and sending temp file', filePath);
 };
 
