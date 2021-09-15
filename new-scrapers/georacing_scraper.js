@@ -89,6 +89,7 @@ const {
             objectsToSave.GeoracingSplittimeObject = [];
             for (const raceIndex in races) {
                 const race = races[raceIndex];
+                const urlRegex = /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=+$,\w]+@)?[A-Za-z0-9.-]+|(?:www.|[-;:&=+$,\w]+@)[A-Za-z0-9.-]+)((?:\/[+~%/.\w-_]*)?\??(?:[-+=&;%@.\w_]*)#?(?:[\w]*))?)/;
                 const raceStartDateStamp = new Date(race.start_time).getTime();
                 const raceEndDateStamp = new Date(race.end_time).getTime();
 
@@ -100,7 +101,7 @@ const {
                     continue;
                 }
 
-                if (!race.player_name) {
+                if (!race.player_name || !urlRegex.test(race.player_name)) {
                     race.player_name = getRacePlayerNameURL(
                         eventObjSave.original_id,
                         race.id
