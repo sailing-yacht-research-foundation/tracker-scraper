@@ -1448,6 +1448,14 @@ function getPositionsFromBinary(bytes, meta = null) {
     } else {
         throw new Error('invalid version binary file: ' + version);
     }
+    // This code is for Vendee Globe 2016. The data is in s3.
+    // Comment the code above then uncomment the code below and download the json in order to add the data in db
+    // const posData = require('./100346+93419_data_manager_scrape.json');
+    // const actorsPositions = posData.DATAMANAGER.ActorsPositions;
+    // for (aid in actorsPositions) {
+    //   actorsPositions[aid] = actorsPositions[aid]._dataList.map((i) => ({at: i.timestamp * 1000, lng: i.data.lng, lat: i.data.lat}));
+    // }
+    // return actorsPositions;
 }
 
 function getVirtualitiesGroundsData(grounds, raceObjSave) {
@@ -1657,6 +1665,7 @@ function getActorsData(actors, existingObjects, raceObjSave) {
         actorObjSave.person = JSON.stringify(a.person);
 
         actorObjSave.originalActorObject = a;
+        actorObjSave.shouldSave = actorObj.shouldSave;
 
         return actorObjSave;
     });
@@ -1707,12 +1716,15 @@ function getSplittimesData(splittimes, existingObjects, raceObjSave) {
 
     const splittimesSave = [];
     const splittimeObjectsSave = [];
-    splittimes.forEach((st) => {
+    for (const st of splittimes) {
         const splittime = instantiateOrReturnExisting(
             existingObjects,
             Georacing.Splittime,
             st.id
         );
+        if (!splittime.shouldSave) {
+            continue;
+        }
 
         splittime.obj.race = raceObjSave.id;
         splittime.obj.race_original_id = raceObjSave.original_id;
@@ -1730,12 +1742,15 @@ function getSplittimesData(splittimes, existingObjects, raceObjSave) {
         if (!st.splittimes) {
             return;
         }
-        st.splittimes.forEach((s) => {
+        for (const s of st.splittimes) {
             const splittimeObject = instantiateOrReturnExisting(
                 existingObjects,
                 Georacing.SplittimeObject,
                 s.id
             );
+            if (!splittimeObject.shouldSave) {
+                continue;
+            }
 
             splittimeObject.obj.splittime = splittime.obj.id;
             splittimeObject.obj.splittime_original_id =
@@ -1764,8 +1779,8 @@ function getSplittimesData(splittimes, existingObjects, raceObjSave) {
             splittimeObject.obj.time_out = s.time_out;
 
             splittimeObjectsSave.push(splittimeObject.obj);
-        });
-    });
+        }
+    }
     return {
         splittimesSave,
         splittimeObjectsSave,
@@ -1833,12 +1848,15 @@ function getCoursesData(courses, existingObjects, raceObjSave) {
     const coursesSave = [];
     const coursesObjectSave = [];
     const coursesElementSave = [];
-    courses.forEach((c) => {
+    for (const c of courses) {
         const courseObj = instantiateOrReturnExisting(
             existingObjects,
             Georacing.Course,
             c.id
         );
+        if (!courseObj.shouldSave) {
+            continue;
+        }
         const course = courseObj.obj;
         course.race = raceObjSave.id;
         course.race_original_id = raceObjSave.original_id;
@@ -1849,12 +1867,15 @@ function getCoursesData(courses, existingObjects, raceObjSave) {
         course.course_type = c.course_type;
         coursesSave.push(course);
         if (c.course_objects) {
-            c.course_objects.forEach((co) => {
+            for (const co of c.course_objects) {
                 const courseObjectObj = instantiateOrReturnExisting(
                     existingObjects,
                     Georacing.CourseObject,
                     co.id
                 );
+                if (!courseObjectObj.shouldSave) {
+                    continue;
+                }
                 const coSave = courseObjectObj.obj;
                 coSave.race = raceObjSave.id;
                 coSave.race_original_id = raceObjSave.original_id;
@@ -1905,9 +1926,9 @@ function getCoursesData(courses, existingObjects, raceObjSave) {
                         coursesElementSave.push(element);
                     });
                 }
-            });
+            }
         }
-    });
+    }
     return {
         coursesSave,
         coursesObjectSave,
@@ -1981,7 +2002,6 @@ async function fetchPositionsData(
             : null
     );
     const actors = Object.keys(positionsData);
-
     actors.forEach((aoid) => {
         let aid = trackables[aoid];
 
@@ -2515,11 +2535,6 @@ const allRacesURL =
                 event.id
             );
 
-            // if (!eventObj.shouldSave) {
-            //     console.log('Already saved this event so skipping.');
-            //     continue;
-            // }
-
             const eventObjSave = eventObj.obj;
             eventObjSave.name = event.name;
             eventObjSave.short_name = event.short_name;
@@ -2543,7 +2558,7 @@ const allRacesURL =
 
             for (const raceIndex in races) {
                 const race = races[raceIndex];
-
+                const urlRegex = /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=+$,\w]+@)?[A-Za-z0-9.-]+|(?:www.|[-;:&=+$,\w]+@)[A-Za-z0-9.-]+)((?:\/[+~%/.\w-_]*)?\??(?:[-+=&;%@.\w_]*)#?(?:[\w]*))?)/;
                 const raceStartDateStamp = new Date(race.start_time).getTime();
                 const raceEndDateStamp = new Date(race.end_time).getTime();
 
@@ -2554,8 +2569,7 @@ const allRacesURL =
                     console.log('Future race so skipping');
                     continue;
                 }
-                // console.log(race.player_name)
-                if (!race.player_name) {
+                if (!race.player_name || !urlRegex.test(race.player_name)) {
                     race.player_name = getRacePlayerNameURL(
                         eventObjSave.original_id,
                         race.id
@@ -2625,20 +2639,11 @@ const allRacesURL =
                         const allRequest = await axios.get(
                             dataUrl + 'all.json'
                         );
-                        /*
-                        allRequest.data keys =  [ 'states',
-                            'message',
-                            'news',
-                            'race',
-                            'options',
-                            'actors',
-                            'courses',
-                            'weathers',
-                            'splittimes',
-                            'track',
-                            'event',
-                            'categories' ]
-                        */
+
+                        // This code is for Vendee Globe 2016. The data is in s3.
+                        // const allRequest = {
+                        //   data: require('./100346+93419_data_20170125_134639.json')
+                        // }
 
                         const {
                             groundPlaces,
@@ -2699,7 +2704,10 @@ const allRacesURL =
                                     id: actorObjSave.id,
                                     original_id: originalActorObject.id,
                                 };
-                                actorSave.push(actorObjSave);
+                                if (actorObjSave.shouldSave) {
+                                    delete actorObjSave.shouldSave;
+                                    actorSave.push(actorObjSave);
+                                }
                             });
                         }
 
@@ -2769,7 +2777,7 @@ const allRacesURL =
                             } catch (err) {
                                 console.log(
                                     'Failed to fetch and parse positions! This happens in the web app too!',
-                                    err.toString()
+                                    err
                                 );
                             }
                         }
