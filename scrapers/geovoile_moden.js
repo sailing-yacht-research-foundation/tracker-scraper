@@ -2,12 +2,21 @@
 /* eslint-disable no-undef */
 const puppeteer = require('puppeteer');
 const axios = require('axios');
-
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+    getExistingUrls,
+    registerFailedUrl,
+} = require('../utils/raw-data-server-utils');
 /**
- * Get urls that need to be get data
+ * Get urls that need to be scrapped
  * @returns string[]
  */
 async function getUrls() {
+    // For testing purpose, you can return some urls only
+    // return [
+    //     'https://tracking2020.vendeeglobe.org/fr/?v=3',
+    // ];
     const archivePages = [
         'http://www.geovoile.com/archives_2020.asp',
         'http://www.geovoile.com/archives_2019.asp',
@@ -32,21 +41,18 @@ async function getUrls() {
             raceUrls.push(newUrl);
         }
     }
-
-    // For testing purpose, you can return some urls only
-    // return [
-    //     'http://trimaran-idec.geovoile.com/julesverne/2016/tracker/',
-    //     'https://www.volvooceanrace.com/static/tracker/leg19.html',
-    //     'http://guochuansailing.geovoile.com/northeastpassage/2013/',
-    //     'https://tracking2020.vendeeglobe.org/fr/',
-    // ];
     return raceUrls;
 }
 
+/**
+ * Scrap geovoile data for specific race
+ * @param {string} url
+ * @returns scrapped data
+ */
 async function scrapPage(url) {
     const browser = await puppeteer.launch({
         args: [
-            // '--proxy-server=127.0.0.1:8888', // Or whatever the address is
+            '--proxy-server=127.0.0.1:8888', // Or whatever the address is
         ],
     });
     const page = await browser.newPage();
@@ -138,6 +144,7 @@ async function scrapPage(url) {
                 raceState: tracker._raceState,
                 prerace: tracker._prerace,
                 name: tracker.name || document.title,
+                url,
             };
         });
 
@@ -180,13 +187,47 @@ async function scrapPage(url) {
 }
 
 (async () => {
+    const SOURCE = 'geovoile';
+    if (!RAW_DATA_SERVER_API) {
+        console.log('Please set environment variable RAW_DATA_SERVER_API');
+        process.exit();
+    }
     const urls = await getUrls();
 
     for (const url of urls) {
+        let existingUrls;
+        try {
+            existingUrls = await getExistingUrls(SOURCE);
+        } catch (err) {
+            console.log('Error getting existing urls', err);
+            process.exit();
+        }
+
+        if (existingUrls.includes(url)) {
+            console.log(`url: ${url} is scrapped, ignore`);
+            continue;
+        }
+
+        console.log(existingUrls);
+
         const result = await scrapPage(url);
-        // TODO: call backend endpoint by axios
         if (!result) {
+            console.log(`Failed to scrap data  for url ${url}`);
+            await registerFailedUrl(SOURCE, url, err.toString());
+            continue;
+        }
+        try {
+            console.log(`Sending json file to raw-data-server for url: ${url}`);
+            await createAndSendTempJsonFile(result);
+        } catch (err) {
+            console.log(
+                `Failed creating and sending temp json file for url ${url}`,
+                err
+            );
+            await registerFailedUrl(SOURCE, url, err.toString());
             continue;
         }
     }
+    console.log('Finished scraping geovoile modern');
+    process.exit(0);
 })();
