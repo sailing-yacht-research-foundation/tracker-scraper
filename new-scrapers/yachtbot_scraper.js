@@ -50,7 +50,7 @@ const SOURCE = 'yachtbot';
                 continue;
             }
 
-            const pageUrl = `http://www.yacht-bot.com/races/${idx}`;
+            const pageUrl = `https://www.yacht-bot.com/races/${idx}`;
             const existingUrl = existingData.find((u) => u.url === pageUrl);
             if (existingUrl) {
                 idx++;

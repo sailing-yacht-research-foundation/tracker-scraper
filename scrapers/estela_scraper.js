@@ -247,7 +247,7 @@ const ESTELA_SOURCE = 'ESTELA';
             raceInfo.race.url = currentRaceUrl;
 
             if (
-                raceInfo.race.start_timestamp > Date.now() ||
+                raceInfo.race.start_timestamp * 1000 > Date.now() ||
                 !raceInfo.race.has_ended
             ) {
                 console.log('Future race, skipping.');

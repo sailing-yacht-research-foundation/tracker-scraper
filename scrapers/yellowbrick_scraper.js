@@ -29,7 +29,7 @@ const axiosRetry = require('axios-retry');
 const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
 
 (async () => {
-    // Axios retry is used in yellowbrick because the url http://yb.tl/JSON/{code}/RaceSetup sometimes returns 503 on the first try and succeeds on the next req
+    // Axios retry is used in yellowbrick because the url https://yb.tl/JSON/{code}/RaceSetup sometimes returns 503 on the first try and succeeds on the next req
     axiosRetry(axios, {
         retryDelay: (retryCount) => {
             console.log(`retry attempt: ${retryCount}`);
@@ -1246,7 +1246,7 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                 );
                 continue;
             }
-            const jsonUrl = 'http://yb.tl/JSON/';
+            const jsonUrl = 'https://yb.tl/JSON/';
             const raceSetupUrl = `${jsonUrl}${currentCode}/RaceSetup`;
             console.log(`Getting Race Setup with url ${raceSetupUrl}`);
             const setup = await axios.get(raceSetupUrl);
@@ -1267,7 +1267,7 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
             const raceCode = setupData.url;
             const raceNewId = uuidv4();
 
-            const kml = await axios.get(`http://yb.tl/${currentCode}.kml`);
+            const kml = await axios.get(`https://yb.tl/${currentCode}.kml`);
             // Uploading files to the bucket
             const KML_BUCKET_NAME = process.env.YELLOWBRICK_KML_S3_BUCKET;
             await uploadS3({
@@ -1276,7 +1276,7 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                 Body: kml.data,
             });
 
-            const leaderBoardUrl = `http://yb.tl/l/${currentCode}`;
+            const leaderBoardUrl = `https://yb.tl/l/${currentCode}`;
             console.log(`Getting leaderboard data with url ${leaderBoardUrl}`);
             const txtLeaderboard = await axios.get(leaderBoardUrl);
 
@@ -1300,7 +1300,7 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                 kml_s3_id: kmlLookupId,
                 text_leaderboard: txtLeaderboard.data,
                 distance: setupData.course?.distance,
-                url: `http://yb.tl/${raceCode}`,
+                url: `https://yb.tl/${raceCode}`,
             };
 
             const pois = setupData.poi;
@@ -1590,7 +1590,7 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
 })();
 
 async function getPositionsWithPuppeteer(raceId, teamIds, currentCode) {
-    const url = `http://yb.tl/${currentCode}`;
+    const url = `https://yb.tl/${currentCode}`;
     const browser = await launchBrowser();
     const page = await browser.newPage();
     await page.goto(url, {

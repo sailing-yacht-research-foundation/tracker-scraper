@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@turf/turf": "^5.1.6",
+    "adm-zip": "^0.5.6",
     "aws-sdk": "^2.880.0",
     "axios": "^0.19.2",
     "axios-retry": "^3.1.9",
