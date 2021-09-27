@@ -63,7 +63,7 @@ const mainScript = async () => {
             console.log('Already saved this so skipping.');
             continue;
         }
-        const pageUrl = 'http://www.yacht-bot.com/races/' + idx;
+        const pageUrl = 'https://www.yacht-bot.com/races/' + idx;
         if (existingFailedUrls.some((i) => i.url === pageUrl)) {
             idx++;
             console.log(
@@ -98,7 +98,6 @@ const mainScript = async () => {
                 );
                 const startTime = session.data.session.start_time;
                 const endTime = session.data.session.end_time;
-                const currentTime = new Date().getTime();
 
                 if (
                     startTime > new Date().getTime() ||
@@ -120,33 +119,6 @@ const mainScript = async () => {
 
                 let logs = JSON.parse(xml2json.toJson(logsRequest.data)).session
                     .content.log.log_entry;
-                const windowsRequest = await axios.get(
-                    'https://www.igtimi.com/api/v1/devices/data_access_windows?start_time=' +
-                        startTime +
-                        '&end_time=' +
-                        currentTime +
-                        '&types%5B%5D=read&types%5B%5D=modify&access_token=' +
-                        token
-                );
-                const windows = windowsRequest.data.data_access_windows;
-
-                const groups = {};
-                windows.forEach((w) => {
-                    const accessWindow = w.data_access_window;
-                    const key = accessWindow.recipient.group.id;
-                    if (groups[key] === null || groups[key] === undefined) {
-                        groups[key] = [accessWindow.device_serial_number];
-                    } else {
-                        groups[key].push(accessWindow.device_serial_number);
-                    }
-                });
-
-                // Object.keys(groups).forEach(k =>{
-                //     console.log(k)
-                //     console.log(groups[k].length)
-                // })
-
-                // var permissionsUrl = "https://www.igtimi.com/api/v1//resources?permission=read&start_time=" + start_time + "&end_time=" + end_time
 
                 const metadatas = [];
                 const objects = [];

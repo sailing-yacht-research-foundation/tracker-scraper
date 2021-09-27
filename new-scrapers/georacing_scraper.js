@@ -12,7 +12,7 @@ const {
 (async () => {
     const SOURCE = 'georacing';
     const allRacesURL =
-        'http://player.georacing.com/datas/applications/app_12.json';
+        'https://player.georacing.com/datas/applications/app_12.json';
     let allRacesRequest, browser, page;
 
     if (!RAW_DATA_SERVER_API) {
@@ -158,7 +158,7 @@ const {
                         });
                         await waitForPlayerVersion2Ready(page);
 
-                        // EXAMPLE RACE: http://player.georacing.com/?event=101837&race=97390&name=Course%205%20-%20Cancelled&location=Saint-Brieuc
+                        // EXAMPLE RACE: https://player.georacing.com/?event=101837&race=97390&name=Course%205%20-%20Cancelled&location=Saint-Brieuc
                         const dataUrl = getRaceDataURL(
                             eventObjSave.original_id,
                             race.id
@@ -240,7 +240,7 @@ const {
                         });
                         for (const posIndex in binaryUrls) {
                             const posUrl =
-                                'http://player.georacing.com/datas/' +
+                                'https://player.georacing.com/datas/' +
                                 eventObjSave.original_id +
                                 '/' +
                                 race.id +
@@ -407,7 +407,7 @@ const {
     process.exit();
 })();
 
-// WARNING: GEORACING HAS THE CHARTS http://player.georacing.com/?event=101887&race=97651
+// WARNING: GEORACING HAS THE CHARTS https://player.georacing.com/?event=101887&race=97651
 function peekUint8(bytes) {
     if (bytes.length < 1) {
         return 0;
@@ -2371,7 +2371,7 @@ async function waitForPlayerVersion2Ready(page) {
 }
 
 function getRacePlayerNameURL(eventId, raceId) {
-    return `http://player.georacing.com/?event=${eventId}&race=${raceId}`;
+    return `https://player.georacing.com/?event=${eventId}&race=${raceId}`;
 }
 
 function getRaceDataURL(eventId, raceId) {

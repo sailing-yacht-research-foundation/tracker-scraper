@@ -27,7 +27,7 @@ const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3');
 
 const GEORACING_SOURCE = 'GEORACING';
 
-// WARNING: GEORACING HAS THE CHARTS http://player.georacing.com/?event=101887&race=97651
+// WARNING: GEORACING HAS THE CHARTS https://player.georacing.com/?event=101887&race=97651
 function peekUint8(bytes) {
     if (bytes.length < 1) {
         return 0;
@@ -2476,7 +2476,7 @@ async function saveData({
 }
 
 function getRacePlayerNameURL(eventId, raceId) {
-    return `http://player.georacing.com/?event=${eventId}&race=${raceId}`;
+    return `https://player.georacing.com/?event=${eventId}&race=${raceId}`;
 }
 
 function getRaceDataURL(eventId, raceId) {
@@ -2484,7 +2484,7 @@ function getRaceDataURL(eventId, raceId) {
 }
 
 const allRacesURL =
-    'http://player.georacing.com/datas/applications/app_12.json';
+    'https://player.georacing.com/datas/applications/app_12.json';
 
 (async () => {
     await connect();
@@ -2628,7 +2628,7 @@ const allRacesURL =
                         });
                         await waitForPlayerVersion2Ready(page);
 
-                        // EXAMPLE RACE: http://player.georacing.com/?event=101837&race=97390&name=Course%205%20-%20Cancelled&location=Saint-Brieuc
+                        // EXAMPLE RACE: https://player.georacing.com/?event=101837&race=97390&name=Course%205%20-%20Cancelled&location=Saint-Brieuc
                         const dataUrl = getRaceDataURL(
                             eventObjSave.original_id,
                             race.id
@@ -2679,7 +2679,7 @@ const allRacesURL =
                                 jxwu["message.json"]["update_date"] = new Date();
                                 jxwu["news.json"]["update_date"] = new Date();
                             /positions/positions__r.json",
-                            http://player.georacing.com/raw_datas"
+                            https://player.georacing.com/raw_datas"
                             hcun + "/" + CURRENT_EVENT.id + "/" + gmrk.id + "/positions/" + index + "__r.json",
                             pyxt + "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/track_prod.xml",
 
@@ -2754,7 +2754,7 @@ const allRacesURL =
                         });
                         for (const posIndex in binaryUrls) {
                             const posUrl =
-                                'http://player.georacing.com/datas/' +
+                                'https://player.georacing.com/datas/' +
                                 eventObjSave.original_id +
                                 '/' +
                                 race.id +
@@ -2922,6 +2922,7 @@ const allRacesURL =
                         console.log('No positions. Skipping.');
                         continue;
                     }
+                    console.log('Saving race data');
                     await saveData({
                         eventObjSave,
                         raceObjSave,
@@ -2953,5 +2954,6 @@ const allRacesURL =
             );
         }
     }
+    console.log('Finished saving all races');
     process.exit();
 })();
