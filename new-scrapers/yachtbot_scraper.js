@@ -36,12 +36,17 @@ const SOURCE = 'yachtbot';
             (a, b) => Math.max(a, b),
             0
         );
-        const MAX_RACE_INDEX = prevMaxRaceId + 1000 || 1000;
+        const RACE_SCRAPE_RANGE = 2000; // Added and subtracted to the last race index to get a range of id to be scraped
+        const MAX_RACE_INDEX =
+            prevMaxRaceId + RACE_SCRAPE_RANGE || RACE_SCRAPE_RANGE;
 
         browser = await launchBrowser();
         page = await browser.newPage();
 
-        let idx = 1;
+        let idx =
+            prevMaxRaceId && prevMaxRaceId > RACE_SCRAPE_RANGE
+                ? prevMaxRaceId - RACE_SCRAPE_RANGE
+                : 1;
         while (idx <= MAX_RACE_INDEX) {
             console.log(`Scraping race index ${idx} of ${MAX_RACE_INDEX}`);
             if (existingRaceIds[idx]) {
@@ -144,6 +149,7 @@ const SOURCE = 'yachtbot';
                         endTime +
                         '&types%5B1%5D=0&types%5B2%5D=0&types%5B3%5D=0&types%5B4%5D=0&types%5B5%5D=0&types%5B6%5D=0&types%5B7%5D=0&types%5B8%5D=0&types%5B9%5D=0&types%5B10%5D=0&types%5B11%5D=0&types%5B12%5D=0&types%5B13%5D=0&types%5B14%5D=0&types%5B15%5D=0&types%5B16%5D=0&types%5B17%5D=0&types%5B18%5D=0&types%5B19%5D=0&types%5B20%5D=0&types%5B21%5D=0&types%5B22%5D=0&types%5B23%5D=0&types%5B24%5D=0&types%5B25%5D=0&types%5B26%5D=0&types%5B27%5D=0&types%5B28%5D=0&types%5B29%5D=0&types%5B30%5D=0&types%5B31%5D=0&types%5B32%5D=0&types%5B33%5D=0&types%5B34%5D=0&types%5B35%5D=0&types%5B36%5D=0&types%5B37%5D=0&types%5B38%5D=0&types%5B39%5D=0&types%5B40%5D=0&types%5B41%5D=0&types%5B42%5D=0&types%5B43%5D=0&types%5B44%5D=0&types%5B45%5D=0&types%5B46%5D=0&types%5B47%5D=0&types%5B48%5D=0&types%5B49%5D=0&types%5B50%5D=0&types%5B51%5D=0&types%5B52%5D=0&types%5B53%5D=0&types%5B54%5D=0&types%5B55%5D=0&types%5B56%5D=0&types%5B57%5D=0&types%5B23%5D=0&restore_archives=true';
                     const serials = {};
+                    const serialNumbers = [];
                     objectData.forEach((o) => {
                         const serialNumber = oidsToSerial[o.object_id];
                         o.object_content.serial_number = serialNumber;
@@ -151,29 +157,24 @@ const SOURCE = 'yachtbot';
 
                         if (
                             serialNumber !== null &&
-                            serialNumber !== undefined
+                            serialNumber !== undefined &&
+                            !serialNumbers.includes(serialNumber)
                         ) {
-                            positionRequestData =
-                                positionRequestData +
-                                '&serial_numbers%5B%5D=' +
-                                serialNumber;
+                            serialNumbers.push(serialNumber);
                             serials[serialNumber] = o.object_content;
                         } else {
                             serials[o.object_id] = o.object_content;
                         }
                     });
 
-                    positionRequestData =
-                        positionRequestData +
-                        '&_method=GET&restore_archives=true&access_token=' +
-                        token;
-                    const positionsRequest = await fetchPositions(
+                    positionRequestData += `&_method=GET&access_token=${token}`;
+                    const posResponseData = await fetchPositions(
                         positionRequestData,
-                        token
+                        serialNumbers
                     );
 
                     const { boats, buoys, positions } = parsePositionsData(
-                        positionsRequest,
+                        posResponseData,
                         serials,
                         oidsToSerial,
                         raceSaveObj
@@ -264,19 +265,22 @@ const fetchLogs = async (idx, token) => {
         .log_entry;
 };
 
-const fetchPositions = async (positionRequestData, token) => {
-    return axios({
-        method: 'post',
-        url: 'https://www.igtimi.com/api/v1/resources/data',
-        data:
-            positionRequestData +
-            '&_method=GET&restore_archives=true&access_token=' +
-            token,
-    });
+const fetchPositions = async (positionRequestData, serialNumbers) => {
+    const posResponseData = {};
+    for (const serialNumber of serialNumbers) {
+        const posRequestParam = `${positionRequestData}&serial_numbers%5B%5D=${serialNumber}`;
+        const positionsRequest = await axios({
+            method: 'post',
+            url: 'https://www.igtimi.com/api/v1/resources/data',
+            data: posRequestParam,
+        });
+        Object.assign(posResponseData, positionsRequest.data);
+    }
+    return posResponseData;
 };
 
 const parsePositionsData = (
-    positionsRequest,
+    posResponseData,
     serials,
     oidsToSerial,
     raceSaveObj
@@ -286,12 +290,12 @@ const parsePositionsData = (
 
     const positions = [];
 
-    const positionSerials = Object.keys(positionsRequest.data);
+    const positionSerials = Object.keys(posResponseData);
 
     // http://support.igtimi.com/support/solutions/articles/8000009993-api-communication-fundamentals
 
     positionSerials.forEach((s) => {
-        const data = positionsRequest.data[s];
+        const data = posResponseData[s];
 
         const gps = data['1'];
 
