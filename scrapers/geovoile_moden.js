@@ -8,6 +8,8 @@ const {
     getExistingUrls,
     registerFailedUrl,
 } = require('../utils/raw-data-server-utils');
+const { v4: uuidv4 } = require('uuid');
+const SOURCE = 'geovoile';
 /**
  * Get urls that need to be scrapped
  * @returns string[]
@@ -71,20 +73,29 @@ async function scrapPage(url) {
                 delete boat.track.firstLocation.next;
                 delete boat.track.lastLocation.previous;
                 return {
-                    id: boat.id,
+                    original_id: boat.id,
                     name: boat.name,
-                    shortName: boat.shortName,
-                    sailors: boat.sailors,
+                    short_name: boat.shortName,
+                    sailors: (boat.sailors || []).map((sailor) => {
+                        return {
+                            first_name: sailor.fname,
+                            last_name: sailor.lname,
+                            nationality: sailor.nationality,
+                            short_name: sailor.shortName,
+                        };
+                    }),
                     arrival: boat.arrival,
                     hullColor: boat.hullColor,
                     hullColors: boat.hullColors,
+                    hulls: boat.hulls,
+                    earthScale: boat._earthScale,
                     track: {
                         firstLocation: boat.track.firstLocation,
                         lastLocation: boat.track.lastLocation,
                         locations: boat.track.locations.map((position) => {
                             const timecode = position.timecode;
                             const lat = position.lat;
-                            const lng = position.lng;
+                            const lon = position.lng;
                             const heading = position.heading;
                             const command = position.command;
                             const crossingAntimeridian =
@@ -98,13 +109,13 @@ async function scrapPage(url) {
                             return {
                                 timecode,
                                 lat,
-                                lng,
+                                lon,
                                 heading,
                                 command,
-                                crossingAntimeridian,
+                                crossing_antimeridian: crossingAntimeridian,
                                 swapXSign,
-                                dLat,
-                                dLng,
+                                d_lat: dLat,
+                                d_lon: dLng,
                                 dt_a,
                                 dt_b,
                             };
@@ -131,23 +142,27 @@ async function scrapPage(url) {
         });
 
         console.log('Getting race information');
+        const raceId = uuidv4();
         const race = await page.evaluate(() => {
             return {
+                original_id: null,
                 legNum: tracker.legNum || 1,
                 numLegs: tracker.nbLegs || 1,
                 statusRacing: tracker.statusRacing,
                 extras: tracker.extras || null,
                 runsById: tracker._runsById || null,
-                timecodeStart: tracker.timeline._timeStart,
-                timecodeEnd: tracker.timeline._timeEnd,
+                startTime: tracker.timeline._timeStart,
+                endTime: tracker.timeline._timeEnd,
                 challenger: tracker._challenger,
                 raceState: tracker._raceState,
                 prerace: tracker._prerace,
                 name: tracker.name || document.title,
-                url,
+                isGame: tracker.isGame,
+                url: document.URL,
             };
         });
 
+        race.original_id = raceId;
         console.log('Getting sig data');
 
         const sig = await page.evaluate(() => {
@@ -177,7 +192,7 @@ async function scrapPage(url) {
         console.log(
             `Finished scrapping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}`
         );
-        return { race, reports, boats, sig };
+        return { geovoileRace: race, boats, sig, source: SOURCE };
     } catch (err) {
         console.log(err);
         console.log('Failed Url ' + url);
@@ -187,7 +202,6 @@ async function scrapPage(url) {
 }
 
 (async () => {
-    const SOURCE = 'geovoile';
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
