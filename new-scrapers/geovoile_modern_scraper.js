@@ -63,9 +63,7 @@ async function getArchiveUrls() {
  */
 async function getScrapingUrls() {
     // For testing purpose, you can return some urls only
-    // return [
-    //     'https://tracking2020.vendeeglobe.org/fr/?v=3',
-    // ];
+    // return ['http://defi-azimut.geovoile.com/2021/'];
     const archivePages = await getArchiveUrls();
     console.log('Getting all race urls from list of archives.');
     const raceUrls = [];
@@ -84,6 +82,9 @@ async function getScrapingUrls() {
             raceUrls.push(newUrl);
         }
     }
+
+    console.log('Race urls');
+    console.log(raceUrls);
     return raceUrls;
 }
 
@@ -94,25 +95,44 @@ async function getScrapingUrls() {
  */
 async function scrapePage(url) {
     const browser = await puppeteer.launch({
-        args: [
-            '--proxy-server=127.0.0.1:8888', // Or whatever the address is
-        ],
+        args: [],
     });
     const page = await browser.newPage();
     try {
         console.log(`Start scraping ${url}`);
+
+        const redirects = [];
+        const client = await page.target().createCDPSession();
+        await client.send('Network.enable');
+        await client.on('Network.requestWillBeSent', (e) => {
+            if (e.type !== 'Document') {
+                return;
+            }
+            redirects.push(e.documentURL);
+        });
+
         await page.goto(url, {
             timeout: 30000,
             waitUntil: 'networkidle0',
         });
 
-        await page.waitForFunction('tracker !== null && tracker !== undefined');
+        const redirectUrl = redirects.pop();
+        // in case there is redirection, wait until redirection finished
+        if (redirectUrl && redirectUrl !== url) {
+            console.log(`page is redirect from ${url} to ${redirectUrl}`);
+            await page.goto(redirectUrl, {
+                timeout: 30000,
+                waitUntil: 'networkidle0',
+            });
+        }
+
+        await page.waitForFunction(
+            'tracker && tracker._boats && tracker._boats.length && tracker._reports && tracker._reports.length'
+        );
 
         console.log('Getting boat information');
         const boats = await page.evaluate(() => {
             return tracker._boats.map((boat) => {
-                delete boat.track.firstLocation.next;
-                delete boat.track.lastLocation.previous;
                 return {
                     original_id: boat.id,
                     name: boat.name,
@@ -131,8 +151,6 @@ async function scrapePage(url) {
                     hulls: boat.hulls,
                     earthScale: boat._earthScale,
                     track: {
-                        firstLocation: boat.track.firstLocation,
-                        lastLocation: boat.track.lastLocation,
                         locations: boat.track.locations.map((position) => {
                             const timecode = position.timecode;
                             const lat = position.lat;
@@ -196,6 +214,7 @@ async function scrapePage(url) {
                 endTime: tracker.timeline._timeEnd,
                 challenger: tracker._challenger,
                 raceState: tracker._raceState,
+                eventState: tracker._eventState,
                 prerace: tracker._prerace,
                 name: tracker.name || document.title,
                 isGame: tracker.isGame,
@@ -204,6 +223,7 @@ async function scrapePage(url) {
         });
 
         race.original_id = raceId;
+        race.scrapedUrl = url;
         console.log('Getting sig data');
 
         const sig = await page.evaluate(() => {
@@ -233,7 +253,13 @@ async function scrapePage(url) {
         console.log(
             `Finished scraping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}`
         );
-        return { geovoileRace: race, boats, sig, source: SOURCE };
+        return {
+            geovoileRace: race,
+            boats,
+            sig,
+            source: SOURCE,
+            redirectUrl,
+        };
     } catch (err) {
         console.log(err);
         console.log('Failed Url ' + url);
@@ -241,7 +267,15 @@ async function scrapePage(url) {
         browser.close();
     }
 }
-
+async function registerFailed(url, redirectUrl, err) {
+    await registerFailedUrl(SOURCE, url, err);
+    if (redirectUrl && redirectUrl !== url) {
+        // In case scraped url is different from actual url due to redirection.
+        // We should save 2 urls to ensure the check is
+        console.log(`register failed url for redirect url also ${redirectUrl}`);
+        await registerFailedUrl(SOURCE, redirectUrl, err);
+    }
+}
 (async () => {
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
@@ -259,17 +293,44 @@ async function scrapePage(url) {
             process.exit();
         }
 
+        console.log('existingUrls');
+        console.log(existingUrls);
         if (existingUrls.includes(url)) {
             console.log(`url: ${url} is scraped, ignore`);
             continue;
         }
 
-        console.log(existingUrls);
-
-        const result = await scrapePage(url);
-        if (!result) {
+        let result;
+        try {
+            result = await scrapePage(url);
+        } catch (e) {
             console.log(`Failed to scrap data  for url ${url}`);
-            await registerFailedUrl(SOURCE, url, err.toString());
+            await registerFailed(url, null, e.toString());
+        }
+        if (!result || !result.geovoileRace) {
+            console.log(`Failed to scrap data  for url ${url}`);
+            await registerFailed(
+                url,
+                result?.redirectUrl,
+                `Failed to scrap data  for url ${url}`
+            );
+            continue;
+        }
+
+        if (result.geovoileRace.url !== result.geovoileRace.scrapedUrl) {
+            console.log(
+                `Scraped url ${result.geovoileRace.scrapedUrl}, actual url: ${result.geovoileRace.url} `
+            );
+        }
+
+        if (
+            !result ||
+            (result.geovoileRace.eventState !== 'FINISH' &&
+                result.geovoileRace.raceState !== 'FINISH')
+        ) {
+            console.log(
+                `Race ${url} is not finished, current state = ${result.geovoileRace.raceState}, event state = ${result.geovoileRace.eventState}, temporary ignore this race`
+            );
             continue;
         }
         try {
@@ -280,7 +341,7 @@ async function scrapePage(url) {
                 `Failed creating and sending temp json file for url ${url}`,
                 err
             );
-            await registerFailedUrl(SOURCE, url, err.toString());
+            await registerFailed(url, result?.redirectUrl, err.toString());
             continue;
         }
     }
