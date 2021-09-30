@@ -10,22 +10,63 @@ const {
 } = require('../utils/raw-data-server-utils');
 const { v4: uuidv4 } = require('uuid');
 const SOURCE = 'geovoile';
+
+const MORDERN_SCRAPER_MIN_YEAR = 2016;
+async function getPageResponse(url) {
+    const pageResponse = await axios.get(url);
+    return pageResponse.data.toString();
+}
 /**
- * Get urls that need to be scrapped
+ * Get archive urls for scrapper
+ * Important note: the curr
+ * @returns
+ */
+async function getArchiveUrls() {
+    const rootUrl = 'http://www.geovoile.com/';
+    const pageData = await getPageResponse(rootUrl);
+    const regexp = /<a href="archives_20\d{2}.asp" id="aMenuArchives">/g;
+    const matches = pageData.match(regexp);
+    if (!matches.length) {
+        throw new Error(
+            `Geovoile modern scraper can not find any archive urls from ${rootUrl} please recheck the regex pattern for this page`
+        );
+    }
+    // Sample match url ''<a href="archives_2017.asp" id="aMenuArchives">'
+    // Split by ' ' will give return a list like that
+    // ['<a', 'href="archives_2017.asp"', 'id="aMenuArchives">'] so we take the index 1
+    // After that we split by ", and take the index 1 also.
+    const firstArchivePageUrl = matches[0].split(' ')[1].split('"')[1];
+    const rootArchiveUrl = `${rootUrl}/${firstArchivePageUrl}`;
+    const archivePageData = await getPageResponse(rootArchiveUrl);
+    const regexpArchivePage = /<a href="archives_20\d{2}.asp">/g;
+
+    const archivePageMatches = archivePageData.match(regexpArchivePage);
+    const results = new Set();
+
+    results.add(rootArchiveUrl);
+    for (const url of archivePageMatches) {
+        const archiveUrl = url.split(' ')[1].split('"')[1];
+        const yearRegex = /20\d{2}/g;
+        const yearMatch = archiveUrl.match(yearRegex);
+        if (+yearMatch >= MORDERN_SCRAPER_MIN_YEAR) {
+            results.add(`${rootUrl}${archiveUrl}`);
+        }
+    }
+
+    console.log('List of scraping urls:');
+    console.log(Array.from(results));
+    return Array.from(results);
+}
+/**
+ * Get urls that need to be scraped
  * @returns string[]
  */
-async function getUrls() {
+async function getScrapingUrls() {
     // For testing purpose, you can return some urls only
     // return [
     //     'https://tracking2020.vendeeglobe.org/fr/?v=3',
     // ];
-    const archivePages = [
-        'http://www.geovoile.com/archives_2020.asp',
-        'http://www.geovoile.com/archives_2019.asp',
-        'http://www.geovoile.com/archives_2018.asp',
-        'http://www.geovoile.com/archives_2017.asp',
-        'http://www.geovoile.com/archives_2016.asp',
-    ];
+    const archivePages = await getArchiveUrls();
     console.log('Getting all race urls from list of archives.');
     const raceUrls = [];
     for (const url of archivePages) {
@@ -49,7 +90,7 @@ async function getUrls() {
 /**
  * Scrap geovoile data for specific race
  * @param {string} url
- * @returns scrapped data
+ * @returns scraped data
  */
 async function scrapePage(url) {
     const browser = await puppeteer.launch({
@@ -206,7 +247,8 @@ async function scrapePage(url) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
     }
-    const urls = await getUrls();
+
+    const urls = await getScrapingUrls();
 
     for (const url of urls) {
         let existingUrls;
@@ -218,7 +260,7 @@ async function scrapePage(url) {
         }
 
         if (existingUrls.includes(url)) {
-            console.log(`url: ${url} is scrapped, ignore`);
+            console.log(`url: ${url} is scraped, ignore`);
             continue;
         }
 
