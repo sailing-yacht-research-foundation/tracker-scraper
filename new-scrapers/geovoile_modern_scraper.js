@@ -51,7 +51,7 @@ async function getUrls() {
  * @param {string} url
  * @returns scrapped data
  */
-async function scrapPage(url) {
+async function scrapePage(url) {
     const browser = await puppeteer.launch({
         args: [
             '--proxy-server=127.0.0.1:8888', // Or whatever the address is
@@ -59,7 +59,7 @@ async function scrapPage(url) {
     });
     const page = await browser.newPage();
     try {
-        console.log(`Start scrapping ${url}`);
+        console.log(`Start scraping ${url}`);
         await page.goto(url, {
             timeout: 30000,
             waitUntil: 'networkidle0',
@@ -190,7 +190,7 @@ async function scrapPage(url) {
         });
 
         console.log(
-            `Finished scrapping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}`
+            `Finished scraping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}`
         );
         return { geovoileRace: race, boats, sig, source: SOURCE };
     } catch (err) {
@@ -224,7 +224,7 @@ async function scrapPage(url) {
 
         console.log(existingUrls);
 
-        const result = await scrapPage(url);
+        const result = await scrapePage(url);
         if (!result) {
             console.log(`Failed to scrap data  for url ${url}`);
             await registerFailedUrl(SOURCE, url, err.toString());
