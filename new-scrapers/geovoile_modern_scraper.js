@@ -63,7 +63,7 @@ async function getArchiveUrls() {
  */
 async function getScrapingUrls() {
     // For testing purpose, you can return some urls only
-    // return ['http://defi-azimut.geovoile.com/2021/'];
+    // return ['http://macif.geovoile.com/newyorkcaplizard/2016/'];
     const archivePages = await getArchiveUrls();
     console.log('Getting all race urls from list of archives.');
     const raceUrls = [];
@@ -111,15 +111,31 @@ async function scrapePage(url) {
             redirects.push(e.documentURL);
         });
 
+        let isRedirect = false;
+        page.on('response', (response) => {
+            if (response.status() >= 300 && response.status() <= 399) {
+                // flag to indicate redirect;
+                isRedirect = true;
+            }
+        });
+
         await page.goto(url, {
             timeout: 30000,
             waitUntil: 'networkidle0',
         });
 
         const redirectUrl = redirects.pop();
-        // in case there is redirection, wait until redirection finished
-        if (redirectUrl && redirectUrl !== url) {
-            console.log(`page is redirect from ${url} to ${redirectUrl}`);
+        if (
+            redirectUrl &&
+            redirectUrl !== url &&
+            // For some page, for example https://gitana-team.geovoile.com/tropheejulesverne/2021/
+            // The page is still redirect to https://gitana-team.geovoile.com/tropheejulesverne/2021/tracker/
+            // But the status is still 200. Maybe there are some redirect in client instead of from server
+            // And all the direct of geovoile contain traker
+            (isRedirect || redirectUrl.indexOf('tracker') > 0)
+        ) {
+            // in case there is redirection, wait until redirection finished
+            console.log(`Page is redirect from ${url} to ${redirectUrl}`);
             await page.goto(redirectUrl, {
                 timeout: 30000,
                 waitUntil: 'networkidle0',
@@ -212,7 +228,6 @@ async function scrapePage(url) {
                 runsById: tracker._runsById || null,
                 startTime: tracker.timeline._timeStart,
                 endTime: tracker.timeline._timeEnd,
-                challenger: tracker._challenger,
                 raceState: tracker._raceState,
                 eventState: tracker._eventState,
                 prerace: tracker._prerace,
@@ -293,8 +308,6 @@ async function registerFailed(url, redirectUrl, err) {
             process.exit();
         }
 
-        console.log('existingUrls');
-        console.log(existingUrls);
         if (existingUrls.includes(url)) {
             console.log(`url: ${url} is scraped, ignore`);
             continue;
