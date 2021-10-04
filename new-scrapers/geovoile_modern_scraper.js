@@ -24,7 +24,7 @@ async function getPageResponse(url) {
 async function getArchiveUrls() {
     const rootUrl = 'http://www.geovoile.com/';
     const pageData = await getPageResponse(rootUrl);
-    const regexp = /<a href="archives_20\d{2}.asp" id="aMenuArchives">/g;
+    const regexp = /<a href="archives_20\d{2}.asp">/g;
     const matches = pageData.match(regexp);
     if (!matches.length) {
         throw new Error(
@@ -69,21 +69,29 @@ async function getScrapingUrls() {
     const raceUrls = [];
     for (const url of archivePages) {
         console.log(`Parsing new archive page ${url}`);
-        // eslint-disable-next-line no-useless-escape
-        const regexp = /<a class=\"aBG aSuite\" href=\"https*:\/\/.*\" target=\"_blank">/g;
-        // eslint-disable-next-line no-useless-escape
-        const regexpUrl = /https*:\/\/.*\" target/g;
-        const pageResponse = await axios.get(url);
-        const pageData = pageResponse.data.toString();
-        const matches = pageData.match(regexp);
-        for (const matchIndex in matches) {
-            const match = matches[matchIndex];
-            const newUrl = match.match(regexpUrl)[0].split('" target').join('');
-            raceUrls.push(newUrl);
-        }
+        const browser = await puppeteer.launch({
+            args: [],
+        });
+        const page = await browser.newPage();
+        await page.goto(url, {
+            timeout: 30000,
+            waitUntil: 'networkidle0',
+        });
+
+        const scrapedUrls = await page.evaluate(() => {
+            const allNodes = document.querySelectorAll(
+                '.divArchive > a:nth-child(1)'
+            );
+            const results = [];
+            for (const node of allNodes) {
+                results.push(node.href);
+            }
+            return results;
+        });
+        raceUrls.push(...scrapedUrls);
     }
 
-    console.log('Race urls');
+    console.log(`Total race urls = ${raceUrls.length}`);
     console.log(raceUrls);
     return raceUrls;
 }
