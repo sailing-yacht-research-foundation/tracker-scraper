@@ -43,7 +43,6 @@ async function getArchiveUrls() {
     const archivePageMatches = archivePageData.match(regexpArchivePage);
     const results = new Set();
 
-    results.add(rootArchiveUrl);
     for (const url of archivePageMatches) {
         const archiveUrl = url.split(' ')[1].split('"')[1];
         const yearRegex = /20\d{2}/g;
@@ -62,11 +61,28 @@ async function getArchiveUrls() {
  * @returns string[]
  */
 async function getScrapingUrls() {
-    // For testing purpose, you can return some urls only
-    // return ['http://macif.geovoile.com/newyorkcaplizard/2016/'];
+    // For testing purpose, you can return some urls only.
+    // Uncomment the returned urls to scrape hard coded urls.
+    // The prepared testing urls have multiple legs. Most races have one leg only.
+    // So if the url has 4 legs, it means scraper has to scrape 4 pages instead of 1 page.
+    // return [
+    //     'http://defi-azimut.geovoile.com/2021/', // 2 legs
+    //     'http://lasolitaire.geovoile.com/2021/tracker/', // 4  legs
+    //     'http://transquadra.geovoile.com/2021/', // 2  legs
+    //     'https://www.theoceanrace.com/fr/europe/racing/tracker', // 3  legs
+    //     'http://defi-azimut.geovoile.com/2020/', // 2 legs
+    //     'http://lasolitaire.geovoile.com/2020/tracker/', // 4 legs
+    //     'http://lessables-lesacores.geovoile.com/2020/', // 3 legs
+    //     'http://minitransat.geovoile.com/2019/', // 2 legs
+    //     'http://defi-azimut.geovoile.com/2019/', // 2 legs
+    //     'http://transgascogne.geovoile.com/2019/', // 2 legs
+    //     'http://lessables-horta.geovoile.com/2019/', // 2 legs
+    //     'http://defi-atlantique.geovoile.com/2019/', // 2 legs
+    //     'http://niceultimed.geovoile.com/2018/race/', // 3 legs, but we can only scrape 1 leg
+    // ];
     const archivePages = await getArchiveUrls();
     console.log('Getting all race urls from list of archives.');
-    const raceUrls = [];
+    let raceUrls = [];
     for (const url of archivePages) {
         console.log(`Parsing new archive page ${url}`);
         const browser = await puppeteer.launch({
@@ -91,11 +107,18 @@ async function getScrapingUrls() {
         raceUrls.push(...scrapedUrls);
     }
 
+    // ensure no duplicated url is scraped
+    const set = new Set(raceUrls);
+    raceUrls = Array.from(set);
     console.log(`Total race urls = ${raceUrls.length}`);
     console.log(raceUrls);
+
     return raceUrls;
 }
 
+function getRootUrl(url) {
+    return url.split('?')[0];
+}
 /**
  * Scrap geovoile data for specific race
  * @param {string} url
@@ -242,12 +265,12 @@ async function scrapePage(url) {
                 name: tracker.name || document.title,
                 isGame: tracker.isGame,
                 url: document.URL,
+                scrapedUrl: '',
             };
         });
 
         race.original_id = raceId;
         race.scrapedUrl = url;
-        console.log('Getting sig data');
 
         const sig = await page.evaluate(() => {
             const mapBounds = sig.mapBounds;
@@ -274,7 +297,7 @@ async function scrapePage(url) {
         });
 
         console.log(
-            `Finished scraping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}`
+            `Finished scraping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}, legNum = ${race.legNum}, numberOfLegs = ${race.numLegs}`
         );
         return {
             geovoileRace: race,
@@ -307,7 +330,17 @@ async function registerFailed(url, redirectUrl, err) {
 
     const urls = await getScrapingUrls();
 
-    for (const url of urls) {
+    const processedUrls = new Set();
+    const rootUrlMap = new Map();
+    let processedCount = 0;
+    let failedCount = 0;
+    console.log(urls);
+    while (urls.length) {
+        const url = urls.shift();
+        if (processedUrls.has(url)) {
+            console.log(`This url = ${url} is processed, move to next one`);
+            continue;
+        }
         let existingUrls;
         try {
             existingUrls = await getExistingUrls(SOURCE);
@@ -327,9 +360,12 @@ async function registerFailed(url, redirectUrl, err) {
         } catch (e) {
             console.log(`Failed to scrap data  for url ${url}`);
             await registerFailed(url, null, e.toString());
+            failedCount++;
+            continue;
         }
         if (!result || !result.geovoileRace) {
             console.log(`Failed to scrap data  for url ${url}`);
+            failedCount++;
             await registerFailed(
                 url,
                 result?.redirectUrl,
@@ -337,6 +373,75 @@ async function registerFailed(url, redirectUrl, err) {
             );
             continue;
         }
+
+        processedUrls.add(result.geovoileRace.url);
+        processedUrls.add(result.geovoileRace.scrapedUrl);
+        const { geovoileRace } = result;
+
+        // In case the race has more than one leg.
+        if (result.geovoileRace.numLegs > 1) {
+            // The should process flag is used for page that can not be used the path parameter or query parameter approach
+            // For example: http://niceultimed.geovoile.com/2018/race/ has 3 legs
+            // The default leg is 3. And we can't go to leg 1 or leg2 by query parameter
+            // For example:  http://niceultimed.geovoile.com/2018/race/?leg=1
+            // So if we use the query parameter approach, we will scrape leg=03 three times, which lead to duplicated data.
+            // So we use the map to check if the leg num is exist, then we ignore this race.
+            const rootUrl = getRootUrl(result.geovoileRace.url);
+            console.log(`rootUrl = ${rootUrl}`);
+            if (rootUrlMap.has(rootUrl)) {
+                const rootUrlLegNum = rootUrlMap.get(rootUrl);
+                // ignore the race
+                if (rootUrlLegNum === result.geovoileRace.legNum) {
+                    console.log(
+                        `The url = ${result.geovoileRace.url} is ignored`
+                    );
+                    continue;
+                }
+            } else {
+                rootUrlMap.set(rootUrl, result.geovoileRace.legNum);
+            }
+            // The url contains the params path
+            // For example:
+            // https://tracker.theoceanrace.com/leg01/en/index.html => leg01
+            // https://tracker.theoceanrace.com/leg02/en/index.html => leg02
+            const regex = /leg0\d{1}/g;
+            if (geovoileRace.url.match(regex)) {
+                for (let i = 1; i <= result.geovoileRace.numLegs; i++) {
+                    if (i === geovoileRace.legNum) {
+                        continue;
+                    }
+                    const newUrl = geovoileRace.url.replace(regex, `leg0${i}`);
+
+                    if (!processedUrls.has(newUrl)) {
+                        console.log(
+                            `This race has multiple legs, adding new url by replacing path parameter = ${newUrl}`
+                        );
+                        urls.unshift(newUrl);
+                    }
+                }
+            } else if (url.indexOf('?leg=') === -1) {
+                // Normally, we will query the leg by query parameter.
+                // http://lasolitaire.geovoile.com/2021/tracker/ has 4 legs
+                // So we will have 4 urls
+                // http://lasolitaire.geovoile.com/2021/tracker/?leg=1
+                // http://lasolitaire.geovoile.com/2021/tracker/?leg=2
+                // http://lasolitaire.geovoile.com/2021/tracker/?leg=3
+                // http://lasolitaire.geovoile.com/2021/tracker/?leg=4
+                for (let i = 1; i <= result.geovoileRace.numLegs; i++) {
+                    if (i === geovoileRace.legNum) {
+                        continue;
+                    }
+                    const newUrl = `${geovoileRace.scrapedUrl}?leg=${i}`;
+                    if (!processedUrls.has(newUrl)) {
+                        console.log(
+                            `This race has multiple legs, adding new url by replacing query parameter = ${newUrl}`
+                        );
+                        urls.unshift(newUrl);
+                    }
+                }
+            }
+        }
+        processedCount++;
 
         if (result.geovoileRace.url !== result.geovoileRace.scrapedUrl) {
             console.log(
@@ -366,6 +471,9 @@ async function registerFailed(url, redirectUrl, err) {
             continue;
         }
     }
-    console.log('Finished scraping geovoile modern');
+
+    console.log(
+        `Finished scraping geovoile modern. Total processed urls = ${processedCount}, failed urls = ${failedCount}`
+    );
     process.exit(0);
 })();
