@@ -374,6 +374,17 @@ async function registerFailed(url, redirectUrl, err) {
             continue;
         }
 
+        if (
+            !result ||
+            (result.geovoileRace.eventState !== 'FINISH' &&
+                result.geovoileRace.raceState !== 'FINISH')
+        ) {
+            console.log(
+                `Race ${url} is not finished, current state = ${result.geovoileRace.raceState}, event state = ${result.geovoileRace.eventState}, temporary ignore this race`
+            );
+            continue;
+        }
+
         processedUrls.add(result.geovoileRace.url);
         processedUrls.add(result.geovoileRace.scrapedUrl);
         const { geovoileRace } = result;
@@ -449,16 +460,6 @@ async function registerFailed(url, redirectUrl, err) {
             );
         }
 
-        if (
-            !result ||
-            (result.geovoileRace.eventState !== 'FINISH' &&
-                result.geovoileRace.raceState !== 'FINISH')
-        ) {
-            console.log(
-                `Race ${url} is not finished, current state = ${result.geovoileRace.raceState}, event state = ${result.geovoileRace.eventState}, temporary ignore this race`
-            );
-            continue;
-        }
         try {
             console.log(`Sending json file to raw-data-server for url: ${url}`);
             await createAndSendTempJsonFile(result);
