@@ -72,6 +72,15 @@ const {
                             race: race.name,
                         });
                     idx += 1;
+
+                    if (!race.name) {
+                        // Get button text if race name is blank
+                        race.name =
+                            document
+                                .getElementById(race.id)
+                                ?.getElementsByTagName('button')[0]
+                                ?.innerText || '';
+                    }
                 }
 
                 const eventJSON = JSON.parse(
