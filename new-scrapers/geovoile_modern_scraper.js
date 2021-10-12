@@ -1,6 +1,6 @@
 /* eslint-disable camelcase */
 /* eslint-disable no-undef */
-const puppeteer = require('puppeteer');
+const { launchBrowser } = require('../utils/puppeteerLauncher');
 const axios = require('axios');
 const {
     RAW_DATA_SERVER_API,
@@ -85,9 +85,7 @@ async function getScrapingUrls() {
     let raceUrls = [];
     for (const url of archivePages) {
         console.log(`Parsing new archive page ${url}`);
-        const browser = await puppeteer.launch({
-            args: [],
-        });
+        const browser = await launchBrowser();
         const page = await browser.newPage();
         await page.goto(url, {
             timeout: 30000,
@@ -125,9 +123,7 @@ function getRootUrl(url) {
  * @returns scraped data
  */
 async function scrapePage(url) {
-    const browser = await puppeteer.launch({
-        args: [],
-    });
+    const browser = await launchBrowser();
     const page = await browser.newPage();
     try {
         console.log(`Start scraping ${url}`);
@@ -328,7 +324,13 @@ async function registerFailed(url, redirectUrl, err) {
         process.exit();
     }
 
-    const urls = await getScrapingUrls();
+    let urls;
+    try {
+        urls = await getScrapingUrls();
+    } catch (err) {
+        console.log('Failed getting race urls', err);
+        process.exit();
+    }
 
     const processedUrls = new Set();
     const rootUrlMap = new Map();
