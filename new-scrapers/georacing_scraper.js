@@ -388,13 +388,15 @@ const {
                 }
             }
 
-            try {
-                await createAndSendTempJsonFile(objectsToSave);
-            } catch (err) {
-                console.log(
-                    `Failed creating and sending temp json file for event id ${event.id}`
-                );
-                throw err;
+            if (objectsToSave.GeoracingRace.length > 0) {
+                try {
+                    await createAndSendTempJsonFile(objectsToSave);
+                } catch (err) {
+                    console.log(
+                        `Failed creating and sending temp json file for event id ${event.id}`
+                    );
+                    throw err;
+                }
             }
         } catch (err) {
             console.log(
