@@ -297,7 +297,10 @@ const normalizeRace = async ({
     }
 
     const id = event.id;
-    const name = `${regatta.name} - ${event.name}`;
+    let name = regatta.name || '';
+    if (event.name) {
+        name += ` - ${event.name}`;
+    }
     const regattaId = event.regatta;
     const url = event.url;
     const startTime = parseInt(event.from);
@@ -409,7 +412,7 @@ async function saveData({
         }
         await normalizeRace({
             event: newEvents[0],
-            regatta: checkRegatta,
+            regatta: checkRegatta.obj,
             waypoints: newWaypoints,
             positions: newPositions,
             participants: newUsers,

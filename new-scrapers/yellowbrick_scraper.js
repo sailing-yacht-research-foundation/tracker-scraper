@@ -1,32 +1,15 @@
-const {
-    Yellowbrick,
-    sequelize,
-    connect,
-    bulkSave,
-    SearchSchema,
-} = require('../tracker-schema/schema.js');
-const {
-    createTurfPoint,
-    createBoatToPositionDictionary,
-    positionsToFeatureCollection,
-    collectFirstNPositionsFromBoatsToPositions,
-    collectLastNPositionsFromBoatsToPositions,
-    getCenterOfMassOfPositions,
-    findAverageLength,
-    createRace,
-    allPositionsToFeatureCollection,
-} = require('../tracker-schema/gis_utils.js');
-const {
-    uploadS3,
-    deleteObjectInS3,
-    uploadGeoJsonToS3,
-} = require('../utils/upload_racegeojson_to_s3.js');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
-const turf = require('@turf/turf');
-const { axios, uuidv4 } = require('../tracker-schema/utils.js');
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 const xml2json = require('xml2json');
 const axiosRetry = require('axios-retry');
-const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
+
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+    registerFailedUrl,
+    getExistingData,
+} = require('../utils/raw-data-server-utils');
 
 (async () => {
     // Axios retry is used in yellowbrick because the url https://yb.tl/JSON/{code}/RaceSetup sometimes returns 503 on the first try and succeeds on the next req
@@ -37,19 +20,14 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
         },
         retries: 5,
     });
-    if (!connect()) {
+    const SOURCE = 'yellowbrick';
+    if (!RAW_DATA_SERVER_API) {
+        console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
     }
     const YB_RACE_LIST_URL = 'https://app.yb.tl/App/Races?version=3';
-    const owned = [];
-    let existingOwnedRaces, raceList;
+    let raceList;
     try {
-        existingOwnedRaces = await Yellowbrick.YellowbrickOwnedRace.findAll({
-            attributes: ['id', 'race_id'],
-        });
-        existingOwnedRaces.forEach((r) => {
-            owned.push(r.race_id);
-        });
         // GET CODES
 
         // TODO: Put user-key, udid, urls in DB
@@ -67,26 +45,19 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
         process.exit();
     }
 
-    for (const raceIndex in raceList) {
+    for (let raceIndex = 0; raceIndex < raceList.length; raceIndex++) {
         console.log('Getting ' + raceIndex + ' of ' + raceList.length);
         const raceMetadata = raceList[raceIndex];
-        const raceId = raceMetadata['race-id'];
         const productId = raceMetadata['ios-productid'];
-        if (!owned.includes(raceId)) {
-            console.log('Associating ' + raceIndex + ' of ' + raceList.length);
-            const associateUrl =
-                'https://app.yb.tl/App/purchase?version=2&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&product-id=' +
-                productId +
-                '&receipt=' +
-                productId +
-                '&try=0';
+        console.log('Associating ' + raceIndex + ' of ' + raceList.length);
+        const associateUrl =
+            'https://app.yb.tl/App/purchase?version=2&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&product-id=' +
+            productId +
+            '&receipt=' +
+            productId +
+            '&try=0';
 
-            await axios.get(associateUrl);
-            await Yellowbrick.YellowbrickOwnedRace.create(
-                { id: uuidv4(), race_id: raceId },
-                { fields: ['race_id', 'id'] }
-            );
-        }
+        await axios.get(associateUrl);
     }
 
     const ybCodeListXMLResult = await axios.get(
@@ -1227,12 +1198,12 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
 
     // TODO: visit yeach yb.tl/links/code and get list of all related races.
     // TODO: get leaderboard from yb.tl/links/code
-    const existingRaceCodes = await Yellowbrick.YellowbrickRace.findAll({
-        attributes: ['race_code'],
-    });
+    const existingRaceCodes = await getExistingData(SOURCE);
     const raceCodes = [];
     existingRaceCodes.forEach((r) => {
-        raceCodes.push(r.race_code);
+        if (r.status === 'success') {
+            raceCodes.push(r.original_id);
+        }
     });
 
     for (const codeIndex in codes) {
@@ -1268,13 +1239,11 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
             const raceNewId = uuidv4();
 
             const kml = await axios.get(`https://yb.tl/${currentCode}.kml`);
-            // Uploading files to the bucket
-            const KML_BUCKET_NAME = process.env.YELLOWBRICK_KML_S3_BUCKET;
-            await uploadS3({
-                Bucket: KML_BUCKET_NAME,
-                Key: `${kmlLookupId}.kml`, // File name you want to save as in S3
-                Body: kml.data,
-            });
+
+            const kmlToSave = {
+                id: kmlLookupId,
+                data: kml.data,
+            };
 
             const leaderBoardUrl = `https://yb.tl/l/${currentCode}`;
             console.log(`Getting leaderboard data with url ${leaderBoardUrl}`);
@@ -1507,82 +1476,23 @@ const YELLOWBRICK_SOURCE = 'YELLOWBRICK';
                     throw err;
                 }
             }
+            const objectsToSave = {};
+            objectsToSave.YellowbrickRace = [race];
+            objectsToSave.YellowbrickPoi = poisSave;
+            objectsToSave.YellowbrickCourseNode = courseNodes;
+            objectsToSave.YellowbrickTag = tagsSave;
+            objectsToSave.YellowbrickTeam = teamsSave;
+            objectsToSave.YellowbrickLeaderboardTeam = leaderboardTeams;
+            objectsToSave.YellowbrickPosition = allPositions;
+            objectsToSave.YellowbrickKml = [kmlToSave];
 
-            let transaction;
-            try {
-                transaction = await sequelize.transaction();
-                const newObjectsToSave = [
-                    {
-                        objectType: Yellowbrick.YellowbrickRace,
-                        objects: [race],
-                    },
-                    {
-                        objectType: Yellowbrick.YellowbrickPoi,
-                        objects: poisSave,
-                    },
-                    {
-                        objectType: Yellowbrick.YellowbrickCourseNode,
-                        objects: courseNodes,
-                    },
-                    {
-                        objectType: Yellowbrick.YellowbrickTag,
-                        objects: tagsSave,
-                    },
-                    {
-                        objectType: Yellowbrick.YellowbrickTeam,
-                        objects: teamsSave,
-                    },
-                    {
-                        objectType: Yellowbrick.YellowbrickLeaderboardTeam,
-                        objects: leaderboardTeams,
-                    },
-                    {
-                        objectType: Yellowbrick.YellowbrickPosition,
-                        objects: allPositions,
-                    },
-                ];
-                console.log('Bulk saving objects.');
-                const saved = await bulkSave(newObjectsToSave, transaction);
-                if (!saved) {
-                    throw new Error('Failed to save bulk data');
-                }
-                console.log(`Normalizing Race with race code ${raceCode}`);
-                await normalizeRace(
-                    race,
-                    allPositions,
-                    courseNodes,
-                    teamsSave,
-                    tagsSave,
-                    transaction
-                );
-                await transaction.commit();
-                raceCodes.push(raceCode);
-                console.log('Finished scraping race.');
-            } catch (err) {
-                if (transaction) {
-                    await transaction.rollback();
-                }
-                // Delete kml file on s3 since db transaction failed
-                await deleteObjectInS3({
-                    Bucket: KML_BUCKET_NAME,
-                    Key: `${kmlLookupId}.kml`,
-                });
-                throw err;
-            }
+            await createAndSendTempJsonFile(objectsToSave);
+            raceCodes.push(raceCode);
+            console.log('Finished scraping race.');
         } catch (err) {
             console.log(err);
-            try {
-                await Yellowbrick.YellowbrickFailedUrl.create(
-                    {
-                        url: codes[codeIndex],
-                        error: err.toString(),
-                        id: uuidv4(),
-                    },
-                    { fields: ['url', 'id', 'error'] }
-                );
-            } catch (err2) {
-                console.log('Failed inserting failed record in database', err2);
-            }
+            await registerFailedUrl(SOURCE, codes[codeIndex], err.toString());
+            continue;
         }
     }
     console.log('Finished scraping all races');
@@ -1645,114 +1555,3 @@ async function getPositionsWithPuppeteer(raceId, teamIds, currentCode) {
     browser.close();
     return allMomentsSave;
 }
-
-const normalizeRace = async (
-    race,
-    allPositions,
-    nodes,
-    boats,
-    tags,
-    transaction
-) => {
-    if (allPositions.length === 0) {
-        console.log('No positions so skipping.');
-        return;
-    }
-    const id = race.id;
-    const startTime = parseInt(race.start) * 1000;
-    const endTime = parseInt(race.stop) * 1000;
-    const name = race.title;
-    const event = null;
-    const url = race.url;
-
-    const boatNames = [];
-    const boatModels = [];
-    const boatIdentifiers = [];
-    const handicapRules = [];
-    const unstructuredText = [];
-    let startPoint = null;
-    let endPoint = null;
-
-    if (nodes && nodes.length > 0) {
-        nodes.sort((a, b) => (parseInt(a.order) > parseInt(b.order) ? 1 : -1));
-        startPoint = createTurfPoint(nodes[0].lat, nodes[0].lon);
-        endPoint = createTurfPoint(
-            nodes[nodes.length - 1].lat,
-            nodes[nodes.length - 1].lon
-        );
-    }
-
-    boats.forEach((b) => {
-        boatIdentifiers.push(b.sail);
-        boatNames.push(b.name);
-        boatModels.push(b.model);
-    });
-
-    tags.forEach((t) => {
-        handicapRules.push(t.handicap);
-    });
-
-    allPositions.forEach((p) => {
-        p.timestamp = parseInt(p.timestamp);
-    });
-
-    const boundingBox = turf.bbox(
-        positionsToFeatureCollection('lat', 'lon', allPositions)
-    );
-    const boatsToSortedPositions = createBoatToPositionDictionary(
-        allPositions,
-        'team',
-        'timestamp'
-    );
-
-    if (startPoint === null) {
-        const first3Positions = collectFirstNPositionsFromBoatsToPositions(
-            boatsToSortedPositions,
-            3
-        );
-        startPoint = getCenterOfMassOfPositions('lat', 'lon', first3Positions);
-    }
-
-    if (endPoint === null) {
-        const last3Positions = collectLastNPositionsFromBoatsToPositions(
-            boatsToSortedPositions,
-            3
-        );
-        endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
-    }
-    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
-    const raceMetadata = await createRace(
-        id,
-        name,
-        event,
-        YELLOWBRICK_SOURCE,
-        url,
-        startTime,
-        endTime,
-        startPoint,
-        endPoint,
-        boundingBox,
-        roughLength,
-        boatsToSortedPositions,
-        boatNames,
-        boatModels,
-        boatIdentifiers,
-        handicapRules,
-        unstructuredText
-    );
-    const tracksGeojson = JSON.stringify(
-        allPositionsToFeatureCollection(boatsToSortedPositions)
-    );
-
-    await SearchSchema.RaceMetadata.create(raceMetadata, {
-        fields: Object.keys(raceMetadata),
-        transaction,
-    });
-    console.log('Uploading to s3');
-    await uploadGeoJsonToS3(
-        race.id,
-        tracksGeojson,
-        YELLOWBRICK_SOURCE,
-        transaction
-    );
-};

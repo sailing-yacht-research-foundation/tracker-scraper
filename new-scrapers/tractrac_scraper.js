@@ -1,40 +1,29 @@
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 const {
-    TracTrac,
-    connect,
-    sequelize,
-    findExistingObjects,
-    instantiateOrReturnExisting,
-    bulkSave,
-    SearchSchema,
-} = require('../tracker-schema/schema.js');
-const { axios, uuidv4 } = require('../tracker-schema/utils.js');
-const {
-    createBoatToPositionDictionary,
-    positionsToFeatureCollection,
-    collectFirstNPositionsFromBoatsToPositions,
-    collectLastNPositionsFromBoatsToPositions,
-    getCenterOfMassOfPositions,
-    findAverageLength,
-    createRace,
-    allPositionsToFeatureCollection,
-} = require('../tracker-schema/gis_utils.js');
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+    getExistingUrls,
+    registerFailedUrl,
+} = require('../utils/raw-data-server-utils');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
-const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
-const turf = require('@turf/turf');
-const TRACTRAC_SOURCE = 'TRACTRAC';
+const { appendArray } = require('../utils/array');
 
 // Get all events.
 (async () => {
-    await connect();
-    let existingObjects, existingFailedUrls, browser, page;
+    const SOURCE = 'tractrac';
+    let browser, page;
+
+    if (!RAW_DATA_SERVER_API) {
+        console.log('Please set environment variable RAW_DATA_SERVER_API');
+        process.exit();
+    }
+
+    let existingUrls;
     try {
-        existingObjects = await findExistingObjects(TracTrac);
-        existingFailedUrls = await TracTrac.FailedUrl.findAll({
-            attributes: ['url'],
-            raw: true,
-        });
+        existingUrls = await getExistingUrls(SOURCE);
     } catch (err) {
-        console.log('Failed getting database metadata and races.', err);
+        console.log('Error getting existing urls', err);
         process.exit();
     }
 
@@ -47,7 +36,6 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
     }
 
     const formatAndSaveRace = function (event, raceDetails, raceObj) {
-        const racesToSave = [];
         const classesToSave = [];
         const raceClassesToSave = [];
         const controlsToSave = [];
@@ -58,7 +46,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
         const competitorPassingsToSave = [];
         const competitorResultsToSave = [];
         const competitorPositionsToSave = [];
-        const raceObjSave = raceObj.obj;
+        const raceObjSave = raceObj;
 
         raceObjSave.event = null;
         raceObjSave.event_original_id = null;
@@ -79,92 +67,77 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
             raceObjSave.event = event.id;
             raceObjSave.event_original_id = event.original_id;
         }
-        racesToSave.push(raceObjSave);
         const raceClassesByClassId = {};
         Object.values(raceDetails.assorted.classes).forEach((c) => {
-            const cl = instantiateOrReturnExisting(
-                existingObjects,
-                TracTrac.Class,
-                c.UUID
-            );
-            if (cl.shouldSave) {
-                cl.obj.name = c.Name;
-                classesToSave.push(cl.obj);
-            }
+            const cl = {};
+            cl.id = uuidv4();
+            cl.original_id = c.UUID;
+            cl.name = c.Name;
+            classesToSave.push(cl);
             const rc = {
                 id: uuidv4(),
                 race: raceObjSave.id,
-                boat_class: cl.obj.id,
+                boat_class: cl.id,
             };
-            raceClassesByClassId[cl.obj.id] = rc;
+            raceClassesByClassId[cl.id] = rc;
             raceClassesToSave.push(rc);
         });
 
         raceDetails.assorted.routes.forEach((r) => {
-            const routeObj = instantiateOrReturnExisting(
-                existingObjects,
-                TracTrac.Route,
-                r.route_id
-            );
-            const routeObjSave = routeObj.obj;
+            const routeObjSave = {};
+            routeObjSave.id = uuidv4();
+            routeObjSave.original_id = r.route_id;
             routeObjSave.race = raceObjSave.id;
             routeObjSave.race_original_id = raceObjSave.original_id;
             routeObjSave.name = r.route_name;
-            if (routeObj.shouldSave) {
-                routesToSave.push(routeObjSave);
-            }
+            routesToSave.push(routeObjSave);
 
             r.controls.forEach((c) => {
-                const ctrl = instantiateOrReturnExisting(
-                    existingObjects,
-                    TracTrac.Control,
-                    c.original_id
-                );
-                const controlObjSave = ctrl.obj;
-                if (ctrl.shouldSave) {
-                    controlObjSave.race = raceObjSave.id;
-                    controlObjSave.race_original_id = raceObjSave.original_id;
-                    controlObjSave.name = c.name;
-                    controlObjSave.route = routeObjSave.id;
-                    controlObjSave.route_original_id = routeObjSave.original_id;
+                const controlObjSave = {};
+                controlObjSave.id = uuidv4();
+                controlObjSave.original_id = c.original_id;
+                controlObjSave.race = raceObjSave.id;
+                controlObjSave.race_original_id = raceObjSave.original_id;
+                controlObjSave.name = c.name;
+                controlObjSave.route = routeObjSave.id;
+                controlObjSave.route_original_id = routeObjSave.original_id;
 
-                    controlsToSave.push(controlObjSave);
+                controlsToSave.push(controlObjSave);
 
-                    c.control_points.forEach((controlPt) => {
-                        const cp = {
+                c.control_points.forEach((controlPt) => {
+                    const cp = {
+                        id: uuidv4(),
+                        race: raceObjSave.id,
+                        race_original_id: raceObjSave.original_id,
+                        name: controlPt.control_name,
+                        route: routeObjSave.id,
+                        route_original_id: routeObjSave.original_id,
+                        control: controlObjSave.id,
+                        control_original_id: controlObjSave.original_id,
+                    };
+                    controlPointsToSave.push(cp);
+
+                    controlPt.positions.forEach((p) => {
+                        const ctlptPosition = {
                             id: uuidv4(),
                             race: raceObjSave.id,
                             race_original_id: raceObjSave.original_id,
-                            name: controlPt.control_name,
                             route: routeObjSave.id,
                             route_original_id: routeObjSave.original_id,
-                            control: controlObjSave.id,
-                            control_original_id: controlObjSave.original_id,
+                            controlpoint: cp.id,
+                            controlpoint_original_id: cp.original_id,
+                            lat: p.latitude,
+                            lon: p.longitude,
+                            height: p.height,
+                            speed: p.speed,
+                            direction: p.direction,
+                            m: p.m,
+                            timestamp: p.timestamp,
+                            speed_avg: JSON.stringify(p.speedAvg),
                         };
-                        controlPointsToSave.push(cp);
-
-                        controlPt.positions.forEach((p) => {
-                            const ctlptPosition = {
-                                id: uuidv4(),
-                                race: raceObjSave.id,
-                                race_original_id: raceObjSave.original_id,
-                                route: routeObjSave.id,
-                                route_original_id: routeObjSave.original_id,
-                                controlpoint: cp.id,
-                                controlpoint_original_id: cp.original_id,
-                                lat: p.latitude,
-                                lon: p.longitude,
-                                height: p.height,
-                                speed: p.speed,
-                                direction: p.direction,
-                                m: p.m,
-                                timestamp: p.timestamp,
-                                speed_avg: JSON.stringify(p.speedAvg),
-                            };
-                            controlPointPositionsToSave.push(ctlptPosition);
-                        });
+                        controlPointPositionsToSave.push(ctlptPosition);
                     });
-                }
+                });
             });
         });
 
@@ -202,11 +175,9 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
 
             competitor.race = raceObjSave.id;
             competitor.race_original_id = raceObjSave.original_id;
-            const cl = instantiateOrReturnExisting(
-                existingObjects,
-                TracTrac.Class,
-                c.classId
-            ).obj;
+            const cl = classesToSave.find(
+                (boatClass) => boatClass.original_id === c.classId
+            );
             competitor.class = cl.id;
             competitor.class_original_id = cl.original_id;
             competitor.classrace_id = raceClassesByClassId[cl.id].id;
@@ -260,11 +231,9 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
 
                     if (tpd.passings !== null && tpd.passings !== undefined) {
                         tpd.passings.forEach((p) => {
-                            const ctl = instantiateOrReturnExisting(
-                                existingObjects,
-                                TracTrac.Control,
-                                p.controlId
-                            ).obj;
+                            const ctl = controlsToSave.find(
+                                (c) => c.original_id === p.controlId
+                            );
 
                             const passing = {
                                 id: uuidv4(),
@@ -310,7 +279,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
         });
 
         return {
-            racesToSave,
+            raceToSave: raceObjSave,
             classesToSave,
             raceClassesToSave,
             controlsToSave,
@@ -452,7 +421,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
             console.log('Check if slider will load');
             await page.waitForFunction(
                 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] !== ""',
-                { timeout: 5000 }
+                { timeout: 10000 }
             );
             const waitForFullyLoaded =
                 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"';
@@ -736,11 +705,7 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
             return raceDetails;
         } catch (err) {
             console.log('Failed parsing race', err);
-            await TracTrac.FailedUrl.create({
-                id: uuidv4(),
-                error: err.toString(),
-                url: raceMeta.url_html,
-            });
+            await registerFailedUrl(SOURCE, raceMeta.url_html, err.toString());
             return null;
         }
     };
@@ -759,6 +724,9 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
 
     for (const eventIndex in allEvents) {
         const eventObject = allEvents[eventIndex];
+        if (eventObject.id === '2050') {
+            continue;
+        }
 
         /** evennt object
             *
@@ -807,11 +775,9 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
         const eventHasEnded = true;
 
         if (eventObject.type === 'Sailing' && eventHasEnded) {
-            if (
-                existingFailedUrls.some((i) => i.url === eventObject.races_url)
-            ) {
+            if (existingUrls.includes(eventObject.races_url)) {
                 console.log(
-                    `Existing failed url ${eventObject.races_url}. Check database table for error message.`
+                    `Existing event url in database ${eventObject.races_url}. Skipping`
                 );
                 continue;
             }
@@ -822,12 +788,12 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
             try {
                 racesRequest = await axios.get(eventObject.races_url);
             } catch (err) {
-                await TracTrac.FailedUrl.create({
-                    id: uuidv4(),
-                    error: err.toString(),
-                    url: eventObject.races_url,
-                });
-                console.log(err);
+                console.log('Failed getting event url', err);
+                await registerFailedUrl(
+                    SOURCE,
+                    eventObject.races_url,
+                    err.toString()
+                );
                 continue;
             }
 
@@ -839,13 +805,9 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                 continue;
             }
 
-            const eventSave = instantiateOrReturnExisting(
-                existingObjects,
-                TracTrac.Event,
-                eventDetails.id
-            );
-
-            const eventSaveObj = eventSave.obj;
+            const eventSaveObj = {};
+            eventSaveObj.id = uuidv4();
+            eventSaveObj.original_id = eventDetails.id;
 
             // console.log(eventDetails)
             /** event details
@@ -875,88 +837,78 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                 *
                 *
                 */
-            if (eventSave.shouldSave) {
-                try {
-                    await page.goto(eventDetails.web_url);
-                    eventSaveObj.external_website = await page.evaluate(() => {
-                        return document.querySelector(
-                            '#app > main > section > div > div.details > div:nth-child(3) > a'
-                        ).href;
-                    });
-                } catch (err) {
-                    console.log(
-                        `Failed visiting url ${eventDetails.web_url}. External website will not be saved.`
-                    );
-                }
-
-                eventSaveObj.name = eventDetails.name;
-                eventSaveObj.country = eventObject.country;
-                eventSaveObj.city = eventObject.city;
-                eventSaveObj.type = eventObject.type;
-                eventSaveObj.start = eventDetails.starttime;
-                eventSaveObj.end = eventDetails.endtime;
-                eventSaveObj.web_url = eventDetails.web_url;
-                eventSaveObj.sap_url = eventDetails.sap_url;
-                eventSaveObj.sap_event_url = eventDetails.sap_event_url;
-                eventSaveObj.sap_leaderboard_name =
-                    eventDetails.sap_leaderboard_name;
-                eventSaveObj.lat = eventObject.lat;
-                eventSaveObj.lon = eventObject.lon;
-                try {
-                    await TracTrac.Event.create(eventSaveObj, {
-                        fields: Object.keys(eventSaveObj),
-                    });
-                } catch (err) {
-                    console.log('Failed saving event', err);
-                    await TracTrac.FailedUrl.create({
-                        id: uuidv4(),
-                        error: err.toString(),
-                        url: JSON.stringify(eventObject),
-                    });
-                    continue;
-                }
+            try {
+                await page.goto(eventDetails.web_url);
+                eventSaveObj.external_website = await page.evaluate(() => {
+                    return document.querySelector(
+                        '#app > main > section > div > div.details > div:nth-child(3) > a'
+                    ).href;
+                });
+            } catch (err) {
+                console.log(
+                    `Failed visiting url ${eventDetails.web_url}. External website will not be saved.`
+                );
             }
+
+            eventSaveObj.name = eventDetails.name;
+            eventSaveObj.country = eventObject.country;
+            eventSaveObj.city = eventObject.city;
+            eventSaveObj.type = eventObject.type;
+            eventSaveObj.start = eventDetails.starttime;
+            eventSaveObj.end = eventDetails.endtime;
+            eventSaveObj.web_url = eventDetails.web_url;
+            eventSaveObj.sap_url = eventDetails.sap_url;
+            eventSaveObj.sap_event_url = eventDetails.sap_event_url;
+            eventSaveObj.sap_leaderboard_name =
+                eventDetails.sap_leaderboard_name;
+            eventSaveObj.lat = eventObject.lat;
+            eventSaveObj.lon = eventObject.lon;
 
             if (races.length === 0) {
                 console.log('No races on event');
                 continue;
             }
+            const objectsToSave = {
+                TracTracEvent: [eventSaveObj],
+                TracTracClass: [],
+                TracTracRaceClass: [],
+                TracTracRace: [],
+                TracTracCompetitor: [],
+                TracTracCompetitorResult: [],
+                TracTracCompetitorPosition: [],
+                TracTracCompetitorPassing: [],
+                TracTracRoute: [],
+                TracTracControl: [],
+                TracTracControlPoint: [],
+                TracTracControlPointPosition: [],
+            };
+
             console.log('Got race list. Going through each race now.');
             for (const raceIndex in races) {
+                console.log(
+                    `Scraping race index ${raceIndex} of ${races.length}`
+                );
                 const raceObject = races[raceIndex];
-                if (
-                    existingFailedUrls.some(
-                        (i) => i.url === raceObject.url_html
-                    )
-                ) {
+
+                if (existingUrls.includes(raceObject.url_html)) {
                     console.log(
-                        `Existing failed url ${raceObject.url_html}. Check database table for error message.`
+                        `Existing race url in database ${raceObject.url_html}. Skipping`
                     );
                     continue;
                 }
                 let details;
-                const raceToFormat = instantiateOrReturnExisting(
-                    existingObjects,
-                    TracTrac.Race,
-                    raceObject.id
-                );
-
-                if (!raceToFormat.shouldSave) {
-                    console.log(
-                        `Already saved race with id ${raceObject.id}. Skipping`
-                    );
-                    continue;
-                }
+                const raceToFormat = {};
+                raceToFormat.id = uuidv4();
+                raceToFormat.original_id = raceObject.id;
                 try {
-                    console.log(`Parsing race ${raceObject.url_html}.`);
                     details = await parseRace(raceObject);
                 } catch (err) {
                     console.log('Failed parsing race', err);
-                    await TracTrac.FailedUrl.create({
-                        id: uuidv4(),
-                        error: err.toString(),
-                        url: raceObject.url_html,
-                    });
+                    await registerFailedUrl(
+                        SOURCE,
+                        raceObject.url_html,
+                        err.toString()
+                    );
                     continue;
                 }
                 if (details !== null && details !== undefined) {
@@ -965,92 +917,63 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                         details,
                         raceToFormat
                     );
-                    console.log('Formatting objects.');
-                    if (thingsToSave != null) {
-                        const newObjectsToSave = [
-                            {
-                                objectType: TracTrac.Race,
-                                objects: thingsToSave.racesToSave,
-                            },
-                            {
-                                objectType: TracTrac.Control,
-                                objects: thingsToSave.controlsToSave,
-                            },
-                            {
-                                objectType: TracTrac.ControlPoint,
-                                objects: thingsToSave.controlPointsToSave,
-                            },
-                            {
-                                objectType: TracTrac.Class,
-                                objects: thingsToSave.classesToSave,
-                            },
-                            {
-                                objectType: TracTrac.RaceClass,
-                                objects: thingsToSave.raceClassesToSave,
-                            },
-                            {
-                                objectType: TracTrac.ControlPointPosition,
-                                objects:
-                                    thingsToSave.controlPointPositionsToSave,
-                            },
-                            {
-                                objectType: TracTrac.Competitor,
-                                objects: thingsToSave.competitorsToSave,
-                            },
-                            {
-                                objectType: TracTrac.CompetitorPassing,
-                                objects: thingsToSave.competitorPassingsToSave,
-                            },
-                            {
-                                objectType: TracTrac.CompetitorResults,
-                                objects: thingsToSave.competitorResultsToSave,
-                            },
-                            {
-                                objectType: TracTrac.CompetitorPosition,
-                                objects: thingsToSave.competitorPositionsToSave,
-                            },
-                            {
-                                objectType: TracTrac.Route,
-                                objects: thingsToSave.routesToSave,
-                            },
-                        ];
-                        let transaction;
-                        try {
-                            console.log('Bulk saving objects.');
-                            transaction = await sequelize.transaction();
-                            const saved = await bulkSave(
-                                newObjectsToSave,
-                                transaction
-                            );
-                            if (!saved) {
-                                throw new Error('Failed to save bulk data');
-                            }
-
-                            console.log(
-                                `Normalizing Race with race id ${thingsToSave.racesToSave[0].id}`
-                            );
-                            await normalizeRace(
-                                thingsToSave.racesToSave[0],
-                                thingsToSave.competitorPositionsToSave,
-                                thingsToSave.classesToSave,
-                                thingsToSave.competitorsToSave,
-                                transaction
-                            );
-                            await transaction.commit();
-                        } catch (err) {
-                            if (transaction) {
-                                await transaction.rollback();
-                            }
-                            console.log(err);
-                            await TracTrac.FailedUrl.create({
-                                id: uuidv4(),
-                                error: JSON.stringify(err.toString()),
-                                url: JSON.stringify(eventSaveObj),
-                            });
-                        }
-                    }
-                } else {
-                    console.log('Already saved this race.');
+                    objectsToSave.TracTracRace.push(thingsToSave.raceToSave);
+                    appendArray(
+                        objectsToSave.TracTracClass,
+                        thingsToSave.classesToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracRaceClass,
+                        thingsToSave.raceClassesToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracCompetitor,
+                        thingsToSave.competitorsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracCompetitorResult,
+                        thingsToSave.competitorResultsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracCompetitorPosition,
+                        thingsToSave.competitorPositionsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracCompetitorPassing,
+                        thingsToSave.competitorPassingsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracRoute,
+                        thingsToSave.routesToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracControl,
+                        thingsToSave.controlsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracControlPoint,
+                        thingsToSave.controlPointsToSave
+                    );
+                    appendArray(
+                        (objectsToSave.TracTracControlPointPosition =
+                            thingsToSave.controlPointPositionsToSave)
+                    );
+                }
+            }
+            if (objectsToSave.TracTracRace.length > 0) {
+                try {
+                    await createAndSendTempJsonFile(objectsToSave);
+                } catch (err) {
+                    console.log(
+                        `Failed creating and sending temp json file for url ${objectsToSave.TracTracEvent[0].web_url}`,
+                        err
+                    );
+                    await registerFailedUrl(
+                        SOURCE,
+                        objectsToSave.TracTracEvent[0].web_url,
+                        err.toString()
+                    );
+                    continue;
                 }
             }
         }
@@ -1070,9 +993,9 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
 
     for (const clubIndex in allClubs) {
         const clubObject = allClubs[clubIndex];
-        if (existingFailedUrls.some((i) => i.url === clubObject.races_url)) {
+        if (existingUrls.includes(clubObject.races_url)) {
             console.log(
-                `Existing failed url ${clubObject.races_url}. Check database table for error message.`
+                `Existing event url in database ${clubObject.races_url}. Skipping`
             );
             continue;
         }
@@ -1097,30 +1020,39 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
         clubObject.id = uuidv4();
         clubObject.email = clubObject.races_url.split('user=')[1];
 
+        const objectsToSave = {
+            TracTracClass: [],
+            TracTracRaceClass: [],
+            TracTracRace: [],
+            TracTracCompetitor: [],
+            TracTracCompetitorResult: [],
+            TracTracCompetitorPosition: [],
+            TracTracCompetitorPassing: [],
+            TracTracRoute: [],
+            TracTracControl: [],
+            TracTracControlPoint: [],
+            TracTracControlPointPosition: [],
+            SailorEmail: [],
+        };
+        let emailObjToSave;
         if (clubObject.email !== undefined) {
-            try {
-                await TracTrac.Email.create({
-                    id: uuidv4(),
-                    email: clubObject.email,
-                    country: clubObject.country,
-                    source: 'TracTrac',
-                });
-            } catch (err) {
-                console.log('Failed saving email', err);
-            }
+            emailObjToSave = {
+                id: uuidv4(),
+                email: clubObject.email,
+                country: clubObject.country,
+                source: 'TracTrac',
+            };
+            objectsToSave.SailorEmail.push(emailObjToSave);
         }
         let clubRacesRequest;
         try {
             clubRacesRequest = await axios.get(clubObject.races_url);
         } catch (err) {
             console.log(err);
-            await TracTrac.FailedUrl.create(
-                {
-                    id: uuidv4(),
-                    url: clubObject.races_url,
-                    error: err.toString(),
-                },
-                { fields: ['id', 'url', 'error'] }
+            await registerFailedUrl(
+                SOURCE,
+                clubObject.races_url,
+                err.toString()
             );
             continue;
         }
@@ -1165,29 +1097,15 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
             raceObject.event_id = null;
 
             if (raceObject.event_type === 'Sailing') {
-                if (
-                    existingFailedUrls.some(
-                        (i) => i.url === raceObject.url_html
-                    )
-                ) {
+                if (existingUrls.includes(raceObject.url_html)) {
                     console.log(
-                        `Existing failed url ${raceObject.url_html}. Check database table for error message.`
+                        `Existing race url in database ${raceObject.url_html}. Skipping`
                     );
                     continue;
                 }
-                const raceToFormat = instantiateOrReturnExisting(
-                    existingObjects,
-                    TracTrac.Race,
-                    raceObject.id
-                );
-
-                if (!raceToFormat.shouldSave) {
-                    console.log(
-                        `Already saved race with id ${raceObject.id}. Skipping`
-                    );
-                    continue;
-                }
-                console.log(`Parsing club race ${raceObject.url_html}.`);
+                const raceToFormat = {};
+                raceToFormat.id = uuidv4();
+                raceToFormat.original_id = raceObject.id;
                 const details = await parseRace(raceObject);
 
                 if (details !== null && details !== undefined) {
@@ -1197,95 +1115,64 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
                         raceToFormat
                     );
 
-                    let transaction;
-                    try {
-                        if (thingsToSave != null) {
-                            console.log('Formatting objects.');
-
-                            const newObjectsToSave = [
-                                {
-                                    objectType: TracTrac.Race,
-                                    objects: thingsToSave.racesToSave,
-                                },
-                                {
-                                    objectType: TracTrac.Control,
-                                    objects: thingsToSave.controlsToSave,
-                                },
-                                {
-                                    objectType: TracTrac.ControlPoint,
-                                    objects: thingsToSave.controlPointsToSave,
-                                },
-                                {
-                                    objectType: TracTrac.Class,
-                                    objects: thingsToSave.classesToSave,
-                                },
-                                {
-                                    objectType: TracTrac.RaceClass,
-                                    objects: thingsToSave.raceClassesToSave,
-                                },
-                                {
-                                    objectType: TracTrac.ControlPointPosition,
-                                    objects:
-                                        thingsToSave.controlPointPositionsToSave,
-                                },
-                                {
-                                    objectType: TracTrac.Competitor,
-                                    objects: thingsToSave.competitorsToSave,
-                                },
-                                {
-                                    objectType: TracTrac.CompetitorPassing,
-                                    objects:
-                                        thingsToSave.competitorPassingsToSave,
-                                },
-                                {
-                                    objectType: TracTrac.CompetitorResults,
-                                    objects:
-                                        thingsToSave.competitorResultsToSave,
-                                },
-                                {
-                                    objectType: TracTrac.CompetitorPosition,
-                                    objects:
-                                        thingsToSave.competitorPositionsToSave,
-                                },
-                                {
-                                    objectType: TracTrac.Route,
-                                    objects: thingsToSave.routesToSave,
-                                },
-                            ];
-                            console.log('Bulk saving objects.');
-                            transaction = await sequelize.transaction();
-                            const saved = await bulkSave(
-                                newObjectsToSave,
-                                transaction
-                            );
-                            if (!saved) {
-                                throw new Error('Failed to save bulk data');
-                            }
-
-                            console.log(
-                                `Normalizing Race with race id ${thingsToSave.racesToSave[0].id}`
-                            );
-                            await normalizeRace(
-                                thingsToSave.racesToSave[0],
-                                thingsToSave.competitorPositionsToSave,
-                                thingsToSave.classesToSave,
-                                thingsToSave.competitorsToSave,
-                                transaction
-                            );
-                            await transaction.commit();
-                        }
-                    } catch (err) {
-                        if (transaction) {
-                            await transaction.rollback();
-                        }
-                        console.log(err);
-                        await TracTrac.FailedUrl.create({
-                            id: uuidv4(),
-                            error: JSON.stringify(err.toString()),
-                            url: raceObject.url_html,
-                        });
-                    }
+                    objectsToSave.TracTracRace.push(thingsToSave.raceToSave);
+                    appendArray(
+                        objectsToSave.TracTracClass,
+                        thingsToSave.classesToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracRaceClass,
+                        thingsToSave.raceClassesToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracCompetitor,
+                        thingsToSave.competitorsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracCompetitorResult,
+                        thingsToSave.competitorResultsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracCompetitorPosition,
+                        thingsToSave.competitorPositionsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracCompetitorPassing,
+                        thingsToSave.competitorPassingsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracRoute,
+                        thingsToSave.routesToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracControl,
+                        thingsToSave.controlsToSave
+                    );
+                    appendArray(
+                        objectsToSave.TracTracControlPoint,
+                        thingsToSave.controlPointsToSave
+                    );
+                    appendArray(
+                        (objectsToSave.TracTracControlPointPosition =
+                            thingsToSave.controlPointPositionsToSave)
+                    );
                 }
+            }
+        }
+        if (objectsToSave.TracTracRace.length > 0) {
+            try {
+                await createAndSendTempJsonFile(objectsToSave);
+            } catch (err) {
+                console.log(
+                    `Failed creating and sending temp json file for url ${clubObject.races_url}`,
+                    err
+                );
+                await registerFailedUrl(
+                    SOURCE,
+                    clubObject.races_url,
+                    err.toString()
+                );
+                continue;
             }
         }
     }
@@ -1294,93 +1181,3 @@ const TRACTRAC_SOURCE = 'TRACTRAC';
     browser.close();
     process.exit();
 })();
-
-const normalizeRace = async (
-    race,
-    allPositions,
-    classes,
-    competitors,
-    transaction
-) => {
-    const id = race.id;
-    const startTime = new Date(race.tracking_start).getTime();
-    const endTime = new Date(race.tracking_stop).getTime();
-    const name = race.name;
-    const event = race.event;
-    const url = race.url;
-    const boatNames = competitors.map((c) => c.short_name);
-    const boatModels = classes.map((c) => c.name);
-    const boatIdentifiers = classes.map((c) => c.original_id);
-    const handicapRules = [race.race_handicap];
-    const unstructuredText = [];
-
-    if (allPositions.length === 0) {
-        console.log('No positions so skipping.');
-        return;
-    }
-
-    let startPoint = null;
-    let endPoint = null;
-
-    const boundingBox = turf.bbox(
-        positionsToFeatureCollection('lat', 'lon', allPositions)
-    );
-    const boatsToSortedPositions = createBoatToPositionDictionary(
-        allPositions,
-        'competitor',
-        'timestamp'
-    );
-
-    if (startPoint === null) {
-        const first3Positions = collectFirstNPositionsFromBoatsToPositions(
-            boatsToSortedPositions,
-            3
-        );
-        startPoint = getCenterOfMassOfPositions('lat', 'lon', first3Positions);
-    }
-
-    if (endPoint === null) {
-        const last3Positions = collectLastNPositionsFromBoatsToPositions(
-            boatsToSortedPositions,
-            3
-        );
-        endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
-    }
-
-    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
-    const raceMetadata = await createRace(
-        id,
-        name,
-        event,
-        TRACTRAC_SOURCE,
-        url,
-        startTime,
-        endTime,
-        startPoint,
-        endPoint,
-        boundingBox,
-        roughLength,
-        boatsToSortedPositions,
-        boatNames,
-        boatModels,
-        boatIdentifiers,
-        handicapRules,
-        unstructuredText
-    );
-    const tracksGeojson = JSON.stringify(
-        allPositionsToFeatureCollection(boatsToSortedPositions)
-    );
-    await SearchSchema.RaceMetadata.create(raceMetadata, {
-        fields: Object.keys(raceMetadata),
-        transaction,
-    });
-    console.log('Uploading to s3');
-    await uploadGeoJsonToS3(
-        race.id,
-        tracksGeojson,
-        TRACTRAC_SOURCE,
-        transaction
-    );
-};
-
-exports.normalizeRace = normalizeRace;

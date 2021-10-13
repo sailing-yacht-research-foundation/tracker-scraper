@@ -1,71 +1,25 @@
-const {
-    Estela,
-    SearchSchema,
-    sequelize,
-    connect,
-} = require('../tracker-schema/schema.js');
-const {
-    createBoatToPositionDictionary,
-    positionsToFeatureCollection,
-    collectLastNPositionsFromBoatsToPositions,
-    getCenterOfMassOfPositions,
-    findAverageLength,
-    createRace,
-    createTurfPoint,
-    allPositionsToFeatureCollection,
-} = require('../tracker-schema/gis_utils.js');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
-const { axios, uuidv4 } = require('../tracker-schema/utils.js');
-const turf = require('@turf/turf');
-const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+    getExistingUrls,
+    registerFailedUrl,
+} = require('../utils/raw-data-server-utils');
 
-// TODO: automate this limit.
 const LIMIT = 3000;
 const ESTELA_RACE_PAGE_URL = 'https://www.estela.co/en?page={$PAGENUM$}#races';
 const PAGENUM = '{$PAGENUM$}';
-const ESTELA_SOURCE = 'ESTELA';
 
 (async () => {
-    const CONNECTED_TO_DB = connect();
-    if (!CONNECTED_TO_DB) {
-        console.log("Couldn't connect to db.");
-        process.exit();
-    }
-    let existingFailureObjects,
-        existingRaceObjects,
-        existingClubObjects,
-        browser,
-        page;
+    const SOURCE = 'estela';
     const existingClubs = {};
-    const existingFailures = [];
-    const existingRaces = [];
-    const allRaceUrls = [];
-
-    try {
-        existingFailureObjects = await Estela.EstelaFailedUrl.findAll({
-            attributes: ['url'],
-        });
-        existingRaceObjects = await Estela.EstelaRace.findAll({
-            attributes: ['id', 'original_id', 'url', 'name'],
-        });
-        existingClubObjects = await Estela.EstelaClub.findAll({
-            attributes: ['id', 'original_id'],
-        });
-    } catch (err) {
-        console.log('Failed getting database metadata and races.', err);
+    let browser, page;
+    if (!RAW_DATA_SERVER_API) {
+        console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
     }
-
-    existingClubObjects.forEach((c) => {
-        existingClubs[c.original_id] = c.id;
-    });
-
-    existingFailureObjects.forEach((f) => {
-        existingFailures.push(f.url);
-    });
-    existingRaceObjects.forEach((r) => {
-        existingRaces.push(r.url);
-    });
 
     try {
         browser = await launchBrowser();
@@ -75,16 +29,26 @@ const ESTELA_SOURCE = 'ESTELA';
         process.exit();
     }
 
-    // Pages increment by 1
+    let existingUrls;
+    try {
+        existingUrls = await getExistingUrls(SOURCE);
+    } catch (err) {
+        console.log('Error getting existing urls', err);
+        process.exit();
+    }
+
+    const allRaceUrls = [];
     let counter = 1;
     while (counter < LIMIT) {
-        // Get current list of races from page.
-        console.log('Loading race list page number: ' + counter + '.');
-
         const pageUrl = ESTELA_RACE_PAGE_URL.replace(
             PAGENUM,
             counter.toString()
         );
+        if (existingUrls.includes(pageUrl)) {
+            counter++;
+            continue;
+        }
+        console.log(`Getting race list with url ${pageUrl}`);
         try {
             await page.goto(pageUrl, { timeout: 0, waitUntil: 'networkidle0' });
 
@@ -111,34 +75,22 @@ const ESTELA_SOURCE = 'ESTELA';
             });
 
             if (raceUrls.length === 0) {
-                console.log('No races associated with this event. Skipping.');
-                counter += 1;
+                const errMsg = 'No races associated with this event. Skipping.';
+                console.log(errMsg);
+                await registerFailedUrl(SOURCE, pageUrl, errMsg);
+                counter++;
                 continue;
+            } else {
+                allRaceUrls.push(...raceUrls);
             }
-
-            raceUrls.forEach((u) => {
-                if (
-                    !existingFailures.includes(u) &&
-                    !existingRaces.includes(u)
-                ) {
-                    allRaceUrls.push(u);
-                }
-            });
             if (isNextBtnDisabled) {
                 break;
             }
         } catch (err) {
-            console.log(err);
-            try {
-                await Estela.EstelaFailedUrl.create(
-                    { url: pageUrl, error: err.toString(), id: uuidv4() },
-                    { fields: ['url', 'id', 'error'] }
-                );
-            } catch (err2) {
-                console.log('Failed inserting failed record in database', err2);
-            }
+            console.log('Failed scraping race list', err);
+            await registerFailedUrl(SOURCE, pageUrl, err.toString());
         }
-        counter += 1;
+        counter++;
     }
 
     console.log(
@@ -146,16 +98,17 @@ const ESTELA_SOURCE = 'ESTELA';
     );
 
     for (const raceIndex in allRaceUrls) {
+        const objectsToSave = {};
         const currentRaceUrl = allRaceUrls[raceIndex];
+        if (existingUrls.includes(currentRaceUrl)) {
+            continue;
+        }
+        console.log(`Scraping race with url ${currentRaceUrl}`);
         try {
             await page.goto(currentRaceUrl, {
                 timeout: 0,
                 waitUntil: 'networkidle0',
             });
-            if (existingRaces.includes(currentRaceUrl)) {
-                continue;
-            }
-            console.log(currentRaceUrl);
             await page.waitForFunction(() => {
                 return (
                     window.playerConfig !== null &&
@@ -400,6 +353,7 @@ const ESTELA_SOURCE = 'ESTELA';
                 }
             }
 
+            objectsToSave.EstelaClub = [];
             if (
                 raceInfo.club !== undefined &&
                 clubExtras[raceInfo.club.name] !== undefined
@@ -428,9 +382,7 @@ const ESTELA_SOURCE = 'ESTELA';
                         email: raceInfo.club.email,
                     };
 
-                    await Estela.EstelaClub.create(newClub, {
-                        fields: Object.keys(newClub),
-                    });
+                    objectsToSave.EstelaClub.push(newClub);
                     existingClubs[newClub.original_id] = newClub.id;
                 }
             }
@@ -572,95 +524,24 @@ const ESTELA_SOURCE = 'ESTELA';
                     });
                 });
             }
+            objectsToSave.EstelaRace = [newRace];
+            objectsToSave.EstelaBuoy = raceInfo.race.buoys;
+            objectsToSave.EstelaDorsal = newDorsals;
+            objectsToSave.EstelaPlayer = newPlayers;
+            objectsToSave.EstelaResult = newResults;
+            objectsToSave.EstelaPosition = newPositions;
 
-            let transaction;
             try {
-                transaction = await sequelize.transaction();
-                const currentRace = await Estela.EstelaRace.create(newRace, {
-                    fields: Object.keys(newRace),
-                    transaction,
-                });
-                if (raceInfo.race.buoys.length > 0) {
-                    await Estela.EstelaBuoy.bulkCreate(raceInfo.race.buoys, {
-                        fields: Object.keys(raceInfo.race.buoys[0]),
-                        transaction,
-                    });
-                }
-
-                if (newDorsals.length > 0) {
-                    await Estela.EstelaDorsal.bulkCreate(newDorsals, {
-                        fields: Object.keys(newDorsals[0]),
-                        transaction,
-                    });
-                }
-
-                if (newPlayers.length > 0) {
-                    await Estela.EstelaPlayer.bulkCreate(newPlayers, {
-                        fields: Object.keys(newPlayers[0]),
-                        transaction,
-                    });
-                }
-
-                if (newResults.length > 0) {
-                    await Estela.EstelaResult.bulkCreate(newResults, {
-                        fields: Object.keys(newResults[0]),
-                        transaction,
-                    });
-                }
-                let tempPositions = [];
-                if (newPositions.length > 0) {
-                    let posIndex = 0;
-                    for (const newPositionsIndex in newPositions) {
-                        posIndex += 1;
-                        tempPositions.push(newPositions[newPositionsIndex]);
-                        if (posIndex === 10000) {
-                            posIndex = 0;
-                            await Estela.EstelaPosition.bulkCreate(
-                                tempPositions,
-                                {
-                                    fields: Object.keys(newPositions[0]),
-                                    transaction,
-                                }
-                            );
-                            tempPositions = [];
-                        }
-                    }
-                    if (posIndex > 0) {
-                        await Estela.EstelaPosition.bulkCreate(tempPositions, {
-                            fields: Object.keys(newPositions[0]),
-                            transaction,
-                        });
-                    }
-                }
-                await normalizeRace(
-                    currentRace,
-                    newPositions,
-                    newDorsals,
-                    transaction
-                );
-                await transaction.commit();
-                console.log('Finished scraping race.');
+                await createAndSendTempJsonFile(objectsToSave);
             } catch (err) {
-                if (transaction) {
-                    await transaction.rollback();
-                }
+                console.log(
+                    `Failed creating and sending temp json file for url ${currentRaceUrl}`
+                );
                 throw err;
             }
-            // buoys, players, winds, race, dorsals, results, marks, positions,  initial_bounds then done!
         } catch (err) {
             console.log(err);
-            try {
-                await Estela.EstelaFailedUrl.create(
-                    {
-                        url: currentRaceUrl,
-                        error: err.toString(),
-                        id: uuidv4(),
-                    },
-                    { fields: ['url', 'id', 'error'] }
-                );
-            } catch (err2) {
-                console.log('Failed inserting failed record in database', err2);
-            }
+            await registerFailedUrl(SOURCE, currentRaceUrl, err.toString());
         }
     }
 
@@ -668,89 +549,3 @@ const ESTELA_SOURCE = 'ESTELA';
     browser.close();
     process.exit();
 })();
-
-async function normalizeRace(race, allPositions, boats, transaction) {
-    const id = race.id;
-    const name = race.name;
-    const event = null;
-    const url = race.url;
-    const startTime = new Date(race.start_timestamp * 1000).getTime();
-    const endTime = new Date(race.end_timestamp * 1000).getTime();
-    let startPoint = createTurfPoint(race.initLat, race.initLon);
-
-    if (allPositions.length === 0) {
-        console.log('No positions so skipping.');
-        return;
-    }
-
-    const boundingBox = turf.bbox(
-        positionsToFeatureCollection('lat', 'lon', allPositions)
-    );
-    const boatsToSortedPositions = createBoatToPositionDictionary(
-        allPositions,
-        'dorsal',
-        'timestamp'
-    );
-    const last3Positions = collectLastNPositionsFromBoatsToPositions(
-        boatsToSortedPositions,
-        3
-    );
-    let endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
-    const buoys = await Estela.EstelaBuoy.findAll({ where: { race: race.id } });
-    if (buoys.length > 2) {
-        buoys.sort((a, b) => (parseInt(a.index) > parseInt(b.index) ? 1 : -1));
-
-        const startBuoy = buoys[0];
-        const endBuoy = buoys[buoys.length - 1];
-        if (startBuoy.lat !== null && startBuoy.lon !== null) {
-            startPoint = createTurfPoint(startBuoy.lat, startBuoy.lon);
-        }
-        if (endBuoy.lat !== null && endBuoy.lon !== null) {
-            endPoint = createTurfPoint(endBuoy.lat, endBuoy.lon);
-        }
-    }
-    allPositions = null;
-    const boatNames = [];
-    const boatModels = [];
-    const handicapRules = [];
-    const boatIdentifiers = [];
-    const unstructuredText = [];
-
-    for (const boatIndex in boats) {
-        const b = boats[boatIndex];
-        boatNames.push(b.name);
-        boatModels.push(b.model);
-        boatIdentifiers.push(b.mmsi);
-        boatIdentifiers.push(b.number);
-    }
-
-    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
-    const raceMetadata = await createRace(
-        id,
-        name,
-        event,
-        ESTELA_SOURCE,
-        url,
-        startTime,
-        endTime,
-        startPoint,
-        endPoint,
-        boundingBox,
-        roughLength,
-        boatsToSortedPositions,
-        boatNames,
-        boatModels,
-        boatIdentifiers,
-        handicapRules,
-        unstructuredText
-    );
-    const tracksGeojson = JSON.stringify(
-        allPositionsToFeatureCollection(boatsToSortedPositions)
-    );
-
-    await SearchSchema.RaceMetadata.create(raceMetadata, {
-        fields: Object.keys(raceMetadata),
-        transaction,
-    });
-    await uploadGeoJsonToS3(race.id, tracksGeojson, ESTELA_SOURCE, transaction);
-}

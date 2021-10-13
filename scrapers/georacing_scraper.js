@@ -27,7 +27,7 @@ const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3');
 
 const GEORACING_SOURCE = 'GEORACING';
 
-// WARNING: GEORACING HAS THE CHARTS http://player.georacing.com/?event=101887&race=97651
+// WARNING: GEORACING HAS THE CHARTS https://player.georacing.com/?event=101887&race=97651
 function peekUint8(bytes) {
     if (bytes.length < 1) {
         return 0;
@@ -1448,6 +1448,14 @@ function getPositionsFromBinary(bytes, meta = null) {
     } else {
         throw new Error('invalid version binary file: ' + version);
     }
+    // This code is for Vendee Globe 2016. The data is in s3.
+    // Comment the code above then uncomment the code below and download the json in order to add the data in db
+    // const posData = require('./100346+93419_data_manager_scrape.json');
+    // const actorsPositions = posData.DATAMANAGER.ActorsPositions;
+    // for (aid in actorsPositions) {
+    //   actorsPositions[aid] = actorsPositions[aid]._dataList.map((i) => ({at: i.timestamp * 1000, lng: i.data.lng, lat: i.data.lat}));
+    // }
+    // return actorsPositions;
 }
 
 function getVirtualitiesGroundsData(grounds, raceObjSave) {
@@ -1657,6 +1665,7 @@ function getActorsData(actors, existingObjects, raceObjSave) {
         actorObjSave.person = JSON.stringify(a.person);
 
         actorObjSave.originalActorObject = a;
+        actorObjSave.shouldSave = actorObj.shouldSave;
 
         return actorObjSave;
     });
@@ -1707,12 +1716,15 @@ function getSplittimesData(splittimes, existingObjects, raceObjSave) {
 
     const splittimesSave = [];
     const splittimeObjectsSave = [];
-    splittimes.forEach((st) => {
+    for (const st of splittimes) {
         const splittime = instantiateOrReturnExisting(
             existingObjects,
             Georacing.Splittime,
             st.id
         );
+        if (!splittime.shouldSave) {
+            continue;
+        }
 
         splittime.obj.race = raceObjSave.id;
         splittime.obj.race_original_id = raceObjSave.original_id;
@@ -1730,12 +1742,15 @@ function getSplittimesData(splittimes, existingObjects, raceObjSave) {
         if (!st.splittimes) {
             return;
         }
-        st.splittimes.forEach((s) => {
+        for (const s of st.splittimes) {
             const splittimeObject = instantiateOrReturnExisting(
                 existingObjects,
                 Georacing.SplittimeObject,
                 s.id
             );
+            if (!splittimeObject.shouldSave) {
+                continue;
+            }
 
             splittimeObject.obj.splittime = splittime.obj.id;
             splittimeObject.obj.splittime_original_id =
@@ -1764,8 +1779,8 @@ function getSplittimesData(splittimes, existingObjects, raceObjSave) {
             splittimeObject.obj.time_out = s.time_out;
 
             splittimeObjectsSave.push(splittimeObject.obj);
-        });
-    });
+        }
+    }
     return {
         splittimesSave,
         splittimeObjectsSave,
@@ -1833,12 +1848,15 @@ function getCoursesData(courses, existingObjects, raceObjSave) {
     const coursesSave = [];
     const coursesObjectSave = [];
     const coursesElementSave = [];
-    courses.forEach((c) => {
+    for (const c of courses) {
         const courseObj = instantiateOrReturnExisting(
             existingObjects,
             Georacing.Course,
             c.id
         );
+        if (!courseObj.shouldSave) {
+            continue;
+        }
         const course = courseObj.obj;
         course.race = raceObjSave.id;
         course.race_original_id = raceObjSave.original_id;
@@ -1849,12 +1867,15 @@ function getCoursesData(courses, existingObjects, raceObjSave) {
         course.course_type = c.course_type;
         coursesSave.push(course);
         if (c.course_objects) {
-            c.course_objects.forEach((co) => {
+            for (const co of c.course_objects) {
                 const courseObjectObj = instantiateOrReturnExisting(
                     existingObjects,
                     Georacing.CourseObject,
                     co.id
                 );
+                if (!courseObjectObj.shouldSave) {
+                    continue;
+                }
                 const coSave = courseObjectObj.obj;
                 coSave.race = raceObjSave.id;
                 coSave.race_original_id = raceObjSave.original_id;
@@ -1905,9 +1926,9 @@ function getCoursesData(courses, existingObjects, raceObjSave) {
                         coursesElementSave.push(element);
                     });
                 }
-            });
+            }
         }
-    });
+    }
     return {
         coursesSave,
         coursesObjectSave,
@@ -1981,7 +2002,6 @@ async function fetchPositionsData(
             : null
     );
     const actors = Object.keys(positionsData);
-
     actors.forEach((aoid) => {
         let aid = trackables[aoid];
 
@@ -2354,7 +2374,7 @@ async function waitAndGetUrlDataPlayerVersion3(page) {
     }
 }
 
-async function waitForPlayerVersion4Ready(page) {
+async function waitForPlayerVersion2Ready(page) {
     const loadedTest =
         'ALL_DATAS_LOADED && ALLJSON_LOADED && URL_JSON_LOADED && URL_BIN_LOADED && BINARY_LOADED && PLAYER_ISREADYFORPLAY && ALL_DATAS_LOADED && BINARY_LOADED && (LOAD_PERCENT >= 90)';
     await page.waitForFunction(loadedTest, {
@@ -2456,7 +2476,7 @@ async function saveData({
 }
 
 function getRacePlayerNameURL(eventId, raceId) {
-    return `http://player.georacing.com/?event=${eventId}&race=${raceId}`;
+    return `https://player.georacing.com/?event=${eventId}&race=${raceId}`;
 }
 
 function getRaceDataURL(eventId, raceId) {
@@ -2464,7 +2484,7 @@ function getRaceDataURL(eventId, raceId) {
 }
 
 const allRacesURL =
-    'http://player.georacing.com/datas/applications/app_12.json';
+    'https://player.georacing.com/datas/applications/app_12.json';
 
 (async () => {
     await connect();
@@ -2515,11 +2535,6 @@ const allRacesURL =
                 event.id
             );
 
-            // if (!eventObj.shouldSave) {
-            //     console.log('Already saved this event so skipping.');
-            //     continue;
-            // }
-
             const eventObjSave = eventObj.obj;
             eventObjSave.name = event.name;
             eventObjSave.short_name = event.short_name;
@@ -2543,7 +2558,7 @@ const allRacesURL =
 
             for (const raceIndex in races) {
                 const race = races[raceIndex];
-
+                const urlRegex = /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=+$,\w]+@)?[A-Za-z0-9.-]+|(?:www.|[-;:&=+$,\w]+@)[A-Za-z0-9.-]+)((?:\/[+~%/.\w-_]*)?\??(?:[-+=&;%@.\w_]*)#?(?:[\w]*))?)/;
                 const raceStartDateStamp = new Date(race.start_time).getTime();
                 const raceEndDateStamp = new Date(race.end_time).getTime();
 
@@ -2554,13 +2569,15 @@ const allRacesURL =
                     console.log('Future race so skipping');
                     continue;
                 }
-                // console.log(race.player_name)
-                if (!race.player_name) {
+                if (!race.player_name || !urlRegex.test(race.player_name)) {
                     race.player_name = getRacePlayerNameURL(
                         eventObjSave.original_id,
                         race.id
                     );
                 }
+                console.log(
+                    `Scraping race ${raceIndex} of ${races.length} with url ${race.player_name}`
+                );
 
                 try {
                     const raceObj = instantiateOrReturnExisting(
@@ -2605,13 +2622,13 @@ const allRacesURL =
 
                     const trackables = {};
 
-                    if (playerVersion === 4) {
-                        console.log('Version 4', {
+                    if (playerVersion === 2) {
+                        console.log('Version 2', {
                             playerName: race.player_name,
                         });
-                        await waitForPlayerVersion4Ready(page);
+                        await waitForPlayerVersion2Ready(page);
 
-                        // EXAMPLE RACE: http://player.georacing.com/?event=101837&race=97390&name=Course%205%20-%20Cancelled&location=Saint-Brieuc
+                        // EXAMPLE RACE: https://player.georacing.com/?event=101837&race=97390&name=Course%205%20-%20Cancelled&location=Saint-Brieuc
                         const dataUrl = getRaceDataURL(
                             eventObjSave.original_id,
                             race.id
@@ -2622,20 +2639,11 @@ const allRacesURL =
                         const allRequest = await axios.get(
                             dataUrl + 'all.json'
                         );
-                        /*
-                        allRequest.data keys =  [ 'states',
-                            'message',
-                            'news',
-                            'race',
-                            'options',
-                            'actors',
-                            'courses',
-                            'weathers',
-                            'splittimes',
-                            'track',
-                            'event',
-                            'categories' ]
-                        */
+
+                        // This code is for Vendee Globe 2016. The data is in s3.
+                        // const allRequest = {
+                        //   data: require('./100346+93419_data_20170125_134639.json')
+                        // }
 
                         const {
                             groundPlaces,
@@ -2671,7 +2679,7 @@ const allRacesURL =
                                 jxwu["message.json"]["update_date"] = new Date();
                                 jxwu["news.json"]["update_date"] = new Date();
                             /positions/positions__r.json",
-                            http://player.georacing.com/raw_datas"
+                            https://player.georacing.com/raw_datas"
                             hcun + "/" + CURRENT_EVENT.id + "/" + gmrk.id + "/positions/" + index + "__r.json",
                             pyxt + "/" + CURRENT_EVENT.id + "/" + CURRENT_RACE_ID + "/track_prod.xml",
 
@@ -2696,7 +2704,10 @@ const allRacesURL =
                                     id: actorObjSave.id,
                                     original_id: originalActorObject.id,
                                 };
-                                actorSave.push(actorObjSave);
+                                if (actorObjSave.shouldSave) {
+                                    delete actorObjSave.shouldSave;
+                                    actorSave.push(actorObjSave);
+                                }
                             });
                         }
 
@@ -2743,7 +2754,7 @@ const allRacesURL =
                         });
                         for (const posIndex in binaryUrls) {
                             const posUrl =
-                                'http://player.georacing.com/datas/' +
+                                'https://player.georacing.com/datas/' +
                                 eventObjSave.original_id +
                                 '/' +
                                 race.id +
@@ -2766,7 +2777,7 @@ const allRacesURL =
                             } catch (err) {
                                 console.log(
                                     'Failed to fetch and parse positions! This happens in the web app too!',
-                                    err.toString()
+                                    err
                                 );
                             }
                         }
@@ -2907,6 +2918,11 @@ const allRacesURL =
                         console.log(playerVersion);
                     }
 
+                    if (positionSave.length === 0) {
+                        console.log('No positions. Skipping.');
+                        continue;
+                    }
+                    console.log('Saving race data');
                     await saveData({
                         eventObjSave,
                         raceObjSave,
@@ -2927,7 +2943,7 @@ const allRacesURL =
                     await Georacing.FailedUrl.create({
                         id: uuidv4(),
                         error: err.toString(),
-                        url: JSON.stringify(race.player_name),
+                        url: race.player_name,
                     });
                 }
             }
@@ -2938,5 +2954,6 @@ const allRacesURL =
             );
         }
     }
+    console.log('Finished saving all races');
     process.exit();
 })();

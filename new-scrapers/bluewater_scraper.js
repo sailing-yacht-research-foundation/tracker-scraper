@@ -1,14 +1,14 @@
-const path = require('path');
-require('dotenv').config({
-    path: path.resolve(__dirname, '..', '.env'),
-});
-
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
+const {
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+    getExistingUrls,
+    registerFailedUrl,
+} = require('../utils/raw-data-server-utils');
 
 (async () => {
-    const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
+    const SOURCE = 'bluewater';
     const BASE_URL = 'https://api.bluewatertracks.com/api/race/';
     const BASE_REFERRAL_URL = 'https://race.bluewatertracks.com/';
     const FROM_UPDATE_TIME = '2015-03-12T19:33:50.187Z';
@@ -28,6 +28,14 @@ const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
         console.log('An error occured getting the race list', err);
         process.exit();
     }
+
+    let existingUrls;
+    try {
+        existingUrls = await getExistingUrls(SOURCE);
+    } catch (err) {
+        console.log('Error getting existing urls', err);
+        process.exit();
+    }
     const races = result.data.raceList;
 
     for (const index in races) {
@@ -35,12 +43,17 @@ const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
         const raceUrl = BASE_URL + raceObj.slug;
         const objectsToSave = {};
 
+        if (existingUrls.includes(raceObj.slug)) {
+            continue;
+        }
+
         console.log(`Getting race object with url ${raceUrl}`);
         let result;
         try {
             result = await axios.get(raceUrl);
         } catch (err) {
             console.log(`Failed getting race info with url ${raceUrl}`, err);
+            await registerFailedUrl(SOURCE, raceObj.slug, err.toString());
             continue;
         }
         const resultData = result.data;
@@ -62,7 +75,9 @@ const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
         }
 
         if (positions.length === 0) {
-            console.log(`No positions with race url ${raceUrl}. Skipping`);
+            const errMsg = `No positions with race url ${raceUrl}. Skipping`;
+            console.log(errMsg);
+            await registerFailedUrl(SOURCE, raceObj.slug, errMsg);
             continue;
         }
         const boats = race.boats;
@@ -227,17 +242,13 @@ const { createAndSendTempJsonFile } = require('../utils/raw-data-server-utils');
         }
 
         try {
-            console.log('Creating temp json file');
-            await createAndSendTempJsonFile(
-                `${RAW_DATA_SERVER_API}/api/v1/upload-file`,
-                objectsToSave
-            );
-            console.log('Finished sending file');
+            await createAndSendTempJsonFile(objectsToSave);
         } catch (err) {
             console.log(
                 `Failed creating and sending temp json file for url ${raceUrl}`,
                 err
             );
+            await registerFailedUrl(SOURCE, raceObj.slug, err.toString());
             continue;
         }
     }

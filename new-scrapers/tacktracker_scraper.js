@@ -1,138 +1,46 @@
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 const {
-    TackTracker,
-    sequelize,
-    connect,
-    bulkSave,
-    SearchSchema,
-} = require('../tracker-schema/schema.js');
-const {
-    createBoatToPositionDictionary,
-    positionsToFeatureCollection,
-    collectFirstNPositionsFromBoatsToPositions,
-    collectLastNPositionsFromBoatsToPositions,
-    getCenterOfMassOfPositions,
-    findAverageLength,
-    createRace,
-    allPositionsToFeatureCollection,
-    findCenter,
-} = require('../tracker-schema/gis_utils.js');
-const { axios, uuidv4 } = require('../tracker-schema/utils.js');
+    RAW_DATA_SERVER_API,
+    createAndSendTempJsonFile,
+    getExistingUrls,
+    registerFailedUrl,
+} = require('../utils/raw-data-server-utils');
 const FormData = require('form-data');
 const { ungzip } = require('node-gzip');
 const parser = require('xml2json');
-const { Op } = require('sequelize');
-const turf = require('@turf/turf');
-const { uploadGeoJsonToS3 } = require('../utils/upload_racegeojson_to_s3.js');
-const TACKTRACKER_SOURCE = 'TACKTRACKER';
 
-// https://tacktracker.com/cloud/home/OshkoshYachtClub/races/
-const mainScript = async () => {
-    const CONNECTED_TO_DB = await connect();
-    if (!CONNECTED_TO_DB) {
-        console.log('Cannot connect to Database');
+(async () => {
+    const SOURCE = 'tacktracker';
+    const REGATTA_URL_PREFIX = 'https://tacktracker.com/cloud/regattas/show/';
+    if (!RAW_DATA_SERVER_API) {
+        console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
     }
-    console.log('Getting data from DB...');
-    // const tacktrackerMetadata = await TackTracker.TackTrackerMetadata.findOne(
-    //     {
-    //         attributes: [
-    //             'base_race_api_url',
-    //             'base_user_race_url',
-    //             'base_regatta_race_url',
-    //         ],
-    //     }
-    // );
-    const regattas = await TackTracker.TackTrackerRegatta.findAll({
-        attributes: ['id', 'url', 'original_id'],
-    });
-    const users = await TackTracker.TackTrackerUser.findAll({
-        attributes: ['id', 'name'],
-    });
-    console.log('Finished getting data from DB.');
+
+    let existingUrls;
+    try {
+        existingUrls = await getExistingUrls(SOURCE);
+    } catch (err) {
+        console.log('Error getting existing urls', err);
+        process.exit();
+    }
     const existingRegattaIds = [];
     const existingRegattaMap = {};
     const existingUsers = [];
     const existingUserMap = {};
     const urlToUser = {};
     const urlToRegatta = {};
-    for (const regattaIndex in regattas) {
-        existingRegattaIds.push(regattas[regattaIndex].original_id);
-        existingRegattaMap[regattas[regattaIndex].original_id] =
-            regattas[regattaIndex].id;
-    }
-
-    for (const userIndex in users) {
-        existingUsers.push(users[userIndex].name);
-        existingUserMap[users[userIndex].name] = users[userIndex].id;
-    }
-    console.log('Searching for all users...');
     const allUsersHash = {};
-    // TODO: make a utility method that includes this list of search characters and loops through it making requests to reuse for all scrapers.
-    const alphabet = [
-        'a',
-        'b',
-        'c',
-        'd',
-        'e',
-        'f',
-        'g',
-        'h',
-        'i',
-        'j',
-        'k',
-        'l',
-        'm',
-        'n',
-        'o',
-        'p',
-        'q',
-        'r',
-        's',
-        't',
-        'u',
-        'v',
-        'q',
-        'x',
-        'y',
-        'z',
-        'A',
-        'B',
-        'C',
-        'D',
-        'E',
-        'F',
-        'G',
-        'H',
-        'I',
-        'J',
-        'K',
-        'L',
-        'M',
-        'N',
-        'O',
-        'P',
-        'Q',
-        'R',
-        'S',
-        'T',
-        'U',
-        'V',
-        'W',
-        'X',
-        'Y',
-        'Z',
-        '1',
-        '2',
-        '3',
-        '4',
-        '5',
-        '6',
-        '7',
-        '8',
-        '9',
-        '0',
-        '_',
-    ];
+    const lowerAlphabet = Array.from(Array(26)).map((e, i) =>
+        String.fromCharCode(i + 97)
+    ); // a-z
+    const upperAlphabet = Array.from(Array(26)).map((e, i) =>
+        String.fromCharCode(i + 65)
+    ); // A-Z
+    const digits = Array.from(Array(10).keys()).map((i) => i.toString()); // 0-9
+    const alphabet = [].concat(lowerAlphabet, upperAlphabet, digits, '_');
+    console.log('Searching for all users...');
     for (const index in alphabet) {
         const search = alphabet[index];
         const searchUrl =
@@ -151,28 +59,6 @@ const mainScript = async () => {
     // All regattas: this is rough.
 
     const overflow = [
-        'cup',
-        'regatta',
-        'series',
-        'championship',
-        'worlds',
-        'race',
-        'euros',
-        'IRC',
-        'Asia',
-        'youth',
-        'class',
-        'national',
-        'class',
-        'sail',
-        'race',
-        'YC',
-        'club',
-        'yacht',
-        'ys',
-    ];
-
-    const overflow2 = [
         'cup',
         'regatta',
         'series',
@@ -319,71 +205,15 @@ const mainScript = async () => {
     ];
 
     const allWords = [].concat(underflow);
-    const alphabet1 = [
-        'a',
-        'b',
-        'c',
-        'd',
-        'e',
-        'f',
-        'g',
-        'h',
-        'i',
-        'j',
-        'k',
-        'l',
-        'm',
-        'n',
-        'o',
-        'p',
-        'q',
-        'r',
-        's',
-        't',
-        'u',
-        'v',
-        'q',
-        'x',
-        'y',
-        'z',
-    ];
-    const alphabet2 = [
-        'a',
-        'b',
-        'c',
-        'd',
-        'e',
-        'f',
-        'g',
-        'h',
-        'i',
-        'j',
-        'k',
-        'l',
-        'm',
-        'n',
-        'o',
-        'p',
-        'q',
-        'r',
-        's',
-        't',
-        'u',
-        'v',
-        'q',
-        'x',
-        'y',
-        'z',
-    ];
-    alphabet1.forEach((letter) => {
-        alphabet2.forEach((letter2) => {
+    lowerAlphabet.forEach((letter) => {
+        lowerAlphabet.forEach((letter2) => {
             const combo = letter + letter2 + 'yc';
             allWords.push(combo);
         });
     });
 
     overflow.forEach((word) => {
-        overflow2.forEach((w) => {
+        overflow.forEach((w) => {
             const newWord = word + ' ' + w;
             allWords.push(newWord);
         });
@@ -443,22 +273,13 @@ const mainScript = async () => {
             const newUserId = uuidv4();
             existingUsers.push(user);
             existingUserMap[user] = newUserId;
-            await TackTracker.TackTrackerUser.create(
-                {
-                    id: newUserId,
-                    name: user,
-                },
-                { fields: ['id', 'name'] }
-            );
         }
     }
     console.log('Making new regatta objects.');
     for (const regattaIndex in allRegattas) {
         const regatta = allRegattas[regattaIndex];
         const fullRegattaUrl = 'https://tacktracker.com' + regatta;
-        const regattaOriginalId = fullRegattaUrl.split(
-            'https://tacktracker.com/cloud/regattas/show/'
-        )[1];
+        const regattaOriginalId = fullRegattaUrl.split(REGATTA_URL_PREFIX)[1];
         allRegattaUrls.push(fullRegattaUrl);
         urlToRegatta[fullRegattaUrl] = regattaOriginalId;
         if (!existingRegattaIds.includes(regattaOriginalId)) {
@@ -466,14 +287,6 @@ const mainScript = async () => {
             const newRegattaId = uuidv4();
             existingRegattaIds.push(regattaOriginalId);
             existingRegattaMap[regattaOriginalId] = newRegattaId;
-            await TackTracker.TackTrackerRegatta.create(
-                {
-                    id: newRegattaId,
-                    url: fullRegattaUrl,
-                    original_id: regattaOriginalId,
-                },
-                { fields: ['id', 'url', 'original_id'] }
-            );
         }
     }
     console.log('Making list of all race ids...');
@@ -484,6 +297,9 @@ const mainScript = async () => {
     const regattasToRaces = {};
     for (const userUrlIndex in allUserUrls) {
         const currentUrl = allUserUrls[userUrlIndex];
+        console.log(
+            `Getting race connected to user ${userUrlIndex} of ${allUserUrls.length} with url ${currentUrl}.`
+        );
         const result = await axios.get(currentUrl);
         const resultData = result.data;
         const regexp = /onclick="viewRace\('[0-9]*'/g;
@@ -507,9 +323,12 @@ const mainScript = async () => {
 
     for (const regattaUrlIndex in allRegattaUrls) {
         const currentUrl = allRegattaUrls[regattaUrlIndex];
+        console.log(
+            `Getting race connected to regatta ${regattaUrlIndex} of ${allRegattaUrls.length} with url ${currentUrl}.`
+        );
         const result = await axios.get(currentUrl);
         const resultData = result.data;
-        const regexp = /onclick="viewRace\('[0-9]*'/g;
+        const regexp = /onclick="viewRace\('\d+', '\d+'/g;
 
         const matches = resultData.toString().match(regexp);
         const currentRegatta = urlToRegatta[currentUrl];
@@ -520,9 +339,11 @@ const mainScript = async () => {
         if (matches !== null) {
             for (const matchIndex in matches) {
                 const match = matches[matchIndex];
-                const regex2 = /[0-9]+/;
-                const raceId = match.match(regex2)[0];
-                raceIdHash[raceId] = currentUrl;
+                const regex2 = /\d+/g;
+                const ids = match.match(regex2);
+                const raceId = ids[0];
+                const raceOrder = ids[1];
+                raceIdHash[raceId] = `${currentUrl}/${raceOrder}`;
                 regattasToRaces[currentRegatta].push(raceId);
             }
         }
@@ -531,32 +352,15 @@ const mainScript = async () => {
     console.log('List of all race ids finished being populated.');
 
     const raceIds = Object.keys(raceIdHash);
-
-    console.log('Getting list of existing race ids..');
-    const racesToIgnore = await TackTracker.TackTrackerRace.findAll({
-        where: {
-            original_id: {
-                [Op.in]: raceIds,
-            },
-        },
-    });
-
-    const raceIdsToIgnore = [];
-    for (const ignoreIndex in racesToIgnore) {
-        raceIdsToIgnore.push(racesToIgnore[ignoreIndex].original_id);
-    }
     console.log('Finished getting list of existing race ids.');
     const todaysDate = new Date();
     for (const raceIdIndex in raceIds) {
         const raceId = raceIds[raceIdIndex];
-        console.log(`Beginning parsing new race with id ${raceId}`);
-        if (raceIdsToIgnore.includes(raceId)) {
-            console.log("This race was already scraped, so I'll skip it.");
+        const raceUrl = raceIdHash[raceId];
+        if (existingUrls.includes(raceUrl)) {
             continue;
         }
-        const raceUrl = raceIdHash[raceId];
-        console.log(`Race url is ${raceUrl}`);
-        let transaction;
+        console.log(`Scraping race with url ${raceUrl}`);
         try {
             const raceFormData = new FormData();
             raceFormData.append('raceId', raceId);
@@ -613,10 +417,8 @@ const mainScript = async () => {
                 userOriginalId === undefined
             ) {
                 if (raceUrl.includes('regattas')) {
-                    regattaOriginalId = raceUrl.replace(
-                        'https://tacktracker.com/cloud/regattas/show/',
-                        ''
-                    );
+                    const parts = raceUrl.split('/');
+                    regattaOriginalId = parts[parts.length - 2];
                 } else {
                     userOriginalId = raceUrl
                         .split('home/')[1]
@@ -844,185 +646,39 @@ const mainScript = async () => {
                 }
             }
 
-            const newObjectsToSave = [
-                {
-                    objectType: TackTracker.TackTrackerRace,
-                    objects: [raceToSave],
-                },
-                {
-                    objectType: TackTracker.TackTrackerDefault,
-                    objects: defaultsToSave,
-                },
-                {
-                    objectType: TackTracker.TackTrackerStart,
-                    objects: startMarksToSave,
-                },
-                {
-                    objectType: TackTracker.TackTrackerFinish,
-                    objects: finishMarksToSave,
-                },
-                {
-                    objectType: TackTracker.TackTrackerMark,
-                    objects: marksToSave,
-                },
-                {
-                    objectType: TackTracker.TackTrackerBoat,
-                    objects: boatsToSave,
-                },
-                {
-                    objectType: TackTracker.TackTrackerPosition,
-                    objects: positionsToSave,
-                },
-            ];
-            console.log('Bulk saving objects.');
-            transaction = await sequelize.transaction();
-            const saved = await bulkSave(newObjectsToSave, transaction);
-            if (!saved) {
-                throw new Error('Failed to save bulk data');
+            const objectsToSave = {
+                TackTrackerRace: [raceToSave],
+                TackTrackerBoat: boatsToSave,
+                TackTrackerDefault: defaultsToSave,
+                TackTrackerFinish: finishMarksToSave,
+                TackTrackerMark: marksToSave,
+                TackTrackerPosition: positionsToSave,
+                TackTrackerStart: startMarksToSave,
+            };
+            if (raceToSave.regatta_original_id) {
+                objectsToSave.TackTrackerRegatta = [
+                    {
+                        id: raceToSave.regatta,
+                        url:
+                            REGATTA_URL_PREFIX + raceToSave.regatta_original_id,
+                        original_id: raceToSave.regatta_original_id,
+                    },
+                ];
             }
-            console.log('Normalizing Race');
-            await normalizeRace(
-                raceToSave,
-                positionsToSave,
-                startMarksToSave[0],
-                finishMarksToSave[0],
-                boatsToSave,
-                transaction
-            );
-            await transaction.commit();
-            console.log('Finished saving race');
+
+            try {
+                await createAndSendTempJsonFile(objectsToSave);
+            } catch (err) {
+                console.log(
+                    `Failed creating and sending temp json file for url ${raceUrl}`
+                );
+                throw err;
+            }
         } catch (err) {
-            if (transaction) {
-                await transaction.rollback();
-            }
             console.log(err);
-            await TackTracker.TackTrackerFailedUrl.create({
-                id: uuidv4(),
-                url: raceUrl,
-                error: err.toString(),
-            });
+            await registerFailedUrl(SOURCE, raceUrl, err.toString());
         }
     }
     console.log('Finished scraping all races.');
     process.exit();
-};
-
-const normalizeRace = async (
-    race,
-    allPositions,
-    startMark,
-    finishMark,
-    boats,
-    transaction
-) => {
-    if (allPositions.length === 0) {
-        console.log('No positions so skipping.');
-        return;
-    }
-    const id = race.id;
-    const startTime = new Date(race.start).getTime();
-    let endTime;
-    const name = race.name;
-    const event = race.regatta;
-    const url = race.url;
-
-    const boatNames = [];
-    const boatModels = [];
-    const boatIdentifiers = [];
-    const handicapRules = [];
-    const unstructuredText = [];
-
-    boats.forEach((b) => {
-        boatNames.push(b.name);
-    });
-
-    allPositions.forEach((p) => {
-        p.timestamp = new Date(p.time).getTime();
-        if (!endTime || endTime < p.timestamp) {
-            endTime = p.timestamp;
-        }
-    });
-
-    const boundingBox = turf.bbox(
-        positionsToFeatureCollection('lat', 'lon', allPositions)
-    );
-    const boatsToSortedPositions = createBoatToPositionDictionary(
-        allPositions,
-        'boat',
-        'timestamp'
-    );
-    let startPoint;
-    if (startMark) {
-        startPoint = findCenter(
-            startMark.start_mark_lat,
-            startMark.start_mark_lon,
-            startMark.start_pin_lat,
-            startMark.start_pin_lon
-        );
-    } else {
-        const first3Positions = collectFirstNPositionsFromBoatsToPositions(
-            boatsToSortedPositions,
-            3
-        );
-        startPoint = getCenterOfMassOfPositions('lat', 'lon', first3Positions);
-    }
-
-    let endPoint;
-    if (finishMark) {
-        endPoint = findCenter(
-            finishMark.finish_mark_lat,
-            finishMark.finish_mark_lon,
-            finishMark.finish_pin_lat,
-            finishMark.finish_pin_lon
-        );
-    } else {
-        const last3Positions = collectLastNPositionsFromBoatsToPositions(
-            boatsToSortedPositions,
-            3
-        );
-        endPoint = getCenterOfMassOfPositions('lat', 'lon', last3Positions);
-    }
-
-    const roughLength = findAverageLength('lat', 'lon', boatsToSortedPositions);
-    const raceMetadata = await createRace(
-        id,
-        name,
-        event,
-        TACKTRACKER_SOURCE,
-        url,
-        startTime,
-        endTime,
-        startPoint,
-        endPoint,
-        boundingBox,
-        roughLength,
-        boatsToSortedPositions,
-        boatNames,
-        boatModels,
-        boatIdentifiers,
-        handicapRules,
-        unstructuredText
-    );
-    const tracksGeojson = JSON.stringify(
-        allPositionsToFeatureCollection(boatsToSortedPositions)
-    );
-
-    await SearchSchema.RaceMetadata.create(raceMetadata, {
-        fields: Object.keys(raceMetadata),
-        transaction,
-    });
-    console.log('Uploading to s3');
-    await uploadGeoJsonToS3(
-        race.id,
-        tracksGeojson,
-        TACKTRACKER_SOURCE,
-        transaction
-    );
-};
-
-if (require.main === module) {
-    // Only run the main script if not added as a dependency module
-    mainScript();
-}
-exports.normalizeRace = normalizeRace;
-exports.SOURCE = TACKTRACKER_SOURCE;
+})();
