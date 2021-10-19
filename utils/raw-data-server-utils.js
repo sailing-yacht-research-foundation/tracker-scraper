@@ -16,9 +16,13 @@ const generateRawDataServerSecret = () => {
     // Example format: 2021 Jun 21, Mon
     const formattedTodayDate = `${todayDate.getUTCFullYear()} ${todayDate.toLocaleString(
         'en-US',
-        { month: 'short' }
+        {
+            month: 'short',
+            timeZone: 'UTC',
+        }
     )} ${todayDate.getUTCDate()}, ${todayDate.toLocaleString('en-US', {
         weekday: 'short',
+        timeZone: 'UTC',
     })}`;
     return generateSecret(formattedTodayDate);
 };
