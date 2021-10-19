@@ -358,6 +358,9 @@ const parser = require('xml2json');
         const raceId = raceIds[raceIdIndex];
         const raceUrl = raceIdHash[raceId];
         if (existingUrls.includes(raceUrl)) {
+            console.log(
+                `Race already exist in database with url ${raceUrl}. Skipping`
+            );
             continue;
         }
         console.log(`Scraping race with url ${raceUrl}`);
