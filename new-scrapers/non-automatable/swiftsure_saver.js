@@ -66,7 +66,7 @@ models.SwiftsureBoat = sequelize.define(
             allowNull: true,
         },
         boat_id: {
-            type: DataTypes.TEXT,
+            type: DataTypes.UUID,
             allowNull: true,
         },
         yacht_club: {

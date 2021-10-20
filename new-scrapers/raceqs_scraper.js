@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
-    getExistingUrls,
+    getExistingData,
     registerFailedUrl,
 } = require('../utils/raw-data-server-utils');
 const { appendArray } = require('../utils/array');
@@ -25,25 +25,34 @@ const SOURCE = 'raceqs';
         process.exit();
     }
 
+    const RACE_SCRAPE_RANGE = 2000; // Added to the last race index to get a range of id to be scraped
     let existingUrls;
+    let maxRaceIndex;
     try {
-        existingUrls = await getExistingUrls(SOURCE);
+        const existingData = await getExistingData(SOURCE);
+        const successRaceIds = existingData
+            .map((u) => u.original_id)
+            .filter((id) => !!id);
+        const prevMaxRaceId = successRaceIds.reduce(
+            (a, b) => Math.max(a, b),
+            0
+        );
+        maxRaceIndex = prevMaxRaceId + RACE_SCRAPE_RANGE || RACE_SCRAPE_RANGE;
+        existingUrls = existingData.map((u) => u.url);
     } catch (err) {
-        console.log('Error getting existing urls', err);
+        console.log('Error getting max race id and existing urls', err);
         process.exit();
     }
 
-    const BEGIN_COUNTING_AT = 100000;
-    let pageIndex = BEGIN_COUNTING_AT;
-
-    while (pageIndex > 0) {
+    let pageIndex = 1;
+    while (pageIndex <= maxRaceIndex) {
         const eventUrl = `https://raceqs.com/tv-beta/tv.htm#eventId=${pageIndex}`;
 
         if (existingUrls.includes(eventUrl)) {
             console.log(
                 `Event already exist in database with url ${eventUrl}.`
             );
-            pageIndex--;
+            pageIndex++;
             continue;
         }
 
@@ -58,7 +67,7 @@ const SOURCE = 'raceqs';
                 config.events[0]?.tillDtm > new Date().getTime()
             ) {
                 console.log('No events or future event. So skipping.');
-                pageIndex--;
+                pageIndex++;
                 continue;
             }
 
@@ -119,7 +128,7 @@ const SOURCE = 'raceqs';
             await registerFailedUrl(SOURCE, eventUrl, err.toString());
         }
 
-        pageIndex--;
+        pageIndex++;
     }
     console.log('Finished scraping all events and races.');
     process.exit();
