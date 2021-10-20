@@ -1,6 +1,6 @@
 {
   "name": "tracker-scraper",
-  "version": "1.0.0",
+  "version": "0.1.2",
   "description": "Contains scripts for scraping data and normalization",
   "main": "index.js",
   "scripts": {
