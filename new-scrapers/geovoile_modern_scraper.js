@@ -275,7 +275,6 @@ async function scrapePage(url) {
             const rule = sig.rule;
             const sigBounds = sig.sigBounds;
             const projection = sig._projection;
-
             const raceAreas = sig._raceAreas;
             const raceGates = sig._raceGates;
             const shape = sig._shape;
@@ -292,6 +291,31 @@ async function scrapePage(url) {
             };
         });
 
+        const marks = await page.evaluate(() => {
+            const allMarks = [];
+            document.querySelectorAll('#poiLayer g[rel="0"] g').forEach((i) => {
+                const transformVal = i.getAttribute('transform');
+                const name = i.querySelector('text').textContent;
+                const type = i.getAttribute('class').trim();
+                const xy = transformVal.match(/\d+.\d+ \d+.\d+/g)[0].split(' ');
+                console.log(xy);
+                const lon = sig.getLng(xy[0], xy[1]);
+                const lat = sig.getLat(xy[0], xy[1]);
+                allMarks.push({
+                    name,
+                    type,
+                    lon,
+                    lat,
+                    xy,
+                });
+                console.log(
+                    `Name: ${name}, Type: ${type}, lat: ${lat}, lon: ${lon}`
+                );
+            });
+
+            return allMarks;
+        });
+
         console.log(
             `Finished scraping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}, legNum = ${race.legNum}, numberOfLegs = ${race.numLegs}`
         );
@@ -301,6 +325,7 @@ async function scrapePage(url) {
             sig,
             source: SOURCE,
             redirectUrl,
+            marks,
         };
     } catch (err) {
         console.log(err);
