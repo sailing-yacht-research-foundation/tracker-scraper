@@ -298,7 +298,6 @@ async function scrapePage(url) {
                 const name = i.querySelector('text').textContent;
                 const type = i.getAttribute('class').trim();
                 const xy = transformVal.match(/\d+.\d+ \d+.\d+/g)[0].split(' ');
-                console.log(xy);
                 const lon = sig.getLng(xy[0], xy[1]);
                 const lat = sig.getLat(xy[0], xy[1]);
                 allMarks.push({
@@ -308,9 +307,6 @@ async function scrapePage(url) {
                     lat,
                     xy,
                 });
-                console.log(
-                    `Name: ${name}, Type: ${type}, lat: ${lat}, lon: ${lon}`
-                );
             });
 
             return allMarks;
