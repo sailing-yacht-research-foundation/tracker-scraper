@@ -173,7 +173,12 @@ const SOURCE = 'yachtbot';
                         serialNumbers
                     );
 
-                    const { boats, buoys, positions } = parsePositionsData(
+                    const {
+                        boats,
+                        buoys,
+                        marks,
+                        positions,
+                    } = parsePositionsData(
                         posResponseData,
                         serials,
                         oidsToSerial,
@@ -199,6 +204,7 @@ const SOURCE = 'yachtbot';
                         YachtBotRace: races,
                         YachtBotYacht: boats,
                         YachtBotBuoy: buoys,
+                        YachtBotMarks: marks,
                         YachtBotPosition: positions,
                     };
 
@@ -484,7 +490,41 @@ const parsePositionsData = (
         }
     });
 
-    return { boats, buoys, positions };
+    const marks = [];
+    // static bouy
+    for (const key of Object.keys(serials)) {
+        if (serials[key].type !== 'buoy' || !serials[key].positions) {
+            continue;
+        }
+        const isAvailable = buoys.find((t) => t.original_id === key);
+        if (isAvailable) {
+            continue;
+        }
+
+        if (typeof serials[key].connected_buoy !== 'string') {
+            delete serials[key].connected_buoy;
+        }
+
+        const connectedBuoyOriginalId = serials[key].connected_buoy || null;
+        const connectedBuoyId = serials[key].connected_buoy
+            ? serials[serials[key].connected_buoy]?.uuid
+            : null;
+        const positions = serials[key].positions;
+        const lat = positions?.position?.latitude;
+        const lon = positions?.position?.longitude;
+        marks.push({
+            original_id: key,
+            ...serials[key],
+            id: serials[key].uuid,
+            connected_buoy_original_id: connectedBuoyOriginalId,
+            connected_buoy: connectedBuoyId,
+            lat,
+            lon,
+            race: raceSaveObj.id,
+            race_original_id: raceSaveObj.original_id,
+        });
+    }
+    return { boats, buoys, marks, positions };
 };
 
 // const fetchWindows = async (startTime, token) => {
