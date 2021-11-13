@@ -1,8 +1,8 @@
-name: Terraform Apply
+name: Tracker Scraper pipeline
 on:
     push:
         branches:
-            - dev-test
+            - main
 
 jobs:
     job:
