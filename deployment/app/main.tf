@@ -153,7 +153,7 @@ resource "aws_ecs_task_definition" "georacing-scraper-prod" {
         }
       },
       "workingDirectory": "/home/node/app",
-      "memory": 2048,
+      "memory": 8192,
       "cpu": 1024
     }
   ]
