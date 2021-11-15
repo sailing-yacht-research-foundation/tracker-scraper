@@ -1,3 +1,11 @@
+/**
+ * Update Yacht bot scraper marks and bouy
+ * The initial yachtbot_scraper.js missing information related to static marks and bouy original_object_id
+ * They are vital information to create points, lines on SYRF map.
+ * This script is created to run one time only to fix marks and bouy information.
+ * It will send information to {{raw-data-server-url}}/api/v1/yacht-bot.
+ * Raw data sever will update the data
+ */
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const xml2json = require('xml2json');
