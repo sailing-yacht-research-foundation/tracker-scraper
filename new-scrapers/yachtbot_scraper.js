@@ -161,7 +161,10 @@ const SOURCE = 'yachtbot';
                             !serialNumbers.includes(serialNumber)
                         ) {
                             serialNumbers.push(serialNumber);
-                            serials[serialNumber] = o.object_content;
+                            serials[serialNumber] = {
+                                object_id: o.object_id,
+                                ...o.object_content,
+                            };
                         } else {
                             serials[o.object_id] = o.object_content;
                         }
@@ -419,6 +422,7 @@ const parsePositionsData = (
                         connected_buoy: id,
                         connected_buoy_original_id: originalId,
                         metas: null,
+                        original_object_id: content.object_id,
                     };
                     buoys.push(cb);
                     connectedBuoyOriginalId = cb.original_id;
@@ -439,6 +443,7 @@ const parsePositionsData = (
                 buoy_type: buoyType,
                 connected_buoy: connectedBuoy,
                 connected_buoy_original_id: connectedBuoyOriginalId,
+                original_object_id: serials[originalId].object_id,
                 metas,
             };
             currentPositions.forEach((p) => {
