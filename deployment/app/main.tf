@@ -35,19 +35,6 @@ resource "aws_cloudwatch_log_group" "scraper_runner_logs" {
   name = "scraper-runner-logs"
 }
 
-#resource "aws_ecs_service" "scraper_runner_service" {
-#  name            = "scraper-runner-service"                 # Naming our first service
-#  cluster         = aws_ecs_cluster.scraper-runner.id        # Referencing our created Cluster
-#  task_definition = aws_ecs_task_definition.scraper_task.arn # Referencing the task our service will spin up
-#  launch_type     = "FARGATE"
-#  desired_count   = 1 # Setting the number of containers to 3
-#
-#  network_configuration {
-#    subnets = ["subnet-028dcac02c2daa0ff"]
-#    #assign_public_ip = true            # Providing our containers with public IPs
-#    security_groups = [aws_security_group.service_security_group.id] # Setting the security group
-#  }
-#}
 
 resource "aws_ecs_task_definition" "bluewater-scraper-prod" {
   family                   = "bluewater-scraper-prod" # Naming our first task
@@ -552,6 +539,122 @@ resource "aws_ecs_task_definition" "yellowbrick-scraper-prod" {
   requires_compatibilities = ["FARGATE"] # Stating that we are using ECS Fargate
   network_mode             = "awsvpc"    # Using awsvpc as our network mode as this is required for Fargate
   memory                   = 8192        # Specifying the memory our container requires
+  cpu                      = 1024        # Specifying the CPU our container requires
+  execution_role_arn       = aws_iam_role.scraperTaskExecutionRole.arn
+}
+
+resource "aws_ecs_task_definition" "georacing-scraper-dev" {
+  family                   = "georacing-scraper-dev" # Naming our first task
+  container_definitions    = <<DEFINITION
+  [
+    {
+      "name": "georacing-scraper",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
+      "essential": true,
+      "command": ["node","new-scrapers/geovoile_modern_scraper.js"],
+
+      "environmentFiles": [
+               {
+                   "value": "arn:aws:s3:::syrf-dev-env-variables/scraper.env",
+                   "type": "s3"
+               }
+           ],
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "${aws_cloudwatch_log_group.scraper_runner_logs.name}",
+          "awslogs-region": "${var.aws_region}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "workingDirectory": "/home/node/app",
+      "memory": 2048,
+      "cpu": 512
+    }
+  ]
+  DEFINITION
+  requires_compatibilities = ["FARGATE"] # Stating that we are using ECS Fargate
+  network_mode             = "awsvpc"    # Using awsvpc as our network mode as this is required for Fargate
+  memory                   = 2048        # Specifying the memory our container requires
+  cpu                      = 512        # Specifying the CPU our container requires
+  execution_role_arn       = aws_iam_role.scraperTaskExecutionRole.arn
+}
+
+
+resource "aws_ecs_task_definition" "swiftsure-saver-dev" {
+  family                   = "swiftsure-saver-dev" # Naming our first task
+  container_definitions    = <<DEFINITION
+  [
+    {
+      "name": "swiftsure-saver",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
+      "essential": true,
+      "command": ["node","new-scrapers/non-automatable/swiftsure_saver.js"],
+
+      "environmentFiles": [
+               {
+                   "value": "arn:aws:s3:::syrf-dev-env-variables/scraper.env",
+                   "type": "s3"
+               }
+           ],
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "${aws_cloudwatch_log_group.scraper_runner_logs.name}",
+          "awslogs-region": "${var.aws_region}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "workingDirectory": "/home/node/app",
+      "memory": 2048,
+      "cpu": 1024
+    }
+  ]
+  DEFINITION
+  requires_compatibilities = ["FARGATE"] # Stating that we are using ECS Fargate
+  network_mode             = "awsvpc"    # Using awsvpc as our network mode as this is required for Fargate
+  memory                   = 2048        # Specifying the memory our container requires
+  cpu                      = 1024        # Specifying the CPU our container requires
+  execution_role_arn       = aws_iam_role.scraperTaskExecutionRole.arn
+}
+
+
+resource "aws_ecs_task_definition" "tackTracker-scraper-dev" {
+  family                   = "tackTracker-scraper-dev" # Naming our first task
+  container_definitions    = <<DEFINITION
+  [
+    {
+      "name": "tackTracker-scraper",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
+      "essential": true,
+      "command": ["node","new-scrapers/tacktracker_scraper.js"],
+
+      "environmentFiles": [
+               {
+                   "value": "arn:aws:s3:::syrf-dev-env-variables/scraper.env",
+                   "type": "s3"
+               }
+           ],
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "${aws_cloudwatch_log_group.scraper_runner_logs.name}",
+          "awslogs-region": "${var.aws_region}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "workingDirectory": "/home/node/app",
+      "memory": 2048,
+      "cpu": 1024
+    }
+  ]
+  DEFINITION
+  requires_compatibilities = ["FARGATE"] # Stating that we are using ECS Fargate
+  network_mode             = "awsvpc"    # Using awsvpc as our network mode as this is required for Fargate
+  memory                   = 2048        # Specifying the memory our container requires
   cpu                      = 1024        # Specifying the CPU our container requires
   execution_role_arn       = aws_iam_role.scraperTaskExecutionRole.arn
 }
