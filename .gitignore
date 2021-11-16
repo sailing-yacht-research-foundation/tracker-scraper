@@ -104,5 +104,13 @@ dist
 .tern-port
 
 .vscode
-deployment/app/.terraform
-deployment/app/.env
+dev-deployment/app/.terraform
+dev-deployment/app/terraform.tfstate
+dev-deployment/app/terraform.tfstate.backup
+dev-deployment/app/.terraform.lock.hcl
+dev-deployment/app/.env
+prod-deployment/app/.terraform
+prod-deployment/app/.env
+prod-deployment/app/terraform.tfstate
+prod-deployment/app/terraform.tfstate.backup
+prod-deployment/app/.terraform.lock.hcl
