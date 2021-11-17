@@ -24,7 +24,7 @@ resource "aws_ecr_repository" "scraper-runner" {
 
 data "aws_ecr_image" "scraper_runner_image" {
   repository_name = "scraper-runner"
-  image_tag       = "latest"
+  image_tag       = "0.1.2"
 }
 
 resource "aws_ecs_cluster" "scraper-runner" {
