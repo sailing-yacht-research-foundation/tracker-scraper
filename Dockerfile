@@ -21,8 +21,6 @@ COPY tracker-schema/.env.sample ./tracker-schema/.env
 
 USER node
 
-COPY normalization-runner ./normalization-runner
-COPY scrapers ./scrapers
 COPY new-scrapers ./new-scrapers
 COPY utils ./utils
 

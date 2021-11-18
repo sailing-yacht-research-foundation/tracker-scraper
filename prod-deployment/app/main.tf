@@ -587,6 +587,7 @@ resource "aws_iam_role_policy_attachment" "scraperTaskExecutionRole_policy" {
 # cloudwatch event for bluewater
 resource "aws_cloudwatch_event_rule" "bluewater-scraper-prod-daily" {
   name                = "bluewater-scraper-prod-daily"
+  description         = "Runs the bluewater scraper daily at 12:15AM (UTC)"
   schedule_expression = "cron(15 00 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -612,6 +613,7 @@ resource "aws_cloudwatch_event_target" "bluewater-scraper-prod-daily-target" {
 #cloudwatch event for estela
 resource "aws_cloudwatch_event_rule" "estela-scraper-prod-daily" {
   name                = "estela-scraper-prod-daily"
+  description         = "Runs the estela scraper daily at 12:15AM (UTC)"
   schedule_expression = "cron(15 00 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -637,6 +639,7 @@ resource "aws_cloudwatch_event_target" "estela-scraper-prod-daily-target" {
 #cloudwatch event for georacing
 resource "aws_cloudwatch_event_rule" "georacing-scraper-prod-daily" {
   name                = "georacing-scraper-prod-daily"
+  description         = "Runs the georacing scraper daily at 12:15AM (UTC)"
   schedule_expression = "cron(15 00 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -662,7 +665,8 @@ resource "aws_cloudwatch_event_target" "georacing-scraper-prod-daily-target" {
 #cloudwatch event for geovile
 resource "aws_cloudwatch_event_rule" "geovoile-scraper-prod-daily" {
   name                = "geovoile-scraper-prod-daily"
-  schedule_expression = "cron(15 00 * * ? *)"
+  description         = "Runs the geovoile scraper daily at 1:15AM (UTC)"
+  schedule_expression = "cron(15 01 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
 
@@ -687,6 +691,7 @@ resource "aws_cloudwatch_event_target" "geovoile-scraper-prod-daily-target" {
 #cloudwatch event for isail
 resource "aws_cloudwatch_event_rule" "isail-scraper-prod-daily" {
   name                = "isail-scraper-prod-daily"
+  description         = "Runs the isail scraper daily at 12:30AM (UTC)"
   schedule_expression = "cron(30 00 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -712,6 +717,7 @@ resource "aws_cloudwatch_event_target" "isail-scraper-prod-daily-target" {
 #cloudwatch event for kattack
 resource "aws_cloudwatch_event_rule" "kattack-scraper-prod-daily" {
   name                = "kattack-scraper-prod-daily"
+  description         = "Runs the kattack scraper daily at 12:30AM (UTC)"
   schedule_expression = "cron(30 00 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -737,6 +743,7 @@ resource "aws_cloudwatch_event_target" "kattack-scraper-prod-daily-target" {
 #cloudwatch events for kwindoo
 resource "aws_cloudwatch_event_rule" "kwindoo-scraper-prod-daily" {
   name                = "kwindoo-scraper-prod-daily"
+  description         = "Runs the kwindoo scraper daily at 12:30AM (UTC)"
   schedule_expression = "cron(30 00 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -762,6 +769,7 @@ resource "aws_cloudwatch_event_target" "kwindoo-scraper-prod-daily-target" {
 #cloudwatch events for metasail
 resource "aws_cloudwatch_event_rule" "metasail-scraper-prod-daily" {
   name                = "metasail-scraper-prod-daily"
+  description         = "Runs the metasail scraper daily at 12:45AM (UTC)"
   schedule_expression = "cron(45 00 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -787,6 +795,7 @@ resource "aws_cloudwatch_event_target" "metasail-scraper-prod-daily-target" {
 #cloudwatch events for raceqs
 resource "aws_cloudwatch_event_rule" "raceqs-scraper-prod-daily" {
   name                = "raceqs-scraper-prod-daily"
+  description         = "Runs the raceqs scraper daily at 12:45AM (UTC)"
   schedule_expression = "cron(45 00 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -813,6 +822,7 @@ resource "aws_cloudwatch_event_target" "raceqs-scraper-prod-daily-target" {
 #cloudwatch events for tacktracker
 resource "aws_cloudwatch_event_rule" "tacktracker-scraper-prod-daily" {
   name                = "tacktracker-scraper-prod-daily"
+  description         = "Runs the tacktracker scraper daily at 1:15AM (UTC)"
   schedule_expression = "cron(15 01 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -839,6 +849,7 @@ resource "aws_cloudwatch_event_target" "tacktracker-scraper-prod-daily-target" {
 #cloudwatch events for tacktrac
 resource "aws_cloudwatch_event_rule" "tractrac-scraper-prod-daily" {
   name                = "tractrac-scraper-prod-daily"
+  description         = "Runs the tractrac scraper daily at 2:00AM (UTC)"
   schedule_expression = "cron(00 02 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -864,6 +875,7 @@ resource "aws_cloudwatch_event_target" "tractrac-scraper-prod-daily-target" {
 #cloudwatch events for yatchbot
 resource "aws_cloudwatch_event_rule" "yachtbot-scraper-prod-daily" {
   name                = "yachtbot-scraper-prod-daily"
+  description         = "Runs the yachtbot scraper daily at 1:00AM (UTC)"
   schedule_expression = "cron(00 01 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
@@ -889,6 +901,7 @@ resource "aws_cloudwatch_event_target" "yachtbot-scraper-prod-daily-target" {
 #cloudwatch events for yellowbrick
 resource "aws_cloudwatch_event_rule" "yellowbrick-scraper-prod-daily" {
   name                = "yellowbrick-scraper-prod-daily"
+  description         = "Runs the yellowbrick scraper daily at 1:00AM (UTC)"
   schedule_expression = "cron(00 01 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
