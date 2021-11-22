@@ -36,13 +36,6 @@ const SOURCE = 'yachtbot';
         const successRaceIds = existingData
             .map((u) => u.original_id)
             .filter((id) => !!id);
-        const existingRaceIds = {};
-        successRaceIds.forEach((id) => {
-            existingRaceIds[id] = true;
-        });
-
-        // sort by asc order of id
-        successRaceIds.sort((a, b) => a - b);
 
         if (!successRaceIds.length) {
             console.log(
@@ -51,27 +44,13 @@ const SOURCE = 'yachtbot';
             return;
         }
 
-        const lastRace = successRaceIds[successRaceIds.length - 1];
-
-        const MAX_RACE_INDEX = lastRace;
-
         browser = await launchBrowser();
         page = await browser.newPage();
 
-        let idx = 1;
-
-        console.log(`MAX_RACE_INDEX = ${MAX_RACE_INDEX}`);
-        while (idx <= MAX_RACE_INDEX) {
-            console.log(`Scraping race index ${idx} of ${MAX_RACE_INDEX}`);
+        for (const idx of successRaceIds) {
+            console.log(`Scraping race index ${idx}`);
 
             const pageUrl = `https://www.yacht-bot.com/races/${idx}`;
-            const existingUrl = existingData.find((u) => u.url === pageUrl);
-            if (!existingUrl) {
-                idx++;
-                console.log(`Race is not exist skip this ${pageUrl}`);
-                continue;
-            }
-
             try {
                 const token = await openRacePageAndGetAccessToken(
                     page,
@@ -90,15 +69,6 @@ const SOURCE = 'yachtbot';
                 const session = await fetchSession(idx, token);
                 const startTime = session.data.session.start_time;
                 const endTime = session.data.session.end_time;
-
-                if (
-                    startTime > new Date().getTime() ||
-                    endTime > new Date().getTime()
-                ) {
-                    console.log('Future race so skipping.');
-                    idx++;
-                    continue;
-                }
 
                 session.data.session.url = pageUrl;
 
@@ -171,19 +141,6 @@ const SOURCE = 'yachtbot';
                     raceSaveObj
                 );
 
-                // NOW SAVE session.data.session , things, and maybe serials?
-                session.data.session.name = decodeURI(
-                    session.data.session.name
-                );
-
-                raceSaveObj.name = session.data.session.name;
-                raceSaveObj.start_time = startTime;
-                raceSaveObj.end_time = endTime;
-                raceSaveObj.url = pageUrl;
-                raceSaveObj.manual_wind = session.data.session.manual_wind;
-                raceSaveObj.course_direction =
-                    session.data.session.course_direction;
-
                 const races = [raceSaveObj];
 
                 const objectsToSave = {
@@ -199,7 +156,6 @@ const SOURCE = 'yachtbot';
                 console.log(err);
                 await registerFailedUrl(SOURCE, pageUrl, err.toString());
             }
-            idx++;
         }
     } catch (err) {
         console.log('yachtbot scraper error', err);
@@ -281,9 +237,6 @@ const parsePositionsData = (
         const gps = data['1'];
 
         const device = serials[s];
-
-        const gpsQuality = data['2'];
-
         const currentPositions = [];
 
         if (gps !== undefined && gps !== null) {
@@ -295,13 +248,7 @@ const parsePositionsData = (
                 const t = gpsTimes[gpsTimeIndex];
                 const lon = lons[gpsTimeIndex];
                 const lat = lats[gpsTimeIndex];
-                let quality = null;
-                if (
-                    gpsQuality !== undefined &&
-                    gpsQuality.length >= gpsTimeIndex
-                ) {
-                    quality = gpsQuality;
-                }
+
                 currentPositions.push({
                     id: uuidv4(),
                     race: raceSaveObj.id,
@@ -309,7 +256,6 @@ const parsePositionsData = (
                     time: t,
                     lon: lon,
                     lat: lat,
-                    gps_quality: quality,
                     yacht_original_id: null,
                     yacht: null,
                     buoy: null,
@@ -385,7 +331,7 @@ const parsePositionsData = (
     });
 
     const marks = [];
-    // static bouy
+    // static buoy
     for (const key of Object.keys(serials)) {
         if (serials[key].type !== 'buoy' || !serials[key].positions) {
             continue;
