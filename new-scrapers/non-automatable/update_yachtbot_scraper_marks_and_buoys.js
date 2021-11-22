@@ -40,13 +40,20 @@ const SOURCE = 'yachtbot';
         successRaceIds.forEach((id) => {
             existingRaceIds[id] = true;
         });
-        const prevMaxRaceId = successRaceIds.reduce(
-            (a, b) => Math.max(a, b),
-            0
-        );
-        const RACE_SCRAPE_RANGE = 2000; // Added and subtracted to the last race index to get a range of id to be scraped
-        const MAX_RACE_INDEX =
-            prevMaxRaceId + RACE_SCRAPE_RANGE || RACE_SCRAPE_RANGE;
+
+        // sort by asc order of id
+        successRaceIds.sort((a, b) => a - b);
+
+        if (!successRaceIds.length) {
+            console.log(
+                'There is no success rate in the system, bot is stopped'
+            );
+            return;
+        }
+
+        const lastRace = successRaceIds[successRaceIds.length - 1];
+
+        const MAX_RACE_INDEX = lastRace;
 
         browser = await launchBrowser();
         page = await browser.newPage();
@@ -58,6 +65,12 @@ const SOURCE = 'yachtbot';
             console.log(`Scraping race index ${idx} of ${MAX_RACE_INDEX}`);
 
             const pageUrl = `https://www.yacht-bot.com/races/${idx}`;
+            const existingUrl = existingData.find((u) => u.url === pageUrl);
+            if (!existingUrl) {
+                idx++;
+                console.log(`Race is not exist skip this ${pageUrl}`);
+                continue;
+            }
 
             try {
                 const token = await openRacePageAndGetAccessToken(
