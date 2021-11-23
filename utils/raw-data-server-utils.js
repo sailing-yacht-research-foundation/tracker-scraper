@@ -31,7 +31,7 @@ const generateSecret = function (plainText) {
     return crypto.createHash('md5').update(plainText).digest('hex');
 };
 
-const createAndSendTempJsonFile = async (data) => {
+const createAndSendTempJsonFile = async (data, url = 'api/v1/upload-file') => {
     console.log('Creating temp file');
     const dirPath = temp.mkdirSync('scraper_raw_data');
     const filePath = path.join(
@@ -45,7 +45,7 @@ const createAndSendTempJsonFile = async (data) => {
     const zipReadStream = fs.createReadStream(filePath);
     formData.append('raw_data', zipReadStream);
     const secret = generateRawDataServerSecret();
-    await axios.post(`${RAW_DATA_SERVER_API}/api/v1/upload-file`, formData, {
+    await axios.post(`${RAW_DATA_SERVER_API}/${url}`, formData, {
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
         headers: {
