@@ -17,8 +17,8 @@ const {
 const {
     RAW_DATA_SERVER_API,
     getExistingData,
-    generateRawDataServerSecret,
     registerFailedUrl,
+    createAndSendTempJsonFile,
 } = require('../../utils/raw-data-server-utils');
 
 const SOURCE = 'yachtbot';
@@ -149,8 +149,11 @@ const SOURCE = 'yachtbot';
                     YachtBotMarks: marks,
                 };
 
-                console.log('Sending Json Data');
-                await sendUpdateYachtBotData(objectsToSave);
+                console.log('createAndSendTempJsonFile to /api/v1/yacht-bot');
+                await createAndSendTempJsonFile(
+                    objectsToSave,
+                    'api/v1/yacht-bot'
+                );
                 console.log('Finished sending Json Data');
             } catch (err) {
                 console.log(err);
@@ -365,20 +368,4 @@ const parsePositionsData = (
         });
     }
     return { boats, buoys, marks, positions };
-};
-
-const sendUpdateYachtBotData = async (data) => {
-    const secret = generateRawDataServerSecret();
-    const result = await axios.post(
-        `${RAW_DATA_SERVER_API}/api/v1/yacht-bot`,
-        data,
-        {
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
-            headers: {
-                authorization: secret,
-            },
-        }
-    );
-    return result.data?.scraped;
 };
