@@ -1,0 +1,50 @@
+name: Tracker Scraper pipeline for production
+on:
+    push:
+        branches:
+            - main
+
+jobs:
+    job:
+        name: Build image and Push to ECR for prod
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v2
+              with:
+                  token: ${{ secrets.CI_TOKEN }}
+                  submodules: true
+
+            - name: Init submodule to repo
+              run: git submodule update --init
+
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v1
+              with:
+                aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                aws-region: us-east-2
+
+            - name: Login to Amazon ECR
+              id: login-ecr
+              uses: aws-actions/amazon-ecr-login@v1
+
+            - name: Extract version from package.json
+              uses: sergeysova/jq-action@v2
+              id: version
+              with:
+                cmd: 'jq .version package.json -r'
+
+            - name: Build, tag, and push the image to Amazon ECR
+              id: build-image
+              env:
+                ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+                ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
+                IMAGE_TAG: ${{ steps.version.outputs.value }}
+              run: |
+                # Build a docker container and push it to ECR 
+                docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+                echo "Pushing image to ECR..."
+                docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+                echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"

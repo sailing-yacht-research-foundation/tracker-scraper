@@ -34,7 +34,7 @@ const {
     }
 
     let counter = 1;
-    const maximum = 500;
+    const maximum = 600;
     while (counter < maximum) {
         const url = `http://app.i-sail.com/eventDetails/${counter}`;
         if (existingUrls.includes(url)) {
@@ -192,7 +192,7 @@ const {
                     class: existingClasses[p.classId],
                     original_class_id: p.classId,
                     class_name: p.className,
-                    sail_no: p.sailNumber,
+                    sail_no: p.sailnumber,
                     event: event.id,
                     original_event_id: p.eventId,
                     name: p.name,
