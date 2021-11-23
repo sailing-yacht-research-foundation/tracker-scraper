@@ -373,6 +373,8 @@ const sendUpdateYachtBotData = async (data) => {
         `${RAW_DATA_SERVER_API}/api/v1/yacht-bot`,
         data,
         {
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
             headers: {
                 authorization: secret,
             },
