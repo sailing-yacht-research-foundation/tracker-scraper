@@ -65,6 +65,17 @@ async function scrapePage(url) {
         await page.waitForFunction(
             'tracker && tracker._boats && tracker._boats.length && tracker._reports && tracker._reports.length'
         );
+        console.log('getting boats information');
+        const { boats } = await page.evaluate(() => {
+            const boats = tracker._boats.map((boat) => {
+                return {
+                    original_id: boat.id,
+                    arrival: boat.arrival,
+                };
+            });
+            return { boats };
+        });
+
         console.log('Getting marks information');
         const marks = await page.evaluate(() => {
             const allMarks = [];
@@ -94,6 +105,7 @@ async function scrapePage(url) {
         console.log(`Finished scraping ${url}`);
         return {
             marks,
+            boats,
         };
     } catch (err) {
         console.log(err);

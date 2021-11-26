@@ -198,57 +198,90 @@ async function scrapePage(url) {
         race.scrapedUrl = url;
 
         console.log('Getting boat information');
-        const boats = await page.evaluate(() => {
-            return tracker._boats.map((boat) => {
+        const { boats, sailors, positions } = await page.evaluate(() => {
+            const sailors = [];
+            const positions = [];
+            const boats = tracker._boats.map((boat) => {
+                const currentSailors = (boat.sailors || []).map((sailor) => {
+                    return {
+                        first_name: sailor.fname,
+                        last_name: sailor.lname,
+                        nationality: sailor.nationality,
+                        short_name: sailor.shortName,
+                        boat_original_id: boat.id,
+                    };
+                });
+                if (currentSailors.length) {
+                    sailors.push(...currentSailors);
+                }
+                const boatLocations = boat.track?.locations?.map((position) => {
+                    const timecode = position.timecode;
+                    const lat = position.lat;
+                    const lon = position.lng;
+                    const heading = position.heading;
+                    const command = position.command;
+                    const crossingAntimeridian = position.crossingAntimeridian;
+                    const swapXSign = position.swapXSign;
+                    const dLat = position._dLat;
+                    const dLng = position._dLng;
+                    const dt_a = position.dt_a;
+                    const dt_b = position.dt_b;
+
+                    return {
+                        timecode,
+                        lat,
+                        lon,
+                        heading,
+                        command,
+                        crossing_antimeridian: crossingAntimeridian,
+                        swapXSign,
+                        d_lat: dLat,
+                        d_lon: dLng,
+                        dt_a,
+                        dt_b,
+                        boat_original_id: boat.id,
+                    };
+                });
+
+                if (boatLocations) {
+                    positions.push(...boatLocations);
+                }
                 return {
                     original_id: boat.id,
                     name: boat.name,
                     short_name: boat.shortName,
-                    sailors: (boat.sailors || []).map((sailor) => {
-                        return {
-                            first_name: sailor.fname,
-                            last_name: sailor.lname,
-                            nationality: sailor.nationality,
-                            short_name: sailor.shortName,
-                        };
-                    }),
                     arrival: boat.arrival,
                     hullColor: boat.hullColor,
                     hullColors: boat.hullColors,
                     hulls: boat.hulls,
                     earthScale: boat._earthScale,
-                    track: {
-                        locations: boat.track.locations.map((position) => {
-                            const timecode = position.timecode;
-                            const lat = position.lat;
-                            const lon = position.lng;
-                            const heading = position.heading;
-                            const command = position.command;
-                            const crossingAntimeridian =
-                                position.crossingAntimeridian;
-                            const swapXSign = position.swapXSign;
-                            const dLat = position._dLat;
-                            const dLng = position._dLng;
-                            const dt_a = position.dt_a;
-                            const dt_b = position.dt_b;
-
-                            return {
-                                timecode,
-                                lat,
-                                lon,
-                                heading,
-                                command,
-                                crossing_antimeridian: crossingAntimeridian,
-                                swapXSign,
-                                d_lat: dLat,
-                                d_lon: dLng,
-                                dt_a,
-                                dt_b,
-                            };
-                        }),
-                    },
                 };
             });
+            return { boats, sailors, positions };
+        });
+
+        const boatOriginalIdToIdMap = {};
+        boats.forEach((currentBoat) => {
+            currentBoat.id = uuidv4();
+            currentBoat.race_id = race.id;
+            currentBoat.race_original_id = race.original_id;
+            boatOriginalIdToIdMap[currentBoat.original_id] = currentBoat.id;
+        });
+
+        sailors.forEach((currentSailor) => {
+            currentSailor.id = uuidv4();
+            currentSailor.race_id = race.id;
+            currentSailor.race_original_id = race.original_id;
+            currentSailor.boat_id =
+                boatOriginalIdToIdMap[currentSailor.boat_original_id];
+        });
+
+        positions.forEach((currentPosition) => {
+            currentPosition.id = uuidv4();
+            currentPosition.race_id = race.id;
+            currentPosition.race_original_id = race.original_id;
+            currentPosition.boat_id =
+                boatOriginalIdToIdMap[currentPosition.boat_original_id];
         });
 
         console.log('Getting reports information');
@@ -326,6 +359,8 @@ async function scrapePage(url) {
             source: SOURCE,
             redirectUrl,
             marks,
+            sailors,
+            positions,
         };
     } catch (err) {
         console.log(err);
