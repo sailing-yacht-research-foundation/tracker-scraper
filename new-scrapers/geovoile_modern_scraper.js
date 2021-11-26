@@ -16,6 +16,7 @@ async function getPageResponse(url) {
     const pageResponse = await axios.get(url);
     return pageResponse.data.toString();
 }
+
 /**
  * Get archive urls for scrapper
  * Important note: the curr
@@ -173,6 +174,29 @@ async function scrapePage(url) {
             'tracker && tracker._boats && tracker._boats.length && tracker._reports && tracker._reports.length'
         );
 
+        console.log('Getting race information');
+        const race = await page.evaluate(() => {
+            return {
+                legNum: tracker.legNum || 1,
+                numLegs: tracker.nbLegs || 1,
+                statusRacing: tracker.statusRacing,
+                extras: tracker.extras || null,
+                runsById: tracker._runsById || null,
+                startTime: tracker.timeline._timeStart,
+                endTime: tracker.timeline._timeEnd,
+                raceState: tracker._raceState,
+                eventState: tracker._eventState,
+                prerace: tracker._prerace,
+                name: tracker.name || document.title,
+                isGame: tracker.isGame,
+                url: document.URL,
+                scrapedUrl: '',
+            };
+        });
+        race.id = uuidv4();
+        race.original_id = uuidv4();
+        race.scrapedUrl = url;
+
         console.log('Getting boat information');
         const boats = await page.evaluate(() => {
             return tracker._boats.map((boat) => {
@@ -243,31 +267,6 @@ async function scrapePage(url) {
             });
         });
 
-        console.log('Getting race information');
-        const raceId = uuidv4();
-        const race = await page.evaluate(() => {
-            return {
-                original_id: null,
-                legNum: tracker.legNum || 1,
-                numLegs: tracker.nbLegs || 1,
-                statusRacing: tracker.statusRacing,
-                extras: tracker.extras || null,
-                runsById: tracker._runsById || null,
-                startTime: tracker.timeline._timeStart,
-                endTime: tracker.timeline._timeEnd,
-                raceState: tracker._raceState,
-                eventState: tracker._eventState,
-                prerace: tracker._prerace,
-                name: tracker.name || document.title,
-                isGame: tracker.isGame,
-                url: document.URL,
-                scrapedUrl: '',
-            };
-        });
-
-        race.original_id = raceId;
-        race.scrapedUrl = url;
-
         const sig = await page.evaluate(() => {
             const mapBounds = sig.mapBounds;
             const mapArea = sig._mapArea;
@@ -311,6 +310,11 @@ async function scrapePage(url) {
 
             return allMarks;
         });
+
+        for (const mark of marks) {
+            mark.race_original_id = race.original_id;
+            mark.race_id = race.id;
+        }
 
         console.log(
             `Finished scraping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}, legNum = ${race.legNum}, numberOfLegs = ${race.numLegs}`
