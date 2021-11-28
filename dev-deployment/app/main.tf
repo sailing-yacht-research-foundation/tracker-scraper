@@ -22,10 +22,10 @@ resource "aws_ecr_repository" "scraper-runner" {
   name = "scraper-runner"
 }
 
-#data "aws_ecr_image" "scraper_runner_image" {
-#  repository_name = "scraper-runner"
-#  image_tag       = "latest"
-#}
+data "aws_ecr_image" "scraper_runner_image" {
+  repository_name = "scraper-runner"
+  image_tag       = "latest"
+}
 
 resource "aws_ecs_cluster" "scraper-runner" {
   name = "scraper-runner" # Naming the cluster
@@ -42,7 +42,7 @@ resource "aws_ecs_task_definition" "bluewater-scraper-dev" {
   [
     {
       "name": "bluewater-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node", "new-scrapers/bluewater_scraper.js"],
 
