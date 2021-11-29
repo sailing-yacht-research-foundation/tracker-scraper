@@ -81,7 +81,7 @@ resource "aws_ecs_task_definition" "estela-scraper-dev" {
   [
     {
       "name": "estela-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node", "new-scrapers/estela_scraper.js"],
 
@@ -120,7 +120,7 @@ resource "aws_ecs_task_definition" "georacing-scraper-dev" {
   [
     {
       "name": "georacing-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","--max_old_space_size=4096","new-scrapers/georacing_scraper.js"],
 
@@ -159,7 +159,7 @@ resource "aws_ecs_task_definition" "geovoile-scraper-dev" {
   [
     {
       "name": "geovoile-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","new-scrapers/geovoile_modern_scraper.js"],
 
@@ -199,7 +199,7 @@ resource "aws_ecs_task_definition" "isail-scraper-dev" {
   [
     {
       "name": "isail-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","new-scrapers/isail_scraper.js"],
 
@@ -238,7 +238,7 @@ resource "aws_ecs_task_definition" "kattack-scraper-dev" {
   [
     {
       "name": "kattack-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","new-scrapers/kattack_scraper.js"],
 
@@ -277,7 +277,7 @@ resource "aws_ecs_task_definition" "kwindoo-scraper-dev" {
   [
     {
       "name": "kwindoo-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","new-scrapers/kwindoo_scraper.js"],
 
@@ -316,7 +316,7 @@ resource "aws_ecs_task_definition" "metasail-scraper-dev" {
   [
     {
       "name": "metasail-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","--max_old_space_size=8048","new-scrapers/metasail_scraper.js"],
 
@@ -355,7 +355,7 @@ resource "aws_ecs_task_definition" "raceqs-scraper-dev" {
   [
     {
       "name": "raceqs-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","--max_old_space_size=8048","new-scrapers/raceqs_scraper.js"],
 
@@ -394,7 +394,7 @@ resource "aws_ecs_task_definition" "tacktracker-scraper-dev" {
   [
     {
       "name": "tacktracker-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","new-scrapers/tacktracker_scraper.js"],
 
@@ -433,7 +433,7 @@ resource "aws_ecs_task_definition" "tractrac-scraper-dev" {
   [
     {
       "name": "tractrac-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","--max_old_space_size=12288","new-scrapers/tractrac_scraper.js"],
 
@@ -471,7 +471,7 @@ resource "aws_ecs_task_definition" "yachtbot-scraper-dev" {
   [
     {
       "name": "yachtbot-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","new-scrapers/yachtbot_scraper.js"],
 
@@ -511,7 +511,7 @@ resource "aws_ecs_task_definition" "yellowbrick-scraper-dev" {
   [
     {
       "name": "yellowbrick-scraper",
-      "image": "${aws_ecr_repository.scraper-runner.repository_url}",
+      "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
       "command": ["node","--max_old_space_size=8048","new-scrapers/yellowbrick_scraper.js"],
 
