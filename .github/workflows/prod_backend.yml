@@ -52,10 +52,10 @@ jobs:
             - name: Download task definition for bluewater-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition bluewater-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-bluewater
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -72,10 +72,10 @@ jobs:
             - name: Download task definition for estela-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition estela-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-estela
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -92,10 +92,10 @@ jobs:
             - name: Download task definition for georacing-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition georacing-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-georacing
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -112,10 +112,10 @@ jobs:
             - name: Download task definition for geovoile-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition geovoile-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-geovoile
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -132,10 +132,10 @@ jobs:
             - name: Download task definition for isail-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition isail-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-isail
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -152,10 +152,10 @@ jobs:
             - name: Download task definition for kattack-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition kattack-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-kattack
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -172,10 +172,10 @@ jobs:
             - name: Download task definition for kwindoo-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition kwindoo-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-kwindoo
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -192,10 +192,10 @@ jobs:
             - name: Download task definition for metasail-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition metasail-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-metasail
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -212,10 +212,10 @@ jobs:
             - name: Download task definition for raceqs-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition raceqs-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-raceqs
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -229,13 +229,13 @@ jobs:
                 rule-prefix: raceqs-scraper-prod-daily
                 cluster: ${{ secrets.ECS_CLUSTER }}
 
-             - name: Download task definition for tacktracker-scraper-prod
+            - name: Download task definition for tacktracker-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition tacktracker-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-tacktracker
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -252,10 +252,10 @@ jobs:
             - name: Download task definition for tractrac-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition tractrac-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-tractrac
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -272,10 +272,10 @@ jobs:
             - name: Download task definition for yachtbot-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition yachtbot-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-yachtbot
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -292,10 +292,10 @@ jobs:
             - name: Download task definition for yellowbrick-scraper-prod
               run: |
                 aws ecs describe-task-definition --task-definition yellowbrick-scraper-prod \
-               --query taskDefinition > task-definition.json
+                --query taskDefinition > task-definition.json
 
             - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def
+              id: task-def-yellowbrick
               uses: aws-actions/amazon-ecs-render-task-definition@v1
               with:
                 task-definition: task-definition.json
@@ -308,9 +308,3 @@ jobs:
                 task-definition: task-definition.json
                 rule-prefix: yellowbrick-scraper-prod-daily
                 cluster: ${{ secrets.ECS_CLUSTER }}
-
-            
-
-            
-
-            
