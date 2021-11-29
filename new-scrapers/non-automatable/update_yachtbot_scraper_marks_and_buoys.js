@@ -134,7 +134,7 @@ const SOURCE = 'yachtbot';
                     serialNumbers
                 );
 
-                const { buoys, marks } = parsePositionsData(
+                const { boats, buoys, marks } = parsePositionsData(
                     posResponseData,
                     serials,
                     oidsToSerial,
@@ -147,6 +147,7 @@ const SOURCE = 'yachtbot';
                     YachtBotRace: races,
                     YachtBotBuoy: buoys,
                     YachtBotMarks: marks,
+                    YachtBotYacht: boats,
                 };
 
                 console.log('createAndSendTempJsonFile to /api/v1/yacht-bot');
@@ -330,6 +331,19 @@ const parsePositionsData = (
             });
 
             buoys.push(bo);
+        } else if (device && device.type === 'yacht') {
+            const id = device.uuid;
+            const originalId = s;
+            const raceOriginalId = raceSaveObj.original_id;
+
+            const b = {
+                id,
+                original_id: originalId,
+                race_original_id: raceOriginalId,
+                original_object_id: serials[originalId].object_id,
+            };
+
+            boats.push(b);
         }
     });
 

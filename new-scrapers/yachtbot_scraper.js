@@ -478,6 +478,7 @@ const parsePositionsData = (
                 crew,
                 country,
                 metas,
+                original_object_id: serials[originalId].object_id,
             };
             currentPositions.forEach((p) => {
                 p.yacht_or_buoy = 'yacht';

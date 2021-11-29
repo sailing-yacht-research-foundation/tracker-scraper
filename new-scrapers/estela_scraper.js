@@ -75,11 +75,7 @@ const PAGENUM = '{$PAGENUM$}';
             });
 
             if (raceUrls.length === 0) {
-                const errMsg = 'No races associated with this event. Skipping.';
-                console.log(errMsg);
-                await registerFailedUrl(SOURCE, pageUrl, errMsg);
-                counter++;
-                continue;
+                console.log(`No races associated with this page ${pageUrl}.`);
             } else {
                 allRaceUrls.push(...raceUrls);
             }
