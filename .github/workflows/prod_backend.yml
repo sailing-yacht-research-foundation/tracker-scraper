@@ -48,3 +48,269 @@ jobs:
                 echo "Pushing image to ECR..."
                 docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
                 echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+            - name: Download task definition for bluewater-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition bluewater-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: bluewater-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: bluewater-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            - name: Download task definition for estela-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition estela-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: estela-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: estela-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+            
+            - name: Download task definition for georacing-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition georacing-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: georacing-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: georacing-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            - name: Download task definition for geovoile-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition geovoile-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: geovoile-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: geovoile-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            - name: Download task definition for isail-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition isail-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: isail-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: isail-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            - name: Download task definition for kattack-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition kattack-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: kattack-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: kattack-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+            
+            - name: Download task definition for kwindoo-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition kwindoo-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: kwindoo-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: kwindoo-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            - name: Download task definition for metasail-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition metasail-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: metasail-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: metasail-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            - name: Download task definition for raceqs-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition raceqs-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: raceqs-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: raceqs-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+             - name: Download task definition for tacktracker-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition tacktracker-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: tacktracker-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: tacktracker-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            - name: Download task definition for tractrac-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition tractrac-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: tractrac-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: tractrac-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            - name: Download task definition for yachtbot-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition yachtbot-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: yachtbot-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: yachtbot-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            - name: Download task definition for yellowbrick-scraper-prod
+              run: |
+                aws ecs describe-task-definition --task-definition yellowbrick-scraper-prod \
+               --query taskDefinition > task-definition.json
+
+            - name: Fill in the new image ID in the Amazon ECS task definition
+              id: task-def
+              uses: aws-actions/amazon-ecs-render-task-definition@v1
+              with:
+                task-definition: task-definition.json
+                container-name: yellowbrick-scraper
+                image: ${{ steps.build-image.outputs.image }}
+
+            - name: Deploy Amazon ECS Scheduled Tasks
+              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
+              with:
+                task-definition: task-definition.json
+                rule-prefix: yellowbrick-scraper-prod-daily
+                cluster: ${{ secrets.ECS_CLUSTER }}
+
+            
+
+            
+
+            
