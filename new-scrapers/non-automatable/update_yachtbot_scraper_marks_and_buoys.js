@@ -172,7 +172,9 @@ const SOURCE = 'yachtbot';
 
 const openRacePageAndGetAccessToken = async (page, pageUrl) => {
     console.log('about to go to page ' + pageUrl);
-    await page.goto(pageUrl);
+    // add timeout for 30 seconds, some page like
+    // https://www.yacht-bot.com/races/1148 is hanged, event we use the real browser.
+    await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     console.log('went to page ' + pageUrl);
     const errorShown = await page
         .waitForFunction(
