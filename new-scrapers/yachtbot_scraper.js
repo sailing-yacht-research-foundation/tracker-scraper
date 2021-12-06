@@ -234,7 +234,7 @@ const SOURCE = 'yachtbot';
 
 const openRacePageAndGetAccessToken = async (page, pageUrl) => {
     console.log('about to go to page ' + pageUrl);
-    await page.goto(pageUrl);
+    await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
     console.log('went to page ' + pageUrl);
     const errorShown = await page
         .waitForFunction(
