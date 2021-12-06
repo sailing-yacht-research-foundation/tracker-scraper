@@ -81,6 +81,13 @@ const SOURCE = 'yachtbot';
                     };
 
                     const session = await fetchSession(idx, token);
+                    if (!session) {
+                        console.log(
+                            'Session not found. Should not continue so going to next race.'
+                        );
+                        idx++;
+                        continue;
+                    }
                     const startTime = session.data.session.start_time;
                     const endTime = session.data.session.end_time;
 
@@ -233,33 +240,37 @@ const SOURCE = 'yachtbot';
 })();
 
 const openRacePageAndGetAccessToken = async (page, pageUrl) => {
-    console.log('about to go to page ' + pageUrl);
-    await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-    console.log('went to page ' + pageUrl);
-    const errorShown = await page
-        .waitForFunction(
-            "document.querySelector('#overlay > div.error-state').style.display === 'block'",
-            {
-                timeout: 2000,
-            }
-        )
-        .then(() => true)
-        .catch(() => false);
-    if (errorShown) {
-        return null;
-    }
-
-    const token = await page.evaluate(() => window.oauth_access_token);
-    return token;
+    try {
+        console.log('about to go to page ' + pageUrl);
+        await page.goto(pageUrl);
+        console.log('went to page ' + pageUrl);
+        await page.waitForFunction('window.oauth_access_token', {
+            timeout: 2000,
+        });
+        const token = await page.evaluate(() => window.oauth_access_token);
+        return token;
+    } catch (e) {}
+    return null;
 };
 
 const fetchSession = async (idx, token) => {
-    return axios.get(
-        'https://www.igtimi.com/api/v1/sessions/' +
-            idx +
-            '?access_token=' +
-            token
-    );
+    const url = `https://www.igtimi.com/api/v1/sessions/${idx}?access_token=${token}`;
+    return new Promise((resolve, reject) => {
+        axios
+            .get(url)
+            .then((response) => {
+                resolve(response);
+            })
+            .catch((error) => {
+                if (error.response) {
+                    console.log(
+                        `the url ${url} has error with status = ${error.response.status}, statusText = ${error.response.statusText}`
+                    );
+                    console.log(error.response.data);
+                }
+                console.log(resolve(null));
+            });
+    });
 };
 
 const fetchLogs = async (idx, token) => {
