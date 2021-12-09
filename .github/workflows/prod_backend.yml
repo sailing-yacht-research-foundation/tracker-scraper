@@ -5,7 +5,7 @@ on:
             - main
 
 jobs:
-    job:
+    job1:
         name: Build image and Push to ECR for prod
         runs-on: ubuntu-latest
 
@@ -22,289 +22,62 @@ jobs:
             - name: Configure AWS credentials
               uses: aws-actions/configure-aws-credentials@v1
               with:
-                aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                aws-region: us-east-2
+                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                  aws-region: us-east-2
 
             - name: Login to Amazon ECR
               id: login-ecr
               uses: aws-actions/amazon-ecr-login@v1
 
-            - name: Extract version from package.json
-              uses: sergeysova/jq-action@v2
-              id: version
-              with:
-                cmd: 'jq .version package.json -r'
-
             - name: Build, tag, and push the image to Amazon ECR
               id: build-image
               env:
-                ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-                ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
-                IMAGE_TAG: ${{ steps.version.outputs.value }}
+                  ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+                  ECR_REPOSITORY: ${{ secrets.REPO_NAME }}
+                  IMAGE_TAG: latest
               run: |
-                # Build a docker container and push it to ECR 
-                docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-                echo "Pushing image to ECR..."
-                docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-                echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+                  # Build a docker container and push it to ECR
+                  docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+                  echo "Pushing image to ECR..."
+                  docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+                  echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+    job2:
+        needs: job1
+        name: Deploy to ECS
+        runs-on: ubuntu-latest
 
-            - name: Download task definition for bluewater-scraper-prod
+        steps:
+            - uses: actions/checkout@v1
+
+            - name: Install Terraform
+              env:
+                  TERRAFORM_VERSION: '0.12.15'
               run: |
-                aws ecs describe-task-definition --task-definition bluewater-scraper-prod \
-                --query taskDefinition > task-definition.json
+                  tf_version=$TERRAFORM_VERSION
+                  wget https://releases.hashicorp.com/terraform/"$tf_version"/terraform_"$tf_version"_linux_amd64.zip
+                  unzip terraform_"$tf_version"_linux_amd64.zip
+                  sudo mv terraform /usr/local/bin/
+            - name: Verify Terraform version
+              run: terraform --version
 
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-bluewater
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: bluewater-scraper
-                image: ${{ steps.build-image.outputs.image }}
+            - name: Terraform init
+              env:
+                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              run: docker-compose -f prod-deployment/app/docker-compose.yml run --rm terraform init -input=false
 
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: bluewater-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
+            - name: Terraform validation
+              run: docker-compose -f prod-deployment/app/docker-compose.yml run --rm terraform validate
 
-            - name: Download task definition for estela-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition estela-scraper-prod \
-                --query taskDefinition > task-definition.json
+            - name: Terraform plan
+              env:
+                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              run: docker-compose -f prod-deployment/app/docker-compose.yml run --rm terraform plan
 
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-estela
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: estela-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: estela-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-            
-            - name: Download task definition for georacing-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition georacing-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-georacing
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: georacing-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: georacing-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-
-            - name: Download task definition for geovoile-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition geovoile-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-geovoile
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: geovoile-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: geovoile-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-
-            - name: Download task definition for isail-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition isail-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-isail
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: isail-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: isail-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-
-            - name: Download task definition for kattack-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition kattack-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-kattack
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: kattack-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: kattack-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-            
-            - name: Download task definition for kwindoo-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition kwindoo-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-kwindoo
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: kwindoo-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: kwindoo-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-
-            - name: Download task definition for metasail-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition metasail-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-metasail
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: metasail-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: metasail-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-
-            - name: Download task definition for raceqs-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition raceqs-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-raceqs
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: raceqs-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: raceqs-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-
-            - name: Download task definition for tacktracker-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition tacktracker-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-tacktracker
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: tacktracker-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: tacktracker-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-
-            - name: Download task definition for tractrac-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition tractrac-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-tractrac
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: tractrac-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: tractrac-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-
-            - name: Download task definition for yachtbot-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition yachtbot-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-yachtbot
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: yachtbot-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: yachtbot-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
-
-            - name: Download task definition for yellowbrick-scraper-prod
-              run: |
-                aws ecs describe-task-definition --task-definition yellowbrick-scraper-prod \
-                --query taskDefinition > task-definition.json
-
-            - name: Fill in the new image ID in the Amazon ECS task definition
-              id: task-def-yellowbrick
-              uses: aws-actions/amazon-ecs-render-task-definition@v1
-              with:
-                task-definition: task-definition.json
-                container-name: yellowbrick-scraper
-                image: ${{ steps.build-image.outputs.image }}
-
-            - name: Deploy Amazon ECS Scheduled Tasks
-              uses: airfordable/ecs-deploy-task-definition-to-scheduled-task@v2.0.0
-              with:
-                task-definition: task-definition.json
-                rule-prefix: yellowbrick-scraper-prod-daily
-                cluster: ${{ secrets.ECS_CLUSTER }}
+            - name: Terraform apply
+              env:
+                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+              run: docker-compose -f prod-deployment/app/docker-compose.yml run --rm terraform apply -auto-approve -input=false
