@@ -112,6 +112,9 @@ const SOURCE = 'kwindoo';
                         newRace,
                         newOrExistingRegatta
                     );
+                    if (!boats.length) {
+                        throw new Error('No boats in race');
+                    }
 
                     const markers = await fetchRaceMarkers(
                         newRace,
@@ -146,6 +149,9 @@ const SOURCE = 'kwindoo';
                         boats,
                         newOrExistingRegatta
                     );
+                    if (!positions.length) {
+                        throw new Error('No positions in race');
+                    }
                     objectsToSave.KwindooRace.push(newRace);
                     appendArray(objectsToSave.KwindooBoat, boats);
                     appendArray(objectsToSave.KwindooComment, comments);
@@ -414,9 +420,9 @@ async function fetchRaceMIAs(newRace, newOrExistingRegatta) {
         race_original_id: newRace.original_id,
         name: mia.name,
         northeast_lat: mia.northeast_lat,
-        northeast_lon: mia.northeast_lon,
-        southwest_lat: mia.soutwest_lat,
-        southwest_lon: mia.southwest_lon,
+        northeast_lon: mia.northeast_lng,
+        southwest_lat: mia.southwest_lat,
+        southwest_lon: mia.southwest_lng,
         rotation: mia.rotation,
     }));
 }
