@@ -75,26 +75,6 @@ const getExistingUrls = async (tracker) => {
     return result?.map((i) => i.url) || [];
 };
 
-const checkExistingUrl = async (tracker, url) => {
-    const secret = generateRawDataServerSecret();
-    const result = await axios.post(
-        `${RAW_DATA_SERVER_API}/api/v1/check-url`,
-        {
-            tracker,
-            url,
-        },
-        {
-            headers: {
-                authorization: secret,
-            },
-        }
-    );
-    if (result.data?.error) {
-        console.log(`Existing failed url ${url}. Check database for error`);
-    }
-    return result.data?.scraped;
-};
-
 const registerFailedUrl = async (tracker, url, error) => {
     const secret = generateRawDataServerSecret();
     try {
@@ -124,6 +104,5 @@ module.exports = {
     createAndSendTempJsonFile,
     getExistingData,
     getExistingUrls,
-    checkExistingUrl,
     registerFailedUrl,
 };
