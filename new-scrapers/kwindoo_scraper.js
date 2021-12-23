@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
-    getExistingUrls,
+    getExistingData,
     registerFailedUrl,
 } = require('../utils/raw-data-server-utils');
 const { appendArray } = require('../utils/array');
@@ -24,9 +24,9 @@ const SOURCE = 'kwindoo';
         process.exit();
     }
 
-    let existingUrls;
+    let existingData;
     try {
-        existingUrls = await getExistingUrls(SOURCE);
+        existingData = await getExistingData(SOURCE);
     } catch (err) {
         console.log('Error getting existing urls', err);
         process.exit();
@@ -39,10 +39,6 @@ const SOURCE = 'kwindoo';
             console.log(`Getting regatta details with url ${regattaUrl}`);
             if (new Date(currentRegatta.last_end_time).getTime() > now) {
                 console.log('Live or future race. Skipping.');
-                continue;
-            }
-            if (existingUrls.includes(regattaUrl)) {
-                console.log('Regatta exist in database. Skipping');
                 continue;
             }
 
@@ -84,7 +80,10 @@ const SOURCE = 'kwindoo';
             for (const raceIndex in regattaDetails.races) {
                 const currentRace = regattaDetails.races[raceIndex];
                 const raceUrl = `https://www.kwindoo.com/tracking/${newOrExistingRegatta.original_id}-${newOrExistingRegatta.name_slug}?race_id=${currentRace.id}`;
-                if (existingUrls.includes(raceUrl)) {
+                const isRaceExist = existingData.some(
+                    (r) => r.url === raceUrl || r.original_id === currentRace.id
+                );
+                if (isRaceExist) {
                     console.log('Race exist in database. Skipping');
                     continue;
                 }
