@@ -365,10 +365,10 @@ async function fetchRaceData(currentRaceUrl, browser) {
         });
 
         const unknownIdentifier = redirectedUrl.match(
-            /http:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
+            /https:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
         )[1];
         const idgara = redirectedUrl.match(
-            /http:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
+            /https:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
         )[3];
 
         await racePage.waitForFunction(() => 'garaList' in window, {
@@ -534,7 +534,7 @@ function buildBoatData(newRaceId, raceData, idgara, buoyIds) {
 async function fetchRaceZipData(unknownIdentifier, idgara) {
     const zipFileResult = await axios({
         method: 'get',
-        url: `http://app.metasail.it/(S(${unknownIdentifier}))/race_${idgara}.zip`,
+        url: `https://app.metasail.it/(S(${unknownIdentifier}))/race_${idgara}.zip`,
         responseType: 'arraybuffer',
     });
 
@@ -656,7 +656,7 @@ async function fetchRaceAllPoints(
 async function fetchRaceStats(currentRaceUrl, unknownIdentifier, idgara) {
     const statsRequest = await axios({
         method: 'post',
-        url: `http://app.metasail.it/(S(${unknownIdentifier}))/MetaSailWS.asmx/getStatistiche`,
+        url: `https://app.metasail.it/(S(${unknownIdentifier}))/MetaSailWS.asmx/getStatistiche`,
         data: `idGara=${idgara}`,
         headers: {
             Host: 'app.metasail.it',
@@ -665,7 +665,7 @@ async function fetchRaceStats(currentRaceUrl, unknownIdentifier, idgara) {
             'X-Requested-With': 'XMLHttpRequest',
             'Cache-Control': 'no-cache',
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            Origin: 'http://app.metasail.it',
+            Origin: 'https://app.metasail.it',
             Pragma: 'no-cache',
             'Accept-Language': 'en-US,en;q=0.9',
             'User-Agent':
