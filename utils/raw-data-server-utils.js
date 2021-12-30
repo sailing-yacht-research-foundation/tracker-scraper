@@ -98,6 +98,51 @@ const registerFailedUrl = async (tracker, url, error) => {
     }
 };
 
+const getUnfinishedRaceIds = async (tracker, originalId) => {
+    const secret = generateRawDataServerSecret();
+    try {
+        const result = await axios.get(
+            `${RAW_DATA_SERVER_API}/api/v1/get-unfinished-races/${tracker}`,
+            {
+                headers: {
+                    authorization: secret,
+                },
+            }
+        );
+        return result.data;
+    } catch (err) {
+        console.log(
+            `Failed getting unfinished races for tracker ${tracker}`,
+            err
+        );
+        return null;
+    }
+};
+
+const cleanUnfinishedRaces = async (tracker, originalId) => {
+    const secret = generateRawDataServerSecret();
+    try {
+        const result = await axios.post(
+            `${RAW_DATA_SERVER_API}/api/v1/clean-unfinished-races/${tracker}`,
+            {
+                excludedOrigIds: originalId,
+            },
+            {
+                headers: {
+                    authorization: secret,
+                },
+            }
+        );
+        return result.data;
+    } catch (err) {
+        console.log(
+            `Failed cleaning unfinished races for tracker ${tracker}`,
+            err
+        );
+        return null;
+    }
+};
+
 module.exports = {
     RAW_DATA_SERVER_API,
     generateRawDataServerSecret,
@@ -105,4 +150,6 @@ module.exports = {
     getExistingData,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 };
