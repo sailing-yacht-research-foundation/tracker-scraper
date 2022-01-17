@@ -44,10 +44,6 @@ const PAGENUM = '{$PAGENUM$}';
             PAGENUM,
             counter.toString()
         );
-        if (existingUrls.includes(pageUrl)) {
-            counter++;
-            continue;
-        }
         console.log(`Getting race list with url ${pageUrl}`);
         try {
             await page.goto(pageUrl, { timeout: 0, waitUntil: 'networkidle0' });
@@ -212,15 +208,20 @@ const PAGENUM = '{$PAGENUM$}';
             const windsCsvUrl = baseUrl + '/winds.csv';
             const legWindUrl = baseUrl + '/legs-wind.csv';
             const resultsUrl = baseUrl + '/results.csv';
-
-            const gpxRequest = await axios.get(gpxUrl);
+            const axiosHeaders = {
+                headers: {
+                    'User-Agent':
+                        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)',
+                },
+            };
+            const gpxRequest = await axios.get(gpxUrl, axiosHeaders);
             raceInfo.race.gpx = gpxRequest.data;
 
-            const windRequest = await axios.get(windsCsvUrl);
+            const windRequest = await axios.get(windsCsvUrl, axiosHeaders);
             raceInfo.race.wind = windRequest.data;
-            const legWindRequest = await axios.get(legWindUrl);
+            const legWindRequest = await axios.get(legWindUrl, axiosHeaders);
             raceInfo.race.legWind = legWindRequest.data;
-            const resultsRequest = await axios.get(resultsUrl);
+            const resultsRequest = await axios.get(resultsUrl, axiosHeaders);
             raceInfo.race.resultsData = resultsRequest.data;
 
             let HAS_POSITIONS = false;
@@ -230,7 +231,8 @@ const PAGENUM = '{$PAGENUM$}';
                 const positionRequest = await axios.get(
                     'https://d22ymaefawl8oh.cloudfront.net/v2/races/' +
                         raceInfo.race.id +
-                        '/positions/?limit=-1'
+                        '/positions/?limit=-1',
+                    axiosHeaders
                 );
                 positions = positionRequest.data.data.positions;
                 HAS_POSITIONS = true;
@@ -244,7 +246,8 @@ const PAGENUM = '{$PAGENUM$}';
                             '/positions/?' +
                             timeParam +
                             '&limit=' +
-                            positionLimit.toString()
+                            positionLimit.toString(),
+                        axiosHeaders
                     );
                     if (positionRequest.data.data.positions.length === 0) {
                         gotThemAll = true;
@@ -291,11 +294,15 @@ const PAGENUM = '{$PAGENUM$}';
                     tag +
                     '/track.csv';
 
-                const boatTrackRequest = await axios.get(boatTrackCsvUrl);
+                const boatTrackRequest = await axios.get(
+                    boatTrackCsvUrl,
+                    axiosHeaders
+                );
                 d.trackCsv = boatTrackRequest.data;
 
                 const clubPageRequest = await axios.get(
-                    'https://www.estela.co/clubs?key=' + k
+                    'https://www.estela.co/clubs?key=' + k,
+                    axiosHeaders
                 );
                 const namePat = /<span class="panel-title">(.*)<\/span>/g;
                 const phonePat = /<small><i class="fa fa-phone"><\/i>([0-9\s]*)<\/small>/gm;
