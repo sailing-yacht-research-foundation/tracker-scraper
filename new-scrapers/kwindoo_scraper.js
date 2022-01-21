@@ -88,7 +88,11 @@ const SOURCE = 'kwindoo';
                 const currentRace = regattaDetails.races[raceIndex];
                 const raceUrl = `https://www.kwindoo.com/tracking/${newOrExistingRegatta.original_id}-${newOrExistingRegatta.name_slug}?race_id=${currentRace.id}`;
                 const isRaceExist = existingData.some(
-                    (r) => r.url === raceUrl || r.original_id === currentRace.id
+                    (r) =>
+                        r.url === raceUrl ||
+                        (r.original_id?.toString() &&
+                            r.original_id?.toString() ===
+                                currentRace.id?.toString())
                 );
                 if (isRaceExist) {
                     console.log('Race exist in database. Skipping');
@@ -114,6 +118,12 @@ const SOURCE = 'kwindoo';
                         currentRace.running_group_ids
                     );
                     newRace.url = raceUrl;
+
+                    const waypoints = await fetchRaceWaypoints(
+                        newRace,
+                        newOrExistingRegatta
+                    );
+                    appendArray(objectsToSave.KwindooWaypoint, waypoints);
 
                     if (
                         newRace.start_timestamp * 1000 > now ||
@@ -150,11 +160,6 @@ const SOURCE = 'kwindoo';
                         newOrExistingRegatta
                     );
 
-                    const waypoints = await fetchRaceWaypoints(
-                        newRace,
-                        newOrExistingRegatta
-                    );
-
                     const comments = await fetchRaceComments(
                         newRace,
                         newOrExistingRegatta
@@ -175,7 +180,6 @@ const SOURCE = 'kwindoo';
                     appendArray(objectsToSave.KwindooMarker, markers);
                     appendArray(objectsToSave.KwindooMIA, mias);
                     appendArray(objectsToSave.KwindooPosition, positions);
-                    appendArray(objectsToSave.KwindooWaypoint, waypoints);
                 } catch (err) {
                     console.log('Error downloading and saving race data.', err);
                     await registerFailedUrl(SOURCE, raceUrl, err.toString());
