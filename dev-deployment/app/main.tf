@@ -576,7 +576,7 @@ data "aws_iam_policy_document" "assume_role_policy" {
 
     principals {
       type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
+      identifiers = ["ecs-tasks.amazonaws.com", "events.amazonaws.com"]
     }
   }
 }
@@ -587,8 +587,54 @@ resource "aws_iam_role_policy_attachment" "devscraperTaskExecutionRole_policy" {
 }
 
 
+# cloudwatch event for bluewater
+resource "aws_cloudwatch_event_rule" "bluewater-scraper-dev-daily" {
+  name                = "bluewater-scraper-dev-daily"
+  description         = "Runs the bluewater scraper daily at 12:15AM (UTC)"
+  schedule_expression = "cron(15 00 * * ? *)"
+  is_enabled          = false // Change to true to enable scheduling
+}
 
+resource "aws_cloudwatch_event_target" "bluewater-scraper-dev-daily-target" {
+  target_id = "bluewater-scraper-dev-daily-target"
+  rule      = aws_cloudwatch_event_rule.bluewater-scraper-dev-daily.name
+  arn       = aws_ecs_cluster.scraper-runner.arn
+  role_arn  = aws_iam_role.devscraperTaskExecutionRole.arn
 
+  ecs_target {
+    task_count          = 1
+    task_definition_arn = aws_ecs_task_definition.bluewater-scraper-dev.arn
+    launch_type         = "FARGATE"
+    network_configuration {
+      subnets          = ["subnet-0c74e9237f0e03d25", "subnet-0b7890f3eaf4982da", "subnet-04283da759e25a84b"]
+      assign_public_ip = true
+      security_groups  = [aws_security_group.service_security_group.id]
+    }
+  }
+}
 
+# cloudwatch event for kwindoo
+resource "aws_cloudwatch_event_rule" "kwindoo-scraper-dev-daily" {
+  name                = "kwindoo-scraper-dev-daily"
+  description         = "Runs the kwindoo scraper daily at 12:30AM (UTC)"
+  schedule_expression = "cron(30 00 * * ? *)"
+  is_enabled          = false // Change to true to enable scheduling
+}
 
+resource "aws_cloudwatch_event_target" "kwindoo-scraper-dev-daily-target" {
+  target_id = "kwindoo-scraper-dev-daily-target"
+  rule      = aws_cloudwatch_event_rule.kwindoo-scraper-dev-daily.name
+  arn       = aws_ecs_cluster.scraper-runner.arn
+  role_arn  = aws_iam_role.devscraperTaskExecutionRole.arn
 
+  ecs_target {
+    task_count          = 1
+    task_definition_arn = aws_ecs_task_definition.kwindoo-scraper-dev.arn
+    launch_type         = "FARGATE"
+    network_configuration {
+      subnets          = ["subnet-0c74e9237f0e03d25", "subnet-0b7890f3eaf4982da", "subnet-04283da759e25a84b"]
+      assign_public_ip = true
+      security_groups  = [aws_security_group.service_security_group.id]
+    }
+  }
+}
