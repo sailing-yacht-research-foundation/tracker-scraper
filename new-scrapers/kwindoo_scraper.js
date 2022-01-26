@@ -5,6 +5,8 @@ const {
     createAndSendTempJsonFile,
     getExistingData,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { appendArray } = require('../utils/array');
 const SOURCE = 'kwindoo';
@@ -15,7 +17,7 @@ const SOURCE = 'kwindoo';
         process.exit();
     }
 
-    const now = new Date().getTime();
+    const now = Date.now();
     let regattas;
     try {
         regattas = await fetchRegattaList();
@@ -32,15 +34,20 @@ const SOURCE = 'kwindoo';
         process.exit();
     }
 
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
+
     for (const regattaIndex in regattas) {
         const currentRegatta = regattas[regattaIndex];
         const regattaUrl = `https://api.kwindoo.com/api/regatta/get-details?regatta_id=${currentRegatta.id}`;
         try {
             console.log(`Getting regatta details with url ${regattaUrl}`);
-            if (new Date(currentRegatta.last_end_time).getTime() > now) {
-                console.log('Live or future race. Skipping.');
-                continue;
-            }
 
             const detailsRequest = await axios({
                 method: 'get',
@@ -81,7 +88,11 @@ const SOURCE = 'kwindoo';
                 const currentRace = regattaDetails.races[raceIndex];
                 const raceUrl = `https://www.kwindoo.com/tracking/${newOrExistingRegatta.original_id}-${newOrExistingRegatta.name_slug}?race_id=${currentRace.id}`;
                 const isRaceExist = existingData.some(
-                    (r) => r.url === raceUrl || r.original_id === currentRace.id
+                    (r) =>
+                        r.url === raceUrl ||
+                        (r.original_id?.toString() &&
+                            r.original_id?.toString() ===
+                                currentRace.id?.toString())
                 );
                 if (isRaceExist) {
                     console.log('Race exist in database. Skipping');
@@ -92,7 +103,8 @@ const SOURCE = 'kwindoo';
                 );
                 try {
                     const newRace = {};
-                    newRace.id = uuidv4();
+                    const existingRaceId = unfinishedRaceIdsMap[currentRace.id];
+                    newRace.id = existingRaceId || uuidv4();
                     newRace.original_id = currentRace.id;
                     newRace.regatta = newOrExistingRegatta.id;
                     newRace.regatta_original_id =
@@ -107,6 +119,22 @@ const SOURCE = 'kwindoo';
                     );
                     newRace.url = raceUrl;
 
+                    const waypoints = await fetchRaceWaypoints(
+                        newRace,
+                        newOrExistingRegatta
+                    );
+                    appendArray(objectsToSave.KwindooWaypoint, waypoints);
+
+                    if (
+                        newRace.start_timestamp * 1000 > now ||
+                        newRace.end_timestamp * 1000 > now
+                    ) {
+                        // also use startTime in case end time is undefined
+                        console.log('Unfinished race. Only scraping race info');
+                        objectsToSave.KwindooRace.push(newRace);
+                        scrapedUnfinishedOrigIds.push(newRace.original_id);
+                        continue;
+                    }
                     const boats = await fetchRaceBoats(
                         newRace,
                         newOrExistingRegatta
@@ -132,11 +160,6 @@ const SOURCE = 'kwindoo';
                         newOrExistingRegatta
                     );
 
-                    const waypoints = await fetchRaceWaypoints(
-                        newRace,
-                        newOrExistingRegatta
-                    );
-
                     const comments = await fetchRaceComments(
                         newRace,
                         newOrExistingRegatta
@@ -157,7 +180,6 @@ const SOURCE = 'kwindoo';
                     appendArray(objectsToSave.KwindooMarker, markers);
                     appendArray(objectsToSave.KwindooMIA, mias);
                     appendArray(objectsToSave.KwindooPosition, positions);
-                    appendArray(objectsToSave.KwindooWaypoint, waypoints);
                 } catch (err) {
                     console.log('Error downloading and saving race data.', err);
                     await registerFailedUrl(SOURCE, raceUrl, err.toString());
@@ -178,6 +200,8 @@ const SOURCE = 'kwindoo';
             await registerFailedUrl(SOURCE, regattaUrl, err.toString());
         }
     }
+
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
 })();
 
 async function fetchRegattaList() {
