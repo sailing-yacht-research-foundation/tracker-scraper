@@ -574,7 +574,7 @@ data "aws_iam_policy_document" "assume_role_policy" {
 
     principals {
       type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
+      identifiers = ["ecs-tasks.amazonaws.com", "events.amazonaws.com"]
     }
   }
 }
@@ -923,8 +923,3 @@ resource "aws_cloudwatch_event_target" "yellowbrick-scraper-prod-daily-target" {
     }
   }
 }
-
-
-
-
-
