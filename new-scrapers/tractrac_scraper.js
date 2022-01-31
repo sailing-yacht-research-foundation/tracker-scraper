@@ -5,6 +5,8 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
 
@@ -25,6 +27,15 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
         console.log('Error getting existing urls', err);
         process.exit();
     }
+
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
 
     try {
         browser = await launchBrowser();
@@ -292,7 +303,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
         };
     };
 
-    const parseRace = async (race) => {
+    const parseRace = async (race, event) => {
         const raceMeta = race;
 
         /**
@@ -329,19 +340,29 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
 }
                  */
 
-        const startDate = new Date(
+        const startTime = new Date(
             raceMeta.tracking_starttime.split(' ')[0]
         ).getTime();
-        const endDate = new Date(
+        const endTime = new Date(
             raceMeta.tracking_endtime.split(' ')[0]
         ).getTime();
 
-        if (
-            startDate > new Date().getTime() ||
-            endDate > new Date().getTime()
-        ) {
-            console.log('Future race so skip it.');
-            return;
+        const now = Date.now();
+        if (startTime > now || endTime > now) {
+            console.log('Unfinished race. Only scraping race info');
+            const unfinishedRace = {
+                event: event?.id,
+                event_original_id: event?.original_id,
+                name: race.name,
+                url: race.url_html,
+                tracking_start: race.tracking_starttime,
+                tracking_stop: race.tracking_endtime,
+                race_start: race.race_starttime,
+                status: race.status,
+                lon: race.lon,
+                lat: race.lat,
+            };
+            return { unfinishedRace };
         }
 
         // If raceMeta.has_club then the event_id is actually the club? original id.
@@ -420,7 +441,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
             console.log('Check if slider will load');
             await page.waitForFunction(
                 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] !== ""',
-                { timeout: 10000 }
+                { timeout: 30000 }
             );
             const waitForFullyLoaded =
                 'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"';
@@ -767,10 +788,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
       etype_icon: 'ico-sailing.png' }
             */
 
-        // This has a bug I think.
-        const eventHasEnded = true;
-
-        if (eventObject.type === 'Sailing' && eventHasEnded) {
+        if (eventObject.type === 'Sailing') {
             if (existingUrls.includes(eventObject.races_url)) {
                 console.log(
                     `Existing event url in database ${eventObject.races_url}. Skipping`
@@ -880,10 +898,11 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                 }
                 let details;
                 const raceToFormat = {};
-                raceToFormat.id = uuidv4();
+                const existingRaceId = unfinishedRaceIdsMap[raceObject.id]; // in case its already been scraped as unfinished race
+                raceToFormat.id = existingRaceId || uuidv4();
                 raceToFormat.original_id = raceObject.id;
                 try {
-                    details = await parseRace(raceObject);
+                    details = await parseRace(raceObject, eventSaveObj);
                 } catch (err) {
                     console.log('Failed parsing race', err);
                     await registerFailedUrl(
@@ -893,13 +912,25 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                     );
                     continue;
                 }
-                if (details !== null && details !== undefined) {
+
+                let objectsToSave;
+                if (details.unfinishedRace) {
+                    objectsToSave = {
+                        TracTracEvent: [eventSaveObj],
+                        TracTracRace: [
+                            Object.assign(details.unfinishedRace, raceToFormat),
+                        ],
+                    };
+                    scrapedUnfinishedOrigIds.push(
+                        details.unfinishedRace.original_id
+                    );
+                } else {
                     const thingsToSave = formatAndSaveRace(
                         eventSaveObj,
                         details,
                         raceToFormat
                     );
-                    const objectsToSave = {
+                    objectsToSave = {
                         TracTracClass: thingsToSave.classesToSave,
                         TracTracRaceClass: thingsToSave.raceClassesToSave,
                         TracTracEvent: [eventSaveObj],
@@ -917,21 +948,21 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                         TracTracControlPointPosition:
                             thingsToSave.controlPointPositionsToSave,
                     };
+                }
 
-                    try {
-                        await createAndSendTempJsonFile(objectsToSave);
-                    } catch (err) {
-                        console.log(
-                            `Failed creating and sending temp json file for url ${thingsToSave.racesToSave[0].url}`,
-                            err
-                        );
-                        await registerFailedUrl(
-                            SOURCE,
-                            raceObject.url_html,
-                            err.toString()
-                        );
-                        continue;
-                    }
+                try {
+                    await createAndSendTempJsonFile(objectsToSave);
+                } catch (err) {
+                    console.log(
+                        `Failed creating and sending temp json file for url ${raceObject.url_html}`,
+                        err
+                    );
+                    await registerFailedUrl(
+                        SOURCE,
+                        raceObject.url_html,
+                        err.toString()
+                    );
+                    continue;
                 }
             }
         }
@@ -1047,18 +1078,29 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                     continue;
                 }
                 const raceToFormat = {};
-                raceToFormat.id = uuidv4();
+                const existingRaceId = unfinishedRaceIdsMap[raceObject.id]; // in case its already been scraped as unfinished race
+                raceToFormat.id = existingRaceId || uuidv4();
                 raceToFormat.original_id = raceObject.id;
                 const details = await parseRace(raceObject);
 
-                if (details !== null && details !== undefined) {
+                let objectsToSave;
+                if (details.unfinishedRace) {
+                    objectsToSave = {
+                        TracTracRace: [
+                            Object.assign(details.unfinishedRace, raceToFormat),
+                        ],
+                    };
+                    scrapedUnfinishedOrigIds.push(
+                        details.unfinishedRace.original_id
+                    );
+                } else {
                     const thingsToSave = formatAndSaveRace(
                         null,
                         details,
                         raceToFormat
                     );
 
-                    const objectsToSave = {
+                    objectsToSave = {
                         TracTracClass: thingsToSave.classesToSave,
                         TracTracRaceClass: thingsToSave.raceClassesToSave,
                         TracTracRace: thingsToSave.racesToSave,
@@ -1078,26 +1120,27 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                     if (emailObjToSave) {
                         objectsToSave.SailorEmail = [emailObjToSave];
                     }
+                }
 
-                    try {
-                        await createAndSendTempJsonFile(objectsToSave);
-                    } catch (err) {
-                        console.log(
-                            `Failed creating and sending temp json file for url ${thingsToSave.racesToSave[0].url}`,
-                            err
-                        );
-                        await registerFailedUrl(
-                            SOURCE,
-                            raceObject.url_html,
-                            err.toString()
-                        );
-                        continue;
-                    }
+                try {
+                    await createAndSendTempJsonFile(objectsToSave);
+                } catch (err) {
+                    console.log(
+                        `Failed creating and sending temp json file for url ${raceObject.url_html}`,
+                        err
+                    );
+                    await registerFailedUrl(
+                        SOURCE,
+                        raceObject.url_html,
+                        err.toString()
+                    );
+                    continue;
                 }
             }
         }
     }
     console.log('Finished scraping all races');
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     page.close();
     browser.close();
     process.exit();

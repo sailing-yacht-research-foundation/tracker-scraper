@@ -576,7 +576,7 @@ data "aws_iam_policy_document" "assume_role_policy" {
 
     principals {
       type        = "Service"
-      identifiers = ["events.amazonaws.com"]
+      identifiers = ["ecs-tasks.amazonaws.com", "events.amazonaws.com"]
     }
   }
 }
@@ -606,7 +606,7 @@ resource "aws_cloudwatch_event_target" "bluewater-scraper-dev-daily-target" {
     task_definition_arn = aws_ecs_task_definition.bluewater-scraper-dev.arn
     launch_type         = "FARGATE"
     network_configuration {
-      subnets          = ["subnet-0c74e9237f0e03d25", "subnet-0b7890f3eaf4982da", "subnet-04283da759e25a84b"]
+      subnets          = ["subnet-0e8bf2fe60aa75a1d", "subnet-03edca35c8e6d824b", "subnet-0b991066a3689c0a9"]
       assign_public_ip = true
       security_groups  = [aws_security_group.service_security_group.id]
     }
@@ -632,7 +632,7 @@ resource "aws_cloudwatch_event_target" "kwindoo-scraper-dev-daily-target" {
     task_definition_arn = aws_ecs_task_definition.kwindoo-scraper-dev.arn
     launch_type         = "FARGATE"
     network_configuration {
-      subnets          = ["subnet-0c74e9237f0e03d25", "subnet-0b7890f3eaf4982da", "subnet-04283da759e25a84b"]
+      subnets          = ["subnet-0e8bf2fe60aa75a1d", "subnet-03edca35c8e6d824b", "subnet-0b991066a3689c0a9"]
       assign_public_ip = true
       security_groups  = [aws_security_group.service_security_group.id]
     }

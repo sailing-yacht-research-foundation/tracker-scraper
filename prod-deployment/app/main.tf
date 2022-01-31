@@ -574,7 +574,7 @@ data "aws_iam_policy_document" "assume_role_policy" {
 
     principals {
       type        = "Service"
-      identifiers = ["events.amazonaws.com"]
+      identifiers = ["ecs-tasks.amazonaws.com", "events.amazonaws.com"]
     }
   }
 }
