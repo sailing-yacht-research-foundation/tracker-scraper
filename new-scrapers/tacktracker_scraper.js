@@ -258,8 +258,8 @@ const parser = require('xml2json');
     console.log('Making new user objects.');
     const allUserUrls = [];
     const allRegattaUrls = [];
-    const allUsers = [].concat(Object.keys(allUsersHash));
-    const allRegattas = [].concat(Object.keys(allRegattasHash));
+    const allUsers = Object.keys(allUsersHash);
+    const allRegattas = Object.keys(allRegattasHash);
     for (const userIndex in allUsers) {
         const user = allUsers[userIndex];
         allUserUrls.push(
