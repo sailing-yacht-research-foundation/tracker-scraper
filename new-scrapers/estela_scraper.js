@@ -526,6 +526,12 @@ const PAGENUM = '{$PAGENUM$}';
                         }
                     });
                 });
+            } else {
+                throw new Error('No positions in race');
+            }
+
+            if (newDorsals?.length) {
+                throw new Error('No boats in race');
             }
             objectsToSave.EstelaRace = [newRace];
             objectsToSave.EstelaBuoy = raceInfo.race.buoys;
