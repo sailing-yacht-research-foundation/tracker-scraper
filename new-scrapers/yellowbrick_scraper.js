@@ -9,7 +9,11 @@ const {
     createAndSendTempJsonFile,
     registerFailedUrl,
     getExistingData,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
+const YB_WEB_URL = 'https://yb.tl';
+const YB_MOBILE_URL = 'https://app.yb.tl';
 
 (async () => {
     // Axios retry is used in yellowbrick because the url https://yb.tl/JSON/{code}/RaceSetup sometimes returns 503 on the first try and succeeds on the next req
@@ -25,7 +29,26 @@ const {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
     }
-    const YB_RACE_LIST_URL = 'https://app.yb.tl/App/Races?version=3';
+
+    let raceCodes;
+    try {
+        const existingRaceCodes = await getExistingData(SOURCE);
+        raceCodes = existingRaceCodes.map((r) => r.original_id || r.url); // For failed race the code is in the url
+    } catch (err) {
+        console.log('Error getting existing race codes', err);
+        process.exit();
+    }
+
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
+
+    const YB_RACE_LIST_URL = `${YB_MOBILE_URL}/App/Races?version=3`;
     let raceList;
     try {
         // GET CODES
@@ -51,7 +74,7 @@ const {
         const productId = raceMetadata['ios-productid'];
         console.log('Associating ' + raceIndex + ' of ' + raceList.length);
         const associateUrl =
-            'https://app.yb.tl/App/purchase?version=2&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&product-id=' +
+            `${YB_MOBILE_URL}/App/purchase?version=2&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&product-id=` +
             productId +
             '&receipt=' +
             productId +
@@ -61,10 +84,10 @@ const {
     }
 
     const ybCodeListXMLResult = await axios.get(
-        'https://app.yb.tl/App/MyRaces?version=2'
+        `${YB_MOBILE_URL}/App/MyRaces?version=2`
     );
     const ybCodeList2XMLResult = await axios.get(
-        'https://app.yb.tl/App/MyRaces?version=4&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&os=i&sv=4021&osv=12.4.1'
+        `${YB_MOBILE_URL}/App/MyRaces?version=4&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&os=i&sv=4021&osv=12.4.1`
     );
 
     const ybCodeListXML = ybCodeListXMLResult.data;
@@ -1198,56 +1221,23 @@ const {
 
     // TODO: visit yeach yb.tl/links/code and get list of all related races.
     // TODO: get leaderboard from yb.tl/links/code
-    const existingRaceCodes = await getExistingData(SOURCE);
-    const raceCodes = [];
-    existingRaceCodes.forEach((r) => {
-        if (r.status === 'success') {
-            raceCodes.push(r.original_id);
-        }
-    });
 
-    for (const codeIndex in codes) {
-        const kmlLookupId = uuidv4();
+    for (const currentCode of codes) {
         try {
-            const currentCode = codes[codeIndex];
-
             if (raceCodes.includes(currentCode)) {
                 console.log(
                     `${currentCode} race already exist in database. Skipping race...`
                 );
                 continue;
             }
-            const jsonUrl = 'https://yb.tl/JSON/';
+            const jsonUrl = `${YB_WEB_URL}/JSON/`;
             const raceSetupUrl = `${jsonUrl}${currentCode}/RaceSetup`;
             console.log(`Getting Race Setup with url ${raceSetupUrl}`);
             const setup = await axios.get(raceSetupUrl);
-
-            if (
-                setup.data.start > new Date().getTime() / 1000 ||
-                setup.data.stop === null ||
-                setup.data.stop > new Date().getTime() / 1000 ||
-                raceCodes.includes(setup.data.url)
-            ) {
-                console.log(
-                    "Race is in the future, or already saved so we'll skip it."
-                );
-                continue;
-            }
-
             const setupData = setup.data;
             const raceCode = setupData.url;
-            const raceNewId = uuidv4();
-
-            const kml = await axios.get(`https://yb.tl/${currentCode}.kml`);
-
-            const kmlToSave = {
-                id: kmlLookupId,
-                data: kml.data,
-            };
-
-            const leaderBoardUrl = `https://yb.tl/l/${currentCode}`;
-            console.log(`Getting leaderboard data with url ${leaderBoardUrl}`);
-            const txtLeaderboard = await axios.get(leaderBoardUrl);
+            const existingRaceId = unfinishedRaceIdsMap[raceCode];
+            const raceNewId = existingRaceId || uuidv4();
 
             const race = {
                 id: raceNewId,
@@ -1266,17 +1256,23 @@ const {
                 title: setupData.title,
                 flag_stopped: setupData.flagStopped,
                 super_lines: setupData.superLines,
-                kml_s3_id: kmlLookupId,
-                text_leaderboard: txtLeaderboard.data,
                 distance: setupData.course?.distance,
-                url: `https://yb.tl/${raceCode}`,
+                url: `${YB_WEB_URL}/${raceCode}`,
             };
 
-            const pois = setupData.poi;
-            const poisSave = [];
-            for (const poiIndex in pois.lines) {
-                const p = pois.lines[poiIndex];
-                const poi = {
+            const courseNodes =
+                setupData.course?.nodes.map((n, order) => ({
+                    id: uuidv4(),
+                    name: n.name,
+                    lon: n.lon,
+                    lat: n.lat,
+                    order: order + 1,
+                    race: raceNewId,
+                    race_code: raceCode,
+                })) || [];
+
+            const poisSave =
+                setupData.poi?.lines.map((p) => ({
                     id: uuidv4(),
                     original_id: p.id,
                     race: raceNewId,
@@ -1284,88 +1280,92 @@ const {
                     nodes: p.nodes,
                     polygon: p.polygon,
                     name: p.name,
-                };
-                poisSave.push(poi);
+                })) || [];
+
+            if (
+                setup.data.start > Date.now() / 1000 ||
+                setup.data.stop === null ||
+                setup.data.stop > Date.now() / 1000
+            ) {
+                console.log('Unfinished race. Only scraping race info', race);
+                await createAndSendTempJsonFile({
+                    YellowbrickRace: [race],
+                    YellowbrickCourseNode: courseNodes,
+                    YellowbrickPoi: poisSave,
+                });
+                console.log('Finished sending unfinished race.');
+                scrapedUnfinishedOrigIds.push(raceCode);
+                continue;
             }
 
-            const courseNodes = [];
-            if (setupData.course !== undefined) {
-                const course = setupData.course.nodes;
+            if (!setupData.teams?.length) {
+                throw new Error('No boats in race');
+            }
+            const kmlUrl = `${YB_WEB_URL}/${currentCode}.kml`;
+            console.log(`Getting kml data with url ${kmlUrl}`);
+            const kml = await axios.get(kmlUrl);
+            const kmlToSave = {
+                id: uuidv4(),
+                data: kml.data,
+            };
+            race.kml_s3_id = kmlToSave.id;
 
-                let order = 1;
-                course.forEach((n) => {
-                    const node = {
+            const leaderBoardUrl = `${YB_WEB_URL}/l/${currentCode}`;
+            console.log(`Getting leaderboard data with url ${leaderBoardUrl}`);
+            const txtLeaderboard = await axios.get(leaderBoardUrl);
+            race.text_leaderboard = txtLeaderboard.data;
+
+            const tagIds = {};
+            const tagsSave =
+                setupData.tags?.map((t) => {
+                    const tag = {
                         id: uuidv4(),
-                        name: n.name,
-                        lon: n.lon,
-                        lat: n.lat,
-                        order: order,
+                        original_id: t.id,
                         race: raceNewId,
                         race_code: raceCode,
+                        lb: t.lb,
+                        handicap: t.handicap,
+                        name: t.name,
+                        start: t.start,
+                        laps: t.laps,
+                        sort: t.sort,
                     };
-                    order += 1;
-                    courseNodes.push(node);
-                });
-            }
+                    tagIds[tag.original_id] = tag.id;
+                    return tag;
+                }) || [];
 
-            const tags = setupData.tags;
-            const tagsSave = [];
-            const tagIds = {};
-            for (const tagIndex in tags) {
-                const t = tags[tagIndex];
-                const tag = {
-                    id: uuidv4(),
-                    original_id: t.id,
-                    race: raceNewId,
-                    race_code: raceCode,
-                    lb: t.lb,
-                    handicap: t.handicap,
-                    name: t.name,
-                    start: t.start,
-                    laps: t.laps,
-                    sort: t.sort,
-                };
-                tagIds[tag.original_id] = tag.id;
-
-                tagsSave.push(tag);
-            }
-
-            const teams = setupData.teams;
-
-            const teamsSave = [];
             const teamIds = {};
-            for (const teamsIndex in teams) {
-                const t = teams[teamsIndex];
-
-                const team = {
-                    id: uuidv4(),
-                    original_id: t.id,
-                    race: raceNewId,
-                    race_code: raceCode,
-                    owner: t.owner,
-                    country: t.country,
-                    flag: t.flag,
-                    sail: t.sail,
-                    start: t.start,
-                    tcf1: t.tcf1,
-                    tcf2: t.tcf2,
-                    tcf3: t.tcf3,
-                    started: t.started,
-                    finshed_at: t.finishedAt,
-                    captain: t.captain,
-                    url: t.url,
-                    type: t.type,
-                    tags: JSON.stringify(t.tags),
-                    max_laps: t.maxLaps,
-                    name: t.name,
-                    model: t.model,
-                    marker_text: t.markerText,
-                    status: t.status,
-                    explain: t.explain,
-                };
-                teamIds[t.id] = team.id;
-                teamsSave.push(team);
-            }
+            const teamsSave =
+                setupData.teams.map((t) => {
+                    const team = {
+                        id: uuidv4(),
+                        original_id: t.id,
+                        race: raceNewId,
+                        race_code: raceCode,
+                        owner: t.owner,
+                        country: t.country,
+                        flag: t.flag,
+                        sail: t.sail,
+                        start: t.start,
+                        tcf1: t.tcf1,
+                        tcf2: t.tcf2,
+                        tcf3: t.tcf3,
+                        started: t.started,
+                        finshed_at: t.finishedAt,
+                        captain: t.captain,
+                        url: t.url,
+                        type: t.type,
+                        tags: JSON.stringify(t.tags),
+                        max_laps: t.maxLaps,
+                        name: t.name,
+                        model: t.model,
+                        marker_text: t.markerText,
+                        status: t.status,
+                        explain: t.explain,
+                    };
+                    teamIds[t.id] = team.id;
+                    return team;
+                }) || [];
 
             // Leaderboard
             const leaderboard = await axios.get(
@@ -1430,7 +1430,7 @@ const {
                 }
             }
             let allPositions = [];
-            const jsonApiUrl = `https://yb.tl/API3/Race/${currentCode}/GetPositions?t=0`;
+            const jsonApiUrl = `${YB_WEB_URL}/API3/Race/${currentCode}/GetPositions?t=0`;
             try {
                 const getPositionsRes = await axios.get(jsonApiUrl);
                 getPositionsRes.data.teams.forEach((team) => {
@@ -1476,6 +1476,9 @@ const {
                     throw err;
                 }
             }
+            if (!allPositions.length) {
+                throw new Error('No positions in race');
+            }
             const objectsToSave = {};
             objectsToSave.YellowbrickRace = [race];
             objectsToSave.YellowbrickPoi = poisSave;
@@ -1491,16 +1494,17 @@ const {
             console.log('Finished scraping race.');
         } catch (err) {
             console.log(err);
-            await registerFailedUrl(SOURCE, codes[codeIndex], err.toString());
+            await registerFailedUrl(SOURCE, currentCode, err.toString());
             continue;
         }
     }
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     console.log('Finished scraping all races');
     process.exit();
 })();
 
 async function getPositionsWithPuppeteer(raceId, teamIds, currentCode) {
-    const url = `https://yb.tl/${currentCode}`;
+    const url = `${YB_WEB_URL}/${currentCode}`;
     const browser = await launchBrowser();
     const page = await browser.newPage();
     await page.goto(url, {
