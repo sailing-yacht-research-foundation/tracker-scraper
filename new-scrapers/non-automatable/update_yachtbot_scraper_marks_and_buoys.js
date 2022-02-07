@@ -155,7 +155,7 @@ const SOURCE = 'yachtbot';
                 const objectsToSave = {
                     YachtBotRace: races,
                     YachtBotBuoy: buoys,
-                    YachtBotMarks: marks,
+                    YachtBotMark: marks,
                     YachtBotYacht: boats,
                 };
 

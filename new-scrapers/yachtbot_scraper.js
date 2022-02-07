@@ -214,7 +214,7 @@ const SOURCE = 'yachtbot';
                         YachtBotRace: races,
                         YachtBotYacht: boats,
                         YachtBotBuoy: buoys,
-                        YachtBotMarks: marks,
+                        YachtBotMark: marks,
                         YachtBotPosition: positions,
                     };
 
