@@ -913,6 +913,10 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                     continue;
                 }
 
+                if (!details) {
+                    continue;
+                }
+
                 let objectsToSave;
                 if (details.unfinishedRace) {
                     objectsToSave = {
