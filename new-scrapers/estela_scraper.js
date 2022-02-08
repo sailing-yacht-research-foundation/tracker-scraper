@@ -530,9 +530,10 @@ const PAGENUM = '{$PAGENUM$}';
                 throw new Error('No positions in race');
             }
 
-            if (newDorsals?.length) {
+            if (!newDorsals?.length) {
                 throw new Error('No boats in race');
             }
+
             objectsToSave.EstelaRace = [newRace];
             objectsToSave.EstelaBuoy = raceInfo.race.buoys;
             objectsToSave.EstelaDorsal = newDorsals;
