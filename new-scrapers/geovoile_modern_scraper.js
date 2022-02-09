@@ -196,6 +196,9 @@ async function scrapePage(url) {
         race.id = uuidv4();
         race.original_id = uuidv4();
         race.scrapedUrl = url;
+        if (race?.numLegs > 1) {
+            race.name = `${race.name} - Leg ${race.legNum}`;
+        }
 
         console.log('Getting boat information');
         const { boats, sailors, positions } = await page.evaluate(() => {
@@ -323,6 +326,31 @@ async function scrapePage(url) {
             };
         });
 
+        const courseGates = [];
+        if (sig?.raceGates?.length) {
+            let order = 0;
+            for (const gate of sig.raceGates) {
+                const line = _createGeometryLine(
+                    {
+                        lat: gate._pointA[1],
+                        lon: gate._pointA[0],
+                    },
+                    {
+                        lat: gate._pointB[1],
+                        lon: gate._pointB[0],
+                    },
+                    { name: gate.id }
+                );
+                courseGates.push({
+                    id: uuidv4(),
+                    race_id: race.id,
+                    race_original_id: race.original_id,
+                    order,
+                    ...line,
+                });
+            }
+            order++;
+        }
         const marks = await page.evaluate(() => {
             const allMarks = [];
             document.querySelectorAll('#poiLayer g[rel="0"] g').forEach((i) => {
@@ -355,12 +383,12 @@ async function scrapePage(url) {
         return {
             geovoileRace: race,
             boats,
-            sig,
             source: SOURCE,
             redirectUrl,
             marks,
             sailors,
             positions,
+            courseGates,
         };
     } catch (err) {
         console.log(err);
@@ -540,3 +568,18 @@ async function registerFailed(url, redirectUrl, err) {
     );
     process.exit(0);
 })();
+
+const _createGeometryLine = (
+    { lat: point1Lat, lon: point1lon },
+    { lat: point2Lat, lon: point2Lon },
+    properties = {}
+) => {
+    return {
+        geometryType: 'LineString',
+        properties,
+        coordinates: [
+            { position: [point1lon, point1Lat] },
+            { position: [point2Lon, point2Lat] },
+        ],
+    };
+};
