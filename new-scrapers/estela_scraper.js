@@ -526,7 +526,9 @@ const PAGENUM = '{$PAGENUM$}';
                         }
                     });
                 });
-            } else {
+            }
+
+            if (!newPositions?.length) {
                 throw new Error('No positions in race');
             }
 
