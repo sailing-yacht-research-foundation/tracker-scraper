@@ -1087,6 +1087,10 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                 raceToFormat.original_id = raceObject.id;
                 const details = await parseRace(raceObject);
 
+                if (!details) {
+                    continue;
+                }
+
                 let objectsToSave;
                 if (details.unfinishedRace) {
                     objectsToSave = {
