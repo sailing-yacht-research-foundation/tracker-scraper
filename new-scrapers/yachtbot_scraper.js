@@ -11,6 +11,8 @@ const {
     createAndSendTempJsonFile,
     getExistingData,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 const SOURCE = 'yachtbot';
@@ -32,6 +34,16 @@ const SOURCE = 'yachtbot';
         successRaceIds.forEach((id) => {
             existingRaceIds[id] = true;
         });
+
+        let unfinishedRaceIdsMap;
+        try {
+            unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        } catch (err) {
+            console.log('Error getting unfinished race ids', err);
+            throw err;
+        }
+        const scrapedUnfinishedOrigIds = [];
+
         const prevMaxRaceId = successRaceIds.reduce(
             (a, b) => Math.max(a, b),
             0
@@ -76,7 +88,7 @@ const SOURCE = 'yachtbot';
                 );
                 if (token) {
                     const raceSaveObj = {
-                        id: uuidv4(),
+                        id: unfinishedRaceIdsMap[idx] || uuidv4(),
                         original_id: idx,
                     };
 
@@ -88,17 +100,17 @@ const SOURCE = 'yachtbot';
                         idx++;
                         continue;
                     }
+
                     const startTime = session.data.session.start_time;
                     const endTime = session.data.session.end_time;
 
-                    if (
-                        startTime > new Date().getTime() ||
-                        endTime > new Date().getTime()
-                    ) {
-                        console.log('Future race so skipping.');
-                        idx++;
-                        continue;
-                    }
+                    raceSaveObj.name = decodeURI(session.data.session.name);
+                    raceSaveObj.start_time = startTime;
+                    raceSaveObj.end_time = endTime;
+                    raceSaveObj.url = pageUrl;
+                    raceSaveObj.manual_wind = session.data.session.manual_wind;
+                    raceSaveObj.course_direction =
+                        session.data.session.course_direction;
 
                     session.data.session.url = pageUrl;
 
@@ -195,21 +207,19 @@ const SOURCE = 'yachtbot';
                         raceSaveObj
                     );
 
-                    // NOW SAVE session.data.session , things, and maybe serials?
-                    session.data.session.name = decodeURI(
-                        session.data.session.name
-                    );
-
-                    raceSaveObj.name = session.data.session.name;
-                    raceSaveObj.start_time = startTime;
-                    raceSaveObj.end_time = endTime;
-                    raceSaveObj.url = pageUrl;
-                    raceSaveObj.manual_wind = session.data.session.manual_wind;
-                    raceSaveObj.course_direction =
-                        session.data.session.course_direction;
+                    if (startTime > Date.now() || endTime > Date.now()) {
+                        console.log(
+                            'Unfinished race. Allow sending even if without boats or positions',
+                            pageUrl
+                        );
+                        scrapedUnfinishedOrigIds.push(raceSaveObj.original_id);
+                    } else if (!boats?.length) {
+                        throw new Error('No boats in race');
+                    } else if (!positions?.length) {
+                        throw new Error('No positions in race');
+                    }
 
                     const races = [raceSaveObj];
-
                     const objectsToSave = {
                         YachtBotRace: races,
                         YachtBotYacht: boats,
@@ -222,7 +232,9 @@ const SOURCE = 'yachtbot';
                     await createAndSendTempJsonFile(objectsToSave);
                     console.log('Finished sending file');
                 } else {
-                    console.log('Should not continue so going to next race.');
+                    console.log(
+                        'No token. Should not continue so going to next race.'
+                    );
                 }
             } catch (err) {
                 console.log(err);
@@ -230,6 +242,7 @@ const SOURCE = 'yachtbot';
             }
             idx++;
         }
+        await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     } catch (err) {
         console.log('yachtbot scraper error', err);
         return -1;
