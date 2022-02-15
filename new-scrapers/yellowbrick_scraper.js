@@ -1224,7 +1224,11 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
 
     for (const currentCode of codes) {
         try {
-            if (raceCodes.includes(currentCode)) {
+            if (
+                raceCodes.findIndex(
+                    (c) => c.toLowerCase() === currentCode.toLowerCase()
+                ) > -1
+            ) {
                 console.log(
                     `${currentCode} race already exist in database. Skipping race...`
                 );
