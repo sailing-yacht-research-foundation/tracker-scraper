@@ -7,6 +7,8 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { v4: uuidv4 } = require('uuid');
 const SOURCE = 'geovoile';
@@ -123,7 +125,7 @@ function getRootUrl(url) {
  * @param {string} url
  * @returns scraped data
  */
-async function scrapePage(url) {
+async function scrapePage(url, unfinishedRaceIdsMap = {}) {
     const browser = await launchBrowser();
     const page = await browser.newPage();
     try {
@@ -193,9 +195,10 @@ async function scrapePage(url) {
                 scrapedUrl: '',
             };
         });
-        race.id = uuidv4();
-        race.original_id = uuidv4();
         race.scrapedUrl = url;
+        const existingRaceId = unfinishedRaceIdsMap[scrapedUrl];
+        race.id = existingRaceId || uuidv4();
+        race.original_id = uuidv4();
         if (race?.numLegs > 1) {
             race.name = `${race.name} - Leg ${race.legNum}`;
         }
@@ -446,9 +449,18 @@ async function registerFailed(url, redirectUrl, err) {
             continue;
         }
 
+        let unfinishedRaceIdsMap;
+        try {
+            unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        } catch (err) {
+            console.log('Error getting unfinished race ids', err);
+            process.exit();
+        }
+        const scrapedUnfinishedOrigIds = [];
+
         let result;
         try {
-            result = await scrapePage(url);
+            result = await scrapePage(url, unfinishedRaceIdsMap);
         } catch (e) {
             console.log(`Failed to scrap data  for url ${url}`);
             await registerFailed(url, null, e.toString());
@@ -462,17 +474,6 @@ async function registerFailed(url, redirectUrl, err) {
                 url,
                 result?.redirectUrl,
                 `Failed to scrap data  for url ${url}`
-            );
-            continue;
-        }
-
-        if (
-            !result ||
-            (result.geovoileRace.eventState !== 'FINISH' &&
-                result.geovoileRace.raceState !== 'FINISH')
-        ) {
-            console.log(
-                `Race ${url} is not finished, current state = ${result.geovoileRace.raceState}, event state = ${result.geovoileRace.eventState}, temporary ignore this race`
             );
             continue;
         }
@@ -554,6 +555,7 @@ async function registerFailed(url, redirectUrl, err) {
 
         try {
             console.log(`Sending json file to raw-data-server for url: ${url}`);
+            scrapedUnfinishedOrigIds.push(result.geovoileRace.scrapedUrl);
             await createAndSendTempJsonFile(result);
         } catch (err) {
             console.log(
@@ -565,6 +567,7 @@ async function registerFailed(url, redirectUrl, err) {
         }
     }
 
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     console.log(
         `Finished scraping geovoile modern. Total processed urls = ${processedCount}, failed urls = ${failedCount}`
     );
