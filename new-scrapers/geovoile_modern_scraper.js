@@ -203,12 +203,90 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}) {
             race.name = `${race.name} - Leg ${race.legNum}`;
         }
 
+        const sig = await page.evaluate(() => {
+            const mapBounds = sig.mapBounds;
+            const mapArea = sig._mapArea;
+            const route = sig.route;
+            const rule = sig.rule;
+            const sigBounds = sig.sigBounds;
+            const projection = sig._projection;
+            const raceAreas = sig._raceAreas;
+            const raceGates = sig._raceGates;
+            const shape = sig._shape;
+            return {
+                mapArea,
+                mapBounds,
+                route,
+                rule,
+                sigBounds,
+                projection,
+                raceAreas,
+                raceGates,
+                shape,
+            };
+        });
+
+        const courseGates = [];
+        if (sig?.raceGates?.length) {
+            let order = 0;
+            for (const gate of sig.raceGates) {
+                const line = _createGeometryLine(
+                    {
+                        lat: gate._pointA[1],
+                        lon: gate._pointA[0],
+                    },
+                    {
+                        lat: gate._pointB[1],
+                        lon: gate._pointB[0],
+                    },
+                    { name: gate.id }
+                );
+                courseGates.push({
+                    id: uuidv4(),
+                    race_id: race.id,
+                    race_original_id: race.original_id,
+                    order,
+                    ...line,
+                });
+            }
+            order++;
+        }
+        const marks = await page.evaluate(() => {
+            const allMarks = [];
+            document.querySelectorAll('#poiLayer g[rel="0"] g').forEach((i) => {
+                const transformVal = i.getAttribute('transform');
+                const name = i.querySelector('text')?.textContent || '';
+                const type = i.getAttribute('class')?.trim() || '';
+                const xy = transformVal
+                    .match(/-?\d+(\.\d+)? -?\d+(\.\d+)?/g)[0]
+                    .split(' ');
+                const lon = sig.getLng(xy[0], xy[1]);
+                const lat = sig.getLat(xy[0], xy[1]);
+                allMarks.push({
+                    name,
+                    type,
+                    lon,
+                    lat,
+                    xy,
+                });
+            });
+
+            return allMarks;
+        });
+
+        for (const mark of marks) {
+            mark.race_original_id = race.original_id;
+            mark.race_id = race.id;
+        }
+
         // skip scrape other data
         if (race.eventState !== 'FINISH' && race.raceState !== 'FINISH') {
             return {
                 geovoileRace: race,
                 source: SOURCE,
                 redirectUrl,
+                marks,
+                courseGates,
             };
         }
 
@@ -314,82 +392,6 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}) {
                 };
             });
         });
-
-        const sig = await page.evaluate(() => {
-            const mapBounds = sig.mapBounds;
-            const mapArea = sig._mapArea;
-            const route = sig.route;
-            const rule = sig.rule;
-            const sigBounds = sig.sigBounds;
-            const projection = sig._projection;
-            const raceAreas = sig._raceAreas;
-            const raceGates = sig._raceGates;
-            const shape = sig._shape;
-            return {
-                mapArea,
-                mapBounds,
-                route,
-                rule,
-                sigBounds,
-                projection,
-                raceAreas,
-                raceGates,
-                shape,
-            };
-        });
-
-        const courseGates = [];
-        if (sig?.raceGates?.length) {
-            let order = 0;
-            for (const gate of sig.raceGates) {
-                const line = _createGeometryLine(
-                    {
-                        lat: gate._pointA[1],
-                        lon: gate._pointA[0],
-                    },
-                    {
-                        lat: gate._pointB[1],
-                        lon: gate._pointB[0],
-                    },
-                    { name: gate.id }
-                );
-                courseGates.push({
-                    id: uuidv4(),
-                    race_id: race.id,
-                    race_original_id: race.original_id,
-                    order,
-                    ...line,
-                });
-            }
-            order++;
-        }
-        const marks = await page.evaluate(() => {
-            const allMarks = [];
-            document.querySelectorAll('#poiLayer g[rel="0"] g').forEach((i) => {
-                const transformVal = i.getAttribute('transform');
-                const name = i.querySelector('text')?.textContent || '';
-                const type = i.getAttribute('class')?.trim() || '';
-                const xy = transformVal
-                    .match(/-?\d+(\.\d+)? -?\d+(\.\d+)?/g)[0]
-                    .split(' ');
-                const lon = sig.getLng(xy[0], xy[1]);
-                const lat = sig.getLat(xy[0], xy[1]);
-                allMarks.push({
-                    name,
-                    type,
-                    lon,
-                    lat,
-                    xy,
-                });
-            });
-
-            return allMarks;
-        });
-
-        for (const mark of marks) {
-            mark.race_original_id = race.original_id;
-            mark.race_id = race.id;
-        }
 
         console.log(
             `Finished scraping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}, legNum = ${race.legNum}, numberOfLegs = ${race.numLegs}`
