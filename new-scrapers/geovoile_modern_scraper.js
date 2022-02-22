@@ -203,6 +203,15 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}) {
             race.name = `${race.name} - Leg ${race.legNum}`;
         }
 
+        // skip scrape other data
+        if (race.eventState !== 'FINISH' && race.raceState !== 'FINISH') {
+            return {
+                geovoileRace: race,
+                source: SOURCE,
+                redirectUrl,
+            };
+        }
+
         console.log('Getting boat information');
         const { boats, sailors, positions } = await page.evaluate(() => {
             const sailors = [];
@@ -444,20 +453,19 @@ async function registerFailed(url, redirectUrl, err) {
     let processedCount = 0;
     let failedCount = 0;
     console.log(urls);
+    let existingUrls;
+    try {
+        existingUrls = await getExistingUrls(SOURCE);
+    } catch (err) {
+        console.log('Error getting existing urls', err);
+        process.exit();
+    }
     while (urls.length) {
         const url = urls.shift();
         if (processedUrls.has(url)) {
             console.log(`This url = ${url} is processed, move to next one`);
             continue;
         }
-        let existingUrls;
-        try {
-            existingUrls = await getExistingUrls(SOURCE);
-        } catch (err) {
-            console.log('Error getting existing urls', err);
-            process.exit();
-        }
-
         if (existingUrls.includes(url)) {
             console.log(`url: ${url} is scraped, ignore`);
             continue;
@@ -485,10 +493,10 @@ async function registerFailed(url, redirectUrl, err) {
         if (!result) {
             continue;
         }
-        // if race is finished, clean it up in elastic search
+        // if race is not finished, push the race in excluded ids
         if (
-            result.geovoileRace?.eventState === 'FINISH' ||
-            result.geovoileRace?.raceState === 'FINISH'
+            result.geovoileRace?.eventState !== 'FINISH' &&
+            result.geovoileRace?.raceState !== 'FINISH'
         ) {
             scrapedUnfinishedOrigIds.push(result.geovoileRace.scrapedUrl);
         }
