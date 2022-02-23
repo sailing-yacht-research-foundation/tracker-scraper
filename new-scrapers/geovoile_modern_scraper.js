@@ -443,7 +443,21 @@ async function registerFailed(url, redirectUrl, err) {
         process.exit();
     }
 
-    // put the unfinished url for re-scraping
+    // In geovoile from the main website, we scrape the list of geovoile races
+    // For example: http://www.geovoile.com/archives_2021.asp will list all races in 2021.
+    // From this page, we will get the list of all races.
+    // For example: http://defi-azimut.geovoile.com/2020/tracker/ will have 2 races
+    // And from each race, we will get the list of legs for this races.
+    // For example:
+    // leg 1: https://defi-azimut.geovoile.com/2020/tracker
+    // leg 2: https://defi-azimut.geovoile.com/2020/tracker/?leg=2
+    // If leg1 is finished, and leg2 is on going.
+    // So leg1 is scraped and stored in our database
+    // Leg2 is scraped and stored in the elastic search and marks as unfinished
+    // Next time we run the scraper, since leg1 is finished and added to the existing url.
+    // So we won't be able to get leg2 url from leg1 url anymore.
+    // We will get leg2 url by unfinishedRaceIdsMap
+
     for (const key of Object.keys(unfinishedRaceIdsMap)) {
         urls.push(key);
     }
