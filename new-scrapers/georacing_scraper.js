@@ -7,6 +7,8 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
@@ -36,6 +38,15 @@ const {
         process.exit();
     }
 
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
+
     try {
         allRacesRequest = await axios.get(allRacesURL);
     } catch (err) {
@@ -43,7 +54,6 @@ const {
         process.exit();
     }
     const allEvents = allRacesRequest.data.events;
-
     for (const eventsIndex in allEvents) {
         const event = allEvents[eventsIndex];
         const nowStamp = new Date().getTime();
@@ -106,8 +116,9 @@ const {
                         race
                     );
 
+                    const originalRaceId = race.id.toString();
                     const raceObjSave = {
-                        id: uuidv4(),
+                        id: unfinishedRaceIdsMap[originalRaceId] || uuidv4(),
                         original_id: race.id,
                         event: eventObjSave.id,
                         event_original_id: eventObjSave.original_id,
@@ -125,7 +136,11 @@ const {
                     const isFutureRace =
                         raceStartDateStamp > nowStamp ||
                         raceEndDateStamp > nowStamp;
-
+                    if (isFutureRace) {
+                        scrapedUnfinishedOrigIds.push(
+                            raceObjSave.original_id.toString()
+                        );
+                    }
                     const lineSave = [];
                     const groundPlaceSave = [];
                     const positionSave = [];
@@ -406,6 +421,7 @@ const {
             await registerFailedUrl(SOURCE, event.id, err.toString());
         }
     }
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     process.exit();
 })();
 
