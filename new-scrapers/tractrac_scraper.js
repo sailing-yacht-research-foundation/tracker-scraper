@@ -934,6 +934,27 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                         details,
                         raceToFormat
                     );
+
+                    if (!thingsToSave.competitorsToSave.length) {
+                        const errMsg = 'No boats in race';
+                        await registerFailedUrl(
+                            SOURCE,
+                            raceObject.url_html,
+                            errMsg
+                        );
+                        continue;
+                    }
+
+                    if (!thingsToSave.competitorPositionsToSave.length) {
+                        const errMsg = 'No positions in race';
+                        await registerFailedUrl(
+                            SOURCE,
+                            raceObject.url_html,
+                            errMsg
+                        );
+                        continue;
+                    }
+
                     objectsToSave = {
                         TracTracClass: thingsToSave.classesToSave,
                         TracTracRaceClass: thingsToSave.raceClassesToSave,
@@ -1035,8 +1056,9 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
             continue;
         }
 
-        for (const raceIndex in clubRacesRequest.data.races) {
-            const raceObject = clubRacesRequest.data.races[raceIndex];
+        const clubRaces = clubRacesRequest.data.races;
+        for (const raceIndex in clubRaces) {
+            const raceObject = clubRaces[raceIndex];
             /**
             *
             * Race object
@@ -1107,6 +1129,28 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                         details,
                         raceToFormat
                     );
+
+                    if (!thingsToSave.competitorsToSave.length) {
+                        const errMsg = 'No boats in race';
+                        console.log(errMsg);
+                        await registerFailedUrl(
+                            SOURCE,
+                            raceObject.url_html,
+                            errMsg
+                        );
+                        continue;
+                    }
+
+                    if (!thingsToSave.competitorPositionsToSave.length) {
+                        const errMsg = 'No positions in race';
+                        console.log(errMsg);
+                        await registerFailedUrl(
+                            SOURCE,
+                            raceObject.url_html,
+                            errMsg
+                        );
+                        continue;
+                    }
 
                     objectsToSave = {
                         TracTracClass: thingsToSave.classesToSave,

@@ -649,6 +649,14 @@ const parser = require('xml2json');
                 }
             }
 
+            if (!boatsToSave.length) {
+                throw new Error('No boats in race');
+            }
+
+            if (!positionsToSave.length) {
+                throw new Error('No positions in race');
+            }
+
             const objectsToSave = {
                 TackTrackerRace: [raceToSave],
                 TackTrackerBoat: boatsToSave,

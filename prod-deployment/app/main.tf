@@ -318,7 +318,7 @@ resource "aws_ecs_task_definition" "metasail-scraper-prod" {
       "name": "metasail-scraper",
       "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
-      "command": ["node","--max_old_space_size=8048","new-scrapers/metasail_scraper.js"],
+      "command": ["node","--max_old_space_size=12288","new-scrapers/metasail_scraper.js"],
 
       "environmentFiles": [
                {
@@ -336,14 +336,14 @@ resource "aws_ecs_task_definition" "metasail-scraper-prod" {
         }
       },
       "workingDirectory": "/home/node/app",
-      "memory": 12288,
+      "memory": 16384,
       "cpu": 2048
     }
   ]
   DEFINITION
   requires_compatibilities = ["FARGATE"] # Stating that we are using ECS Fargate
   network_mode             = "awsvpc"    # Using awsvpc as our network mode as this is required for Fargate
-  memory                   = 12288        # Specifying the memory our container requires
+  memory                   = 16384        # Specifying the memory our container requires
   cpu                      = 2048        # Specifying the CPU our container requires
   execution_role_arn       = aws_iam_role.scraperTaskExecutionRole.arn
 }
@@ -875,8 +875,8 @@ resource "aws_cloudwatch_event_target" "tractrac-scraper-prod-daily-target" {
 #cloudwatch events for yatchbot
 resource "aws_cloudwatch_event_rule" "yachtbot-scraper-prod-daily" {
   name                = "yachtbot-scraper-prod-daily"
-  description         = "Runs the yachtbot scraper daily at 1:00AM (UTC)"
-  schedule_expression = "cron(00 01 * * ? *)"
+  description         = "Runs the yachtbot scraper daily at 3:00AM (UTC)"
+  schedule_expression = "cron(00 03 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
 
