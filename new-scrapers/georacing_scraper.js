@@ -133,10 +133,10 @@ const {
                         player_version: playerVersion,
                     };
 
-                    const isFutureRace =
+                    const isUnfinished =
                         raceStartDateStamp > nowStamp ||
                         raceEndDateStamp > nowStamp;
-                    if (isFutureRace) {
+                    if (isUnfinished) {
                         scrapedUnfinishedOrigIds.push(
                             raceObjSave.original_id.toString()
                         );
@@ -191,7 +191,7 @@ const {
                             });
                         }
                         // only do for finished race, future race will skip this step
-                        if (!isFutureRace) {
+                        if (!isUnfinished) {
                             const {
                                 groundPlaces,
                                 lines,
@@ -277,7 +277,7 @@ const {
                                 }
                             }
                         }
-                    } else if (playerVersion === 3 && !isFutureRace) {
+                    } else if (playerVersion === 3 && !isUnfinished) {
                         console.log('Version 3!', {
                             playerName: race.player_name,
                         });
@@ -353,11 +353,11 @@ const {
                         }
                     } else {
                         console.log(
-                            `Race player has version ${playerVersion} url is ${race.player_name}, isFutureRace = ${isFutureRace}`
+                            `Race player has version ${playerVersion} url is ${race.player_name}, isUnfinished  = ${isUnfinished}`
                         );
                     }
 
-                    if (positionSave.length === 0 && !isFutureRace) {
+                    if (positionSave.length === 0 && !isUnfinished) {
                         console.log('No positions. Skipping.');
                         continue;
                     }
@@ -401,11 +401,7 @@ const {
 
             if (objectsToSave.GeoracingRace.length > 0) {
                 try {
-                    await createAndSendTempJsonFile(
-                        objectsToSave,
-                        null,
-                        objectsToSave.GeoracingEvent[0].original_id
-                    );
+                    await createAndSendTempJsonFile(objectsToSave);
                 } catch (err) {
                     console.log(
                         `Failed creating and sending temp json file for event id ${event.id}`
