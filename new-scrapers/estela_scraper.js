@@ -6,6 +6,8 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 const LIMIT = 3000;
@@ -36,6 +38,15 @@ const PAGENUM = '{$PAGENUM$}';
         console.log('Error getting existing urls', err);
         process.exit();
     }
+
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
 
     const allRaceUrls = [];
     let counter = 1;
@@ -191,11 +202,42 @@ const PAGENUM = '{$PAGENUM$}';
 
             raceInfo.race.url = currentRaceUrl;
 
+            const newRace = {
+                id: unfinishedRaceIdsMap[raceInfo.race.id] || uuidv4(),
+                original_id: raceInfo.race.id,
+                initLon: raceInfo.race.initLon,
+                initLat: raceInfo.race.initLat,
+                end: raceInfo.race.end,
+                end_timestamp: raceInfo.race.end_timestamp,
+                ended_at: raceInfo.race.ended_at,
+                has_ended: raceInfo.race.has_ended,
+                has_started: raceInfo.race.has_started,
+                length: raceInfo.race.length,
+                name: raceInfo.race.name,
+                offset: raceInfo.race.offset,
+                onset: raceInfo.race.onset,
+                onset_timestamp: raceInfo.race.onset_timestamp,
+                scheduled_timestamp: raceInfo.race.scheduled_timestamp,
+                start: raceInfo.race.start,
+                start_timestamp: raceInfo.race.start_timestamp,
+                url: raceInfo.race.url,
+            };
+
+            const now = Date.now();
             if (
-                raceInfo.race.start_timestamp * 1000 > Date.now() ||
-                !raceInfo.race.has_ended
+                raceInfo.race.start_timestamp * 1000 > now ||
+                !raceInfo.race.has_ended ||
+                raceInfo.race.end_timestamp * 1000 > now
             ) {
-                console.log('Future race, skipping.');
+                console.log(
+                    'Unfinished race. Only scraping race info',
+                    newRace
+                );
+                await createAndSendTempJsonFile({
+                    EstelaRace: [newRace],
+                });
+                console.log('Finished sending unfinished race.');
+                scrapedUnfinishedOrigIds.push(newRace.original_id);
                 continue;
             }
 
@@ -395,32 +437,14 @@ const PAGENUM = '{$PAGENUM$}';
                 raceInfo.clubOriginalId = raceInfo.club.id;
             }
 
-            const newRace = {
-                id: uuidv4(),
-                original_id: raceInfo.race.id,
-                initLon: raceInfo.race.initLon,
-                initLat: raceInfo.race.initLat,
-                end: raceInfo.race.end,
-                end_timestamp: raceInfo.race.end_timestamp,
-                ended_at: raceInfo.race.ended_at,
-                has_ended: raceInfo.race.has_ended,
-                has_started: raceInfo.race.has_started,
-                length: raceInfo.race.length,
-                name: raceInfo.race.name,
-                offset: raceInfo.race.offset,
-                onset: raceInfo.race.onset,
-                onset_timestamp: raceInfo.race.onset_timestamp,
-                scheduled_timestamp: raceInfo.race.scheduled_timestamp,
-                start: raceInfo.race.start,
-                start_timestamp: raceInfo.race.start_timestamp,
-                url: raceInfo.race.url,
+            Object.assign(newRace, {
                 gpx: raceInfo.race.gpx,
                 winds_csv: raceInfo.race.wind,
                 leg_winds_csv: raceInfo.race.legWind,
                 results_csv: raceInfo.race.resultsData,
                 club: raceInfo.newClubId,
                 club_original_id: raceInfo.clubOriginalId,
-            };
+            });
 
             const buoyIds = {};
             raceInfo.race.buoys.forEach((b) => {
@@ -557,6 +581,7 @@ const PAGENUM = '{$PAGENUM$}';
         }
     }
 
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     page.close();
     browser.close();
     process.exit();
