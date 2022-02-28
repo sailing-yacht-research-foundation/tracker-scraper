@@ -459,6 +459,10 @@ async function registerFailed(url, redirectUrl, err) {
     // We will get leg2 url by unfinishedRaceIdsMap
 
     for (const key of Object.keys(unfinishedRaceIdsMap)) {
+        // check for duplicate url
+        if (urls.includes(key)) {
+            continue;
+        }
         urls.push(key);
     }
 
@@ -468,6 +472,7 @@ async function registerFailed(url, redirectUrl, err) {
     const rootUrlMap = new Map();
     let processedCount = 0;
     let failedCount = 0;
+    console.log(`The number of urls need to be scraped = ${urls.length}`);
     console.log(urls);
     let existingUrls;
     try {
@@ -478,7 +483,7 @@ async function registerFailed(url, redirectUrl, err) {
     }
     while (urls.length) {
         const url = urls.shift();
-        if (processedUrls.has(url)) {
+        if (processedUrls.has(_getBaseurl(url))) {
             console.log(`This url = ${url} is processed, move to next one`);
             continue;
         }
@@ -496,7 +501,7 @@ async function registerFailed(url, redirectUrl, err) {
             continue;
         }
         if (!result || !result.geovoileRace) {
-            console.log(`Failed to scrap data  for url ${url}`);
+            console.log(`Failed to scrap data for url ${url}`);
             failedCount++;
             await registerFailed(
                 url,
@@ -517,8 +522,8 @@ async function registerFailed(url, redirectUrl, err) {
             scrapedUnfinishedOrigIds.push(result.geovoileRace.scrapedUrl);
         }
 
-        processedUrls.add(result.geovoileRace.url);
-        processedUrls.add(result.geovoileRace.scrapedUrl);
+        processedUrls.add(_getBaseurl(result.geovoileRace.url));
+        processedUrls.add(_getBaseurl(result.geovoileRace.scrapedUrl));
         const { geovoileRace } = result;
 
         // In case the race has more than one leg.
@@ -555,7 +560,7 @@ async function registerFailed(url, redirectUrl, err) {
                     }
                     const newUrl = geovoileRace.url.replace(regex, `leg0${i}`);
 
-                    if (!processedUrls.has(newUrl)) {
+                    if (!processedUrls.has(_getBaseurl(newUrl))) {
                         console.log(
                             `This race has multiple legs, adding new url by replacing path parameter = ${newUrl}`
                         );
@@ -575,7 +580,7 @@ async function registerFailed(url, redirectUrl, err) {
                         continue;
                     }
                     const newUrl = `${geovoileRace.scrapedUrl}?leg=${i}`;
-                    if (!processedUrls.has(newUrl)) {
+                    if (!processedUrls.has(_getBaseurl(newUrl))) {
                         console.log(
                             `This race has multiple legs, adding new url by replacing query parameter = ${newUrl}`
                         );
@@ -625,4 +630,19 @@ const _createGeometryLine = (
             { position: [point2Lon, point2Lat] },
         ],
     };
+};
+
+/**
+ * Take a http, https, and return url without prefix
+ * For example: https://gitana-team.geovoile.com/tropheejulesverne/2021/
+ * Return gitana-team.geovoile.com/tropheejulesverne/2021/
+ * @param {String} url
+ * @returns base url without http or https
+ */
+const _getBaseurl = (url) => {
+    if (!url) {
+        return url;
+    }
+    url = url.replace('https://', '').replace('http://', '');
+    return url;
 };
