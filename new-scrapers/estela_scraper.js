@@ -44,7 +44,7 @@ const PAGENUM = '{$PAGENUM$}';
                 `--proxy-server=${PROXY_HOST}:${PROXY_PORT}`,
             ];
         }
-        browser = await launchBrowser(puppeteerOptions.args);
+        browser = await launchBrowser(puppeteerOptions);
         page = await browser.newPage();
         if (PROXY_USERNAME && PROXY_PASSWORD) {
             await page.authenticate({
