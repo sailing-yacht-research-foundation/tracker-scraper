@@ -7,6 +7,8 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { v4: uuidv4 } = require('uuid');
 const SOURCE = 'geovoile';
@@ -123,7 +125,7 @@ function getRootUrl(url) {
  * @param {string} url
  * @returns scraped data
  */
-async function scrapePage(url) {
+async function scrapePage(url, unfinishedRaceIdsMap = {}) {
     const browser = await launchBrowser();
     const page = await browser.newPage();
     try {
@@ -193,11 +195,99 @@ async function scrapePage(url) {
                 scrapedUrl: '',
             };
         });
-        race.id = uuidv4();
-        race.original_id = uuidv4();
         race.scrapedUrl = url;
+        const existingRaceId = unfinishedRaceIdsMap[race.scrapedUrl];
+        race.id = existingRaceId || uuidv4();
+        race.original_id = uuidv4();
         if (race?.numLegs > 1) {
             race.name = `${race.name} - Leg ${race.legNum}`;
+        }
+
+        const sig = await page.evaluate(() => {
+            const mapBounds = sig.mapBounds;
+            const mapArea = sig._mapArea;
+            const route = sig.route;
+            const rule = sig.rule;
+            const sigBounds = sig.sigBounds;
+            const projection = sig._projection;
+            const raceAreas = sig._raceAreas;
+            const raceGates = sig._raceGates;
+            const shape = sig._shape;
+            return {
+                mapArea,
+                mapBounds,
+                route,
+                rule,
+                sigBounds,
+                projection,
+                raceAreas,
+                raceGates,
+                shape,
+            };
+        });
+
+        const courseGates = [];
+        if (sig?.raceGates?.length) {
+            let order = 0;
+            for (const gate of sig.raceGates) {
+                const line = _createGeometryLine(
+                    {
+                        lat: gate._pointA[1],
+                        lon: gate._pointA[0],
+                    },
+                    {
+                        lat: gate._pointB[1],
+                        lon: gate._pointB[0],
+                    },
+                    { name: gate.id }
+                );
+                courseGates.push({
+                    id: uuidv4(),
+                    race_id: race.id,
+                    race_original_id: race.original_id,
+                    order,
+                    ...line,
+                });
+            }
+            order++;
+        }
+        const marks = await page.evaluate(() => {
+            const allMarks = [];
+            document.querySelectorAll('#poiLayer g[rel="0"] g').forEach((i) => {
+                const transformVal = i.getAttribute('transform');
+                const name = i.querySelector('text')?.textContent || '';
+                const type = i.getAttribute('class')?.trim() || '';
+                const xy = transformVal
+                    .match(/-?\d+(\.\d+)? -?\d+(\.\d+)?/g)[0]
+                    .split(' ');
+                const lon = sig.getLng(xy[0], xy[1]);
+                const lat = sig.getLat(xy[0], xy[1]);
+                allMarks.push({
+                    name,
+                    type,
+                    lon,
+                    lat,
+                    xy,
+                });
+            });
+
+            return allMarks;
+        });
+
+        for (const mark of marks) {
+            mark.race_original_id = race.original_id;
+            mark.race_id = race.id;
+        }
+
+        // skip scrape other data
+        if (race.eventState !== 'FINISH' && race.raceState !== 'FINISH') {
+            return {
+                geovoileRace: race,
+                source: SOURCE,
+                redirectUrl,
+                marks,
+                courseGates,
+            };
         }
 
         console.log('Getting boat information');
@@ -303,82 +393,6 @@ async function scrapePage(url) {
             });
         });
 
-        const sig = await page.evaluate(() => {
-            const mapBounds = sig.mapBounds;
-            const mapArea = sig._mapArea;
-            const route = sig.route;
-            const rule = sig.rule;
-            const sigBounds = sig.sigBounds;
-            const projection = sig._projection;
-            const raceAreas = sig._raceAreas;
-            const raceGates = sig._raceGates;
-            const shape = sig._shape;
-            return {
-                mapArea,
-                mapBounds,
-                route,
-                rule,
-                sigBounds,
-                projection,
-                raceAreas,
-                raceGates,
-                shape,
-            };
-        });
-
-        const courseGates = [];
-        if (sig?.raceGates?.length) {
-            let order = 0;
-            for (const gate of sig.raceGates) {
-                const line = _createGeometryLine(
-                    {
-                        lat: gate._pointA[1],
-                        lon: gate._pointA[0],
-                    },
-                    {
-                        lat: gate._pointB[1],
-                        lon: gate._pointB[0],
-                    },
-                    { name: gate.id }
-                );
-                courseGates.push({
-                    id: uuidv4(),
-                    race_id: race.id,
-                    race_original_id: race.original_id,
-                    order,
-                    ...line,
-                });
-            }
-            order++;
-        }
-        const marks = await page.evaluate(() => {
-            const allMarks = [];
-            document.querySelectorAll('#poiLayer g[rel="0"] g').forEach((i) => {
-                const transformVal = i.getAttribute('transform');
-                const name = i.querySelector('text')?.textContent || '';
-                const type = i.getAttribute('class')?.trim() || '';
-                const xy = transformVal
-                    .match(/-?\d+(\.\d+)? -?\d+(\.\d+)?/g)[0]
-                    .split(' ');
-                const lon = sig.getLng(xy[0], xy[1]);
-                const lat = sig.getLat(xy[0], xy[1]);
-                allMarks.push({
-                    name,
-                    type,
-                    lon,
-                    lat,
-                    xy,
-                });
-            });
-
-            return allMarks;
-        });
-
-        for (const mark of marks) {
-            mark.race_original_id = race.original_id;
-            mark.race_id = race.id;
-        }
-
         console.log(
             `Finished scraping ${race.name}, total boats = ${boats.length}, total reports = ${reports.length}, legNum = ${race.legNum}, numberOfLegs = ${race.numLegs}`
         );
@@ -421,34 +435,70 @@ async function registerFailed(url, redirectUrl, err) {
         console.log('Failed getting race urls', err);
         process.exit();
     }
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+
+    // In geovoile from the main website, we scrape the list of geovoile races
+    // For example: http://www.geovoile.com/archives_2021.asp will list all races in 2021.
+    // From this page, we will get the list of all races.
+    // For example: http://defi-azimut.geovoile.com/2020/tracker/ will have 2 races
+    // And from each race, we will get the list of legs for this races.
+    // For example:
+    // leg 1: https://defi-azimut.geovoile.com/2020/tracker
+    // leg 2: https://defi-azimut.geovoile.com/2020/tracker/?leg=2
+    // If leg1 is finished, and leg2 is on going.
+    // So leg1 is scraped and stored in our database
+    // Leg2 is scraped and stored in the elastic search and marks as unfinished
+    // Next time we run the scraper, since leg1 is finished and added to the existing url.
+    // So we won't be able to get leg2 url from leg1 url anymore.
+    // We will get leg2 url by unfinishedRaceIdsMap
+
+    for (const key of Object.keys(unfinishedRaceIdsMap)) {
+        // check for duplicate url
+        if (urls.includes(key)) {
+            continue;
+        }
+        urls.push(key);
+    }
+
+    const scrapedUnfinishedOrigIds = [];
 
     const processedUrls = new Set();
     const rootUrlMap = new Map();
     let processedCount = 0;
     let failedCount = 0;
+    console.log(`The number of urls need to be scraped = ${urls.length}`);
     console.log(urls);
+    const existingUrls = new Set();
+    try {
+        const currentExistingUrls = await getExistingUrls(SOURCE);
+        for (const url of currentExistingUrls) {
+            existingUrls.add(_getBaseurl(url));
+        }
+    } catch (err) {
+        console.log('Error getting existing urls', err);
+        process.exit();
+    }
+
     while (urls.length) {
         const url = urls.shift();
-        if (processedUrls.has(url)) {
+        const baseUrl = _getBaseurl(url);
+        if (processedUrls.has(baseUrl)) {
             console.log(`This url = ${url} is processed, move to next one`);
             continue;
         }
-        let existingUrls;
-        try {
-            existingUrls = await getExistingUrls(SOURCE);
-        } catch (err) {
-            console.log('Error getting existing urls', err);
-            process.exit();
-        }
-
-        if (existingUrls.includes(url)) {
+        if (existingUrls.has(baseUrl)) {
             console.log(`url: ${url} is scraped, ignore`);
             continue;
         }
-
         let result;
         try {
-            result = await scrapePage(url);
+            result = await scrapePage(url, unfinishedRaceIdsMap);
         } catch (e) {
             console.log(`Failed to scrap data  for url ${url}`);
             await registerFailed(url, null, e.toString());
@@ -456,7 +506,7 @@ async function registerFailed(url, redirectUrl, err) {
             continue;
         }
         if (!result || !result.geovoileRace) {
-            console.log(`Failed to scrap data  for url ${url}`);
+            console.log(`Failed to scrap data for url ${url}`);
             failedCount++;
             await registerFailed(
                 url,
@@ -466,19 +516,19 @@ async function registerFailed(url, redirectUrl, err) {
             continue;
         }
 
-        if (
-            !result ||
-            (result.geovoileRace.eventState !== 'FINISH' &&
-                result.geovoileRace.raceState !== 'FINISH')
-        ) {
-            console.log(
-                `Race ${url} is not finished, current state = ${result.geovoileRace.raceState}, event state = ${result.geovoileRace.eventState}, temporary ignore this race`
-            );
+        if (!result) {
             continue;
         }
+        // if race is not finished, push the race in excluded ids
+        if (
+            result.geovoileRace?.eventState !== 'FINISH' &&
+            result.geovoileRace?.raceState !== 'FINISH'
+        ) {
+            scrapedUnfinishedOrigIds.push(result.geovoileRace.scrapedUrl);
+        }
 
-        processedUrls.add(result.geovoileRace.url);
-        processedUrls.add(result.geovoileRace.scrapedUrl);
+        processedUrls.add(_getBaseurl(result.geovoileRace.url));
+        processedUrls.add(_getBaseurl(result.geovoileRace.scrapedUrl));
         const { geovoileRace } = result;
 
         // In case the race has more than one leg.
@@ -515,7 +565,7 @@ async function registerFailed(url, redirectUrl, err) {
                     }
                     const newUrl = geovoileRace.url.replace(regex, `leg0${i}`);
 
-                    if (!processedUrls.has(newUrl)) {
+                    if (!processedUrls.has(_getBaseurl(newUrl))) {
                         console.log(
                             `This race has multiple legs, adding new url by replacing path parameter = ${newUrl}`
                         );
@@ -535,7 +585,7 @@ async function registerFailed(url, redirectUrl, err) {
                         continue;
                     }
                     const newUrl = `${geovoileRace.scrapedUrl}?leg=${i}`;
-                    if (!processedUrls.has(newUrl)) {
+                    if (!processedUrls.has(_getBaseurl(newUrl))) {
                         console.log(
                             `This race has multiple legs, adding new url by replacing query parameter = ${newUrl}`
                         );
@@ -565,6 +615,7 @@ async function registerFailed(url, redirectUrl, err) {
         }
     }
 
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     console.log(
         `Finished scraping geovoile modern. Total processed urls = ${processedCount}, failed urls = ${failedCount}`
     );
@@ -584,4 +635,19 @@ const _createGeometryLine = (
             { position: [point2Lon, point2Lat] },
         ],
     };
+};
+
+/**
+ * Take a http, https, and return url without prefix
+ * For example: https://gitana-team.geovoile.com/tropheejulesverne/2021/
+ * Return gitana-team.geovoile.com/tropheejulesverne/2021/
+ * @param {String} url
+ * @returns base url without http or https
+ */
+const _getBaseurl = (url) => {
+    if (!url) {
+        return url;
+    }
+    url = url.replace('https://', '').replace('http://', '');
+    return url;
 };
