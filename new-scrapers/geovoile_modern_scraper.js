@@ -474,20 +474,25 @@ async function registerFailed(url, redirectUrl, err) {
     let failedCount = 0;
     console.log(`The number of urls need to be scraped = ${urls.length}`);
     console.log(urls);
-    let existingUrls;
+    const existingUrls = new Set();
     try {
-        existingUrls = await getExistingUrls(SOURCE);
+        const currentExistingUrls = await getExistingUrls(SOURCE);
+        for (const url of currentExistingUrls) {
+            existingUrls.add(_getBaseurl(url));
+        }
     } catch (err) {
         console.log('Error getting existing urls', err);
         process.exit();
     }
+
     while (urls.length) {
         const url = urls.shift();
-        if (processedUrls.has(_getBaseurl(url))) {
+        const baseUrl = _getBaseurl(url);
+        if (processedUrls.has(baseUrl)) {
             console.log(`This url = ${url} is processed, move to next one`);
             continue;
         }
-        if (existingUrls.includes(url)) {
+        if (existingUrls.has(baseUrl)) {
             console.log(`url: ${url} is scraped, ignore`);
             continue;
         }
