@@ -5,8 +5,10 @@ const { v4: uuidv4 } = require('uuid');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
-    getExistingUrls,
+    getExistingData,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 const METASAIL_EVENT_URL = 'https://www.metasail.it';
@@ -20,13 +22,35 @@ const SOURCE = 'metasail';
     }
 
     let browser, page, eventUrls;
-    let existingUrls;
+    let existingRaceOrigIds;
     try {
-        existingUrls = await getExistingUrls(SOURCE);
+        const existingData = await getExistingData(SOURCE);
+        // Need to use original id instead of URL since metasail url contains token that changes in each visit
+        existingRaceOrigIds = existingData.reduce((acc, d) => {
+            if (d.original_id) {
+                acc.push(d.original_id);
+            } else {
+                // Failed records does not have original id so need to parse url to get original_id
+                const { idgara } = _parseRaceUrl(d.url);
+                if (idgara) {
+                    acc.push(idgara);
+                }
+            }
+            return acc;
+        }, []);
     } catch (err) {
         console.log('Error getting existing urls', err);
         process.exit();
     }
+
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
 
     try {
         browser = await launchBrowser();
@@ -41,13 +65,7 @@ const SOURCE = 'metasail';
         console.log(
             `Scraping event index ${urlIndex} of ${eventUrls.length} with url ${eventUrl}`
         );
-        const raceId = eventUrl.split('/').pop();
-        if (existingUrls.includes(eventUrl)) {
-            console.log(
-                `Event url already exist in database ${eventUrl}. Skipping.`
-            );
-            continue;
-        }
+        const eventOrigId = eventUrl.split('/').pop();
         try {
             const validEvent = await isValidEvent(eventUrl, page);
             if (!validEvent) {
@@ -63,15 +81,10 @@ const SOURCE = 'metasail';
             } = await getPageData(page);
 
             const { startDate, endDate } = getEventStartAndEndDate(eventDates);
-            const now = new Date().getTime();
-            if (startDate.getTime() > now || endDate.getTime() > now) {
-                console.log('Event starts or ends in future so skipping.');
-                continue;
-            }
 
             const currentEvent = {
                 id: uuidv4(),
-                original_id: raceId,
+                original_id: eventOrigId,
                 name: eventName,
                 external_website: eventOfficialWebsite,
                 url: eventUrl,
@@ -85,24 +98,17 @@ const SOURCE = 'metasail';
                 console.log('No race associated to event. Skipping.');
                 continue;
             }
-            const objectsToSave = {
-                MetasailEvent: [currentEvent],
-                MetasailRace: [],
-                MetasailBoat: [],
-                MetasailBuoy: [],
-                MetasailGate: [],
-                MetasailPosition: [],
-            };
-            for (const raceIndex in raceUrls) {
-                const currentRaceUrl = raceUrls[raceIndex];
-                if (existingUrls.includes(eventUrl)) {
+
+            for (const currentRaceUrl of raceUrls) {
+                console.log(`Scraping race url ${currentRaceUrl}`);
+
+                const { idgara: raceOrigId } = _parseRaceUrl(currentRaceUrl);
+                if (existingRaceOrigIds.includes(raceOrigId)) {
                     console.log(
-                        `Race url already exist in database ${currentRaceUrl}. Skipping.`
+                        `Race with idgara ${raceOrigId} already exist in database. Skipping.`
                     );
                     continue;
                 }
-                console.log(`Scraping race url ${currentRaceUrl}`);
-
                 try {
                     const {
                         unknownIdentifier,
@@ -110,31 +116,8 @@ const SOURCE = 'metasail';
                         raceData,
                         redirectedUrl,
                     } = await fetchRaceData(currentRaceUrl, browser);
-                    const newRaceId = uuidv4();
-                    const {
-                        newGates,
-                        newBuoys,
-                        buoyIds,
-                    } = buildGateAndBuoyData(newRaceId, raceData, idgara);
-                    const { boatOldIdsToNewIds, newBoats } = buildBoatData(
-                        newRaceId,
-                        raceData,
-                        idgara,
-                        buoyIds
-                    );
-                    const allPointsForId = await fetchRaceAllPoints(
-                        currentEvent,
-                        newRaceId,
-                        buoyIds,
-                        boatOldIdsToNewIds,
-                        unknownIdentifier,
-                        idgara
-                    );
-                    const stats = await fetchRaceStats(
-                        currentRaceUrl,
-                        unknownIdentifier,
-                        idgara
-                    );
+
+                    const newRaceId = unfinishedRaceIdsMap[idgara] || uuidv4();
 
                     const newRace = {
                         id: newRaceId,
@@ -143,25 +126,85 @@ const SOURCE = 'metasail';
                         start: raceData.start,
                         stop: raceData.stop,
                         url: redirectedUrl,
-                        stats: stats,
                         event: currentEvent.id,
                         event_original_id: currentEvent.original_id,
-                        passings: JSON.stringify(raceData.buoyPasses),
+                    };
+                    if (raceData.buoyPasses) {
+                        newRace.passings = JSON.stringify(raceData.buoyPasses);
+                    }
+
+                    const {
+                        newGates,
+                        newBuoys,
+                        buoyIds,
+                    } = buildGateAndBuoyData(newRaceId, raceData, idgara);
+
+                    const objectsToSave = {
+                        MetasailEvent: [currentEvent],
+                        MetasailRace: [newRace],
+                        MetasailBuoy: newBuoys,
+                        MetasailGate: newGates,
                     };
 
-                    objectsToSave.MetasailRace.push(newRace);
-                    objectsToSave.MetasailBuoy = objectsToSave.MetasailBuoy.concat(
-                        newBuoys
-                    );
-                    objectsToSave.MetasailBoat = objectsToSave.MetasailBoat.concat(
-                        newBoats
-                    );
-                    objectsToSave.MetasailGate = objectsToSave.MetasailGate.concat(
-                        newGates
-                    );
-                    objectsToSave.MetasailPosition = objectsToSave.MetasailPosition.concat(
-                        Object.values(allPointsForId).flat()
-                    );
+                    const now = Date.now();
+                    if (
+                        raceData.start > now ||
+                        raceData.stop > now ||
+                        raceData.stop < 0 ||
+                        typeof raceData.stop === 'undefined'
+                    ) {
+                        // live race has negative stop time
+                        console.log(
+                            'Unfinished race. Only scraping race info and buoys'
+                        );
+                        scrapedUnfinishedOrigIds.push(idgara);
+                    } else {
+                        const { boatOldIdsToNewIds, newBoats } = buildBoatData(
+                            newRaceId,
+                            raceData,
+                            idgara,
+                            buoyIds
+                        );
+                        const allPointsForId = await fetchRaceAllPoints(
+                            currentEvent,
+                            newRaceId,
+                            buoyIds,
+                            boatOldIdsToNewIds,
+                            unknownIdentifier,
+                            idgara
+                        );
+                        const stats = await fetchRaceStats(
+                            currentRaceUrl,
+                            unknownIdentifier,
+                            idgara
+                        );
+                        newRace.stats = stats;
+
+                        if (!newBoats.length) {
+                            throw new Error('No boats in race');
+                        }
+
+                        const newPositions = Object.values(
+                            allPointsForId
+                        ).flat();
+                        if (!newPositions.length) {
+                            throw new Error('No positions in race');
+                        }
+                        Object.assign(objectsToSave, {
+                            MetasailBoat: newBoats,
+                            MetasailPosition: newPositions,
+                        });
+                    }
+
+                    try {
+                        await createAndSendTempJsonFile(objectsToSave);
+                    } catch (err) {
+                        console.log(
+                            `Failed creating and sending temp json file race original id ${idgara}`,
+                            err
+                        );
+                        throw err;
+                    }
                     console.log('Finished scraping race.');
                 } catch (err) {
                     console.log('Error in scraping race', err);
@@ -173,16 +216,6 @@ const SOURCE = 'metasail';
                 }
             } // End of visiting all races
             console.log('Finished visiting all race urls.');
-            console.log('Saving data');
-            try {
-                await createAndSendTempJsonFile(objectsToSave);
-            } catch (err) {
-                console.log(
-                    `Failed creating and sending temp json file for url ${currentEvent.url}`,
-                    err
-                );
-                throw err;
-            }
         } catch (err) {
             console.log(err);
             await registerFailedUrl(SOURCE, eventUrl, err.toString());
@@ -190,6 +223,7 @@ const SOURCE = 'metasail';
     }
 
     console.log('Finished scraping all events.');
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     page.close();
     browser.close();
     process.exit();
@@ -220,24 +254,16 @@ async function getPageData(page) {
         ).textContent;
     });
     const eventOfficialWebsite = await page.evaluate(() => {
-        if (
-            document.querySelector(
-                '#evento-single > div > div:nth-child(2) > div.col-sm-4 > div.single-event-site > a'
-            ) !== null
-        ) {
-            return document.querySelector(
-                '#evento-single > div > div:nth-child(2) > div.col-sm-4 > div.single-event-site > a'
-            ).href;
-        } else {
-            return null;
-        }
+        const officialWebsiteDom = document.querySelector(
+            '#evento-single > div > div:nth-child(2) > div.col-sm-4 > div.single-event-site > a'
+        );
+        return officialWebsiteDom?.href || null;
     });
     const eventCategoryText = await page.evaluate(() => {
         return document.querySelector(
             '#evento-single > div > div:nth-child(2) > div.col-sm-4 > div.single-event-classi > div > dl'
         ).textContent;
     });
-
     const eventDates = await page.evaluate(() => {
         return document.querySelector(
             '#evento-single > div > div:nth-child(1) > div > div > p'
@@ -341,7 +367,7 @@ async function getRaceUrls(page) {
         }
         return urls;
     });
-    return raceUrls;
+    return raceUrls.slice(0, 2);
 }
 
 async function fetchRaceData(currentRaceUrl, browser) {
@@ -364,12 +390,7 @@ async function fetchRaceData(currentRaceUrl, browser) {
             /* eslint-enable no-undef */
         });
 
-        const unknownIdentifier = redirectedUrl.match(
-            /https:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
-        )[1];
-        const idgara = redirectedUrl.match(
-            /https:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/ViewRecordedRace(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
-        )[3];
+        const { unknownIdentifier, idgara } = _parseRaceUrl(redirectedUrl);
 
         await racePage.waitForFunction(() => 'garaList' in window, {
             timeout: 300000,
@@ -377,6 +398,7 @@ async function fetchRaceData(currentRaceUrl, browser) {
         await racePage.waitForFunction('Object.keys(garaList).length > 0', {
             timeout: 300000,
         });
+        await racePage.waitForTimeout(1000); // This is for loading the boaList[0].gpsData1, buoy's initial lat lon
 
         const raceData = await racePage.evaluate(
             () => {
@@ -394,12 +416,23 @@ async function fetchRaceData(currentRaceUrl, browser) {
                     bLP = boaListFuoriPercorso;
                 }
 
-                const name = document.querySelector('#menu-title-gara > span')
-                    .textContent;
+                let titleDom = document.querySelector(
+                    '#menu-title-gara > span'
+                );
+                if (!titleDom) {
+                    // Live races has different dom id
+                    titleDom = document.querySelector(
+                        '#menu-title-gara-Online > span'
+                    );
+                }
+                const name = titleDom?.textContent;
                 return {
                     buoyList: bL,
                     buoyListOffCourse: bLP,
-                    buoyPasses: arrayPassaggiBoe,
+                    buoyPasses:
+                        typeof arrayPassaggiBoe === 'undefined'
+                            ? undefined
+                            : arrayPassaggiBoe, // live races does not declare this var
                     raceInfo: garaInfo,
                     raceList: garaList,
                     racePathList: racePathList,
@@ -438,10 +471,10 @@ function buildGateAndBuoyData(newRaceId, raceData, idgara) {
                 name: b.boa1,
                 initials: b.sigla1,
                 description: b.descrizione1,
-                lat: b.lat1,
-                lon: b.lng1,
-                lat_m: b.latM1,
-                lon_m: b.lngM1,
+                lat: b.lat1 || b.gpsData1?.Latitudine,
+                lon: b.lng1 || b.gpsData1?.Longitudine,
+                lat_m: b.latM1 || b.gpsData1?.LatitudineMetri,
+                lon_m: b.lngM1 || b.gpsData1?.LongitudineMetri,
             };
 
             buoyIds[b.seriale1] = newMark.id;
@@ -455,10 +488,10 @@ function buildGateAndBuoyData(newRaceId, raceData, idgara) {
                 name: b.boa1,
                 initials: b.sigla1,
                 description: b.descrizione1,
-                lat: b.lat1,
-                lon: b.lng1,
-                lat_m: b.latM1,
-                lon_m: b.lngM1,
+                lat: b.lat1 || b.gpsData1?.Latitudine,
+                lon: b.lng1 || b.gpsData1?.Longitudine,
+                lat_m: b.latM1 || b.gpsData1?.LatitudineMetri,
+                lon_m: b.lngM1 || b.gpsData1?.LongitudineMetri,
             };
 
             const newMark2 = {
@@ -469,10 +502,10 @@ function buildGateAndBuoyData(newRaceId, raceData, idgara) {
                 name: b.boa2,
                 initials: b.sigla2,
                 description: b.descrizione2,
-                lat: b.lat2,
-                lon: b.lng2,
-                lat_m: b.latM2,
-                lon_m: b.lngM2,
+                lat: b.lat2 || b.gpsData2?.Latitudine,
+                lon: b.lng2 || b.gpsData2?.Longitudine,
+                lat_m: b.latM2 || b.gpsData2?.LatitudineMetri,
+                lon_m: b.lngM2 || b.gpsData2?.LongitudineMetri,
             };
             newBuoys.push(newMark1);
             newBuoys.push(newMark2);
@@ -683,11 +716,45 @@ async function getEventUrls(page) {
         waitUntil: 'networkidle0',
     });
     const eventUrls = await page.evaluate(() => {
-        return [
+        const pastEvents = [
             ...document.querySelectorAll('#past-events > div > ul > ul > li>a'),
-        ]
-            .map((e) => e.getAttribute('href'))
-            .filter((url) => url);
+        ];
+        const liveEvents = [
+            ...document.querySelectorAll('#live-events > div > ul > li>a'),
+        ];
+        const nextEvents = [
+            ...document.querySelectorAll('#next-events > div > ul > li>a'),
+        ];
+
+        return [...pastEvents, ...liveEvents, ...nextEvents].reduce(
+            (acc, e) => {
+                const url = e.getAttribute('href');
+                if (url) {
+                    acc.push(url);
+                }
+                return acc;
+            },
+            []
+        );
     });
     return eventUrls;
+}
+
+function _parseRaceUrl(url) {
+    const urlData = url.match(
+        /https:\/\/app\.metasail\.it\/\(S\((.*)\)\)\/(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
+    );
+    const unknownIdentifier = urlData?.[1];
+    let idgara = urlData?.[3];
+    if (!idgara) {
+        // metasail url only contains token if it is redirected
+        const urlData2 = url.match(
+            /https:\/\/app\.metasail\.it\/(.*)\.aspx\?idgara=([0-9]+)&token=(.*)/
+        );
+        idgara = urlData2?.[2];
+    }
+    return {
+        unknownIdentifier,
+        idgara,
+    };
 }
