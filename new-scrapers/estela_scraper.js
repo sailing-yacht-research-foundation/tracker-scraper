@@ -17,17 +17,15 @@ const PAGENUM = '{$PAGENUM$}';
 (async () => {
     const SOURCE = 'estela';
     const existingClubs = {};
+    const {
+        PROXY_HOST,
+        PROXY_PORT,
+        PROXY_USERNAME,
+        PROXY_PASSWORD,
+    } = process.env;
     let browser, page;
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
-        process.exit();
-    }
-
-    try {
-        browser = await launchBrowser();
-        page = await browser.newPage();
-    } catch (err) {
-        console.log('Failed in launching puppeteer.', err);
         process.exit();
     }
 
@@ -36,6 +34,26 @@ const PAGENUM = '{$PAGENUM$}';
         existingUrls = await getExistingUrls(SOURCE);
     } catch (err) {
         console.log('Error getting existing urls', err);
+        process.exit();
+    }
+
+    try {
+        const puppeteerOptions = {};
+        if (PROXY_HOST && PROXY_PORT) {
+            puppeteerOptions.args = [
+                `--proxy-server=${PROXY_HOST}:${PROXY_PORT}`,
+            ];
+        }
+        browser = await launchBrowser(puppeteerOptions);
+        page = await browser.newPage();
+        if (PROXY_USERNAME && PROXY_PASSWORD) {
+            await page.authenticate({
+                username: PROXY_USERNAME,
+                password: PROXY_PASSWORD,
+            });
+        }
+    } catch (err) {
+        console.log('Failed in launching puppeteer.', err);
         process.exit();
     }
 
@@ -250,20 +268,32 @@ const PAGENUM = '{$PAGENUM$}';
             const windsCsvUrl = baseUrl + '/winds.csv';
             const legWindUrl = baseUrl + '/legs-wind.csv';
             const resultsUrl = baseUrl + '/results.csv';
-            const axiosHeaders = {
+            const axiosOptions = {
                 headers: {
                     'User-Agent':
                         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)',
                 },
             };
-            const gpxRequest = await axios.get(gpxUrl, axiosHeaders);
+            if (PROXY_HOST && PROXY_PORT) {
+                axiosOptions.proxy = {
+                    host: PROXY_HOST,
+                    port: PROXY_PORT,
+                };
+                if (PROXY_USERNAME && PROXY_PASSWORD) {
+                    axiosOptions.proxy.auth = {
+                        username: process.env.PROXY_USERNAME,
+                        password: process.env.PROXY_PASSWORD,
+                    };
+                }
+            }
+            const gpxRequest = await axios.get(gpxUrl, axiosOptions);
             raceInfo.race.gpx = gpxRequest.data;
 
-            const windRequest = await axios.get(windsCsvUrl, axiosHeaders);
+            const windRequest = await axios.get(windsCsvUrl, axiosOptions);
             raceInfo.race.wind = windRequest.data;
-            const legWindRequest = await axios.get(legWindUrl, axiosHeaders);
+            const legWindRequest = await axios.get(legWindUrl, axiosOptions);
             raceInfo.race.legWind = legWindRequest.data;
-            const resultsRequest = await axios.get(resultsUrl, axiosHeaders);
+            const resultsRequest = await axios.get(resultsUrl, axiosOptions);
             raceInfo.race.resultsData = resultsRequest.data;
 
             let HAS_POSITIONS = false;
@@ -274,7 +304,7 @@ const PAGENUM = '{$PAGENUM$}';
                     'https://d22ymaefawl8oh.cloudfront.net/v2/races/' +
                         raceInfo.race.id +
                         '/positions/?limit=-1',
-                    axiosHeaders
+                    axiosOptions
                 );
                 positions = positionRequest.data.data.positions;
                 HAS_POSITIONS = true;
@@ -289,7 +319,7 @@ const PAGENUM = '{$PAGENUM$}';
                             timeParam +
                             '&limit=' +
                             positionLimit.toString(),
-                        axiosHeaders
+                        axiosOptions
                     );
                     if (positionRequest.data.data.positions.length === 0) {
                         gotThemAll = true;
@@ -338,13 +368,13 @@ const PAGENUM = '{$PAGENUM$}';
 
                 const boatTrackRequest = await axios.get(
                     boatTrackCsvUrl,
-                    axiosHeaders
+                    axiosOptions
                 );
                 d.trackCsv = boatTrackRequest.data;
 
                 const clubPageRequest = await axios.get(
                     'https://www.estela.co/clubs?key=' + k,
-                    axiosHeaders
+                    axiosOptions
                 );
                 const namePat = /<span class="panel-title">(.*)<\/span>/g;
                 const phonePat = /<small><i class="fa fa-phone"><\/i>([0-9\s]*)<\/small>/gm;
