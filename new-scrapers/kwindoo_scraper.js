@@ -123,7 +123,6 @@ const SOURCE = 'kwindoo';
                         newRace,
                         newOrExistingRegatta
                     );
-                    appendArray(objectsToSave.KwindooWaypoint, waypoints);
 
                     if (
                         newRace.start_timestamp * 1000 > now ||
@@ -131,10 +130,12 @@ const SOURCE = 'kwindoo';
                     ) {
                         // also use startTime in case end time is undefined
                         console.log('Unfinished race. Only scraping race info');
+                        appendArray(objectsToSave.KwindooWaypoint, waypoints);
                         objectsToSave.KwindooRace.push(newRace);
                         scrapedUnfinishedOrigIds.push(newRace.original_id);
                         continue;
                     }
+
                     const boats = await fetchRaceBoats(
                         newRace,
                         newOrExistingRegatta
@@ -175,6 +176,7 @@ const SOURCE = 'kwindoo';
                         throw new Error('No positions in race');
                     }
                     objectsToSave.KwindooRace.push(newRace);
+                    appendArray(objectsToSave.KwindooWaypoint, waypoints);
                     appendArray(objectsToSave.KwindooBoat, boats);
                     appendArray(objectsToSave.KwindooComment, comments);
                     appendArray(objectsToSave.KwindooMarker, markers);
