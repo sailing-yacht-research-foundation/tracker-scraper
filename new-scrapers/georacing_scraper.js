@@ -132,7 +132,6 @@ const {
                         url: race.player_name,
                         player_version: playerVersion,
                     };
-
                     const isUnfinished =
                         raceStartDateStamp > nowStamp ||
                         raceEndDateStamp > nowStamp;
@@ -277,7 +276,7 @@ const {
                                 }
                             }
                         }
-                    } else if (playerVersion === 3 && !isUnfinished) {
+                    } else if (playerVersion === 3) {
                         console.log('Version 3!', {
                             playerName: race.player_name,
                         });
@@ -290,65 +289,67 @@ const {
                         const configRequest = await axios.get(
                             dataUrl + 'config/' + filesRequest.data.file_config
                         );
-
-                        const virtualitiesGrounds = getVirtualitiesGroundsData(
-                            configRequest.data.virtualities.grounds,
-                            raceObjSave
-                        );
-                        appendArray(groundPlaceSave, virtualitiesGrounds);
-                        const virtualitiesPlaces = getVirtualitiesPlacesData(
-                            configRequest.data.virtualities.places,
-                            raceObjSave
-                        );
-                        appendArray(groundPlaceSave, virtualitiesPlaces);
-
                         const virtualitiesLines = getVirtualitiesLinesData(
                             configRequest.data.virtualities.lines,
                             raceObjSave
                         );
                         appendArray(lineSave, virtualitiesLines);
-
-                        configRequest.data.actors.forEach((a) => {
-                            const actorObjSave = buildActorObject(
-                                a,
+                        if (!isUnfinished) {
+                            const virtualitiesGrounds = getVirtualitiesGroundsData(
+                                configRequest.data.virtualities.grounds,
                                 raceObjSave
                             );
-                            trackables[a.id] = {
-                                trackable_type: 'actor',
-                                id: actorObjSave.id,
-                                original_id: a.id,
-                            };
-                            actorSave.push(actorObjSave);
-                        });
+                            appendArray(groundPlaceSave, virtualitiesGrounds);
+                            const virtualitiesPlaces = getVirtualitiesPlacesData(
+                                configRequest.data.virtualities.places,
+                                raceObjSave
+                            );
+                            appendArray(groundPlaceSave, virtualitiesPlaces);
 
-                        for (const positionsFilesIndex in filesRequest.data
-                            .files_data) {
-                            const url =
-                                dataUrl +
-                                'positions/' +
-                                filesRequest.data.files_data[
-                                    positionsFilesIndex
-                                ];
+                            configRequest.data.actors.forEach((a) => {
+                                const actorObjSave = buildActorObject(
+                                    a,
+                                    raceObjSave
+                                );
+                                trackables[a.id] = {
+                                    trackable_type: 'actor',
+                                    id: actorObjSave.id,
+                                    original_id: a.id,
+                                };
+                                actorSave.push(actorObjSave);
+                            });
+                            for (const positionsFilesIndex in filesRequest.data
+                                .files_data) {
+                                const url =
+                                    dataUrl +
+                                    'positions/' +
+                                    filesRequest.data.files_data[
+                                        positionsFilesIndex
+                                    ];
 
-                            try {
-                                const positionData = await fetchPositionsData(
-                                    url,
-                                    raceObjSave,
-                                    race,
-                                    null,
-                                    trackables
-                                );
-                                appendArray(actorSave, positionData.actorSave);
-                                appendArray(
-                                    positionSave,
-                                    positionData.positionSave
-                                );
-                            } catch (err) {
-                                console.log(
-                                    'FAILURE VERSION 3, fetch and parse positions url: ' +
-                                        url
-                                );
-                                console.log(err.toString());
+                                try {
+                                    const positionData = await fetchPositionsData(
+                                        url,
+                                        raceObjSave,
+                                        race,
+                                        null,
+                                        trackables
+                                    );
+                                    appendArray(
+                                        actorSave,
+                                        positionData.actorSave
+                                    );
+                                    appendArray(
+                                        positionSave,
+                                        positionData.positionSave
+                                    );
+                                } catch (err) {
+                                    console.log(
+                                        'FAILURE VERSION 3, fetch and parse positions url: ' +
+                                            url
+                                    );
+                                    console.log(err.toString());
+                                }
                             }
                         }
                     } else {
