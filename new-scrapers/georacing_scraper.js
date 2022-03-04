@@ -7,6 +7,8 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
@@ -36,6 +38,15 @@ const {
         process.exit();
     }
 
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
+
     try {
         allRacesRequest = await axios.get(allRacesURL);
     } catch (err) {
@@ -43,20 +54,11 @@ const {
         process.exit();
     }
     const allEvents = allRacesRequest.data.events;
-
     for (const eventsIndex in allEvents) {
         const event = allEvents[eventsIndex];
-        const startDateStamp = new Date(event.start_time).getTime();
-        const endDateStamp = new Date(event.end_time).getTime();
         const nowStamp = new Date().getTime();
 
         if (existingUrls.includes(event.id)) {
-            continue;
-        }
-
-        console.log(`Processing event with id ${event.id}`);
-        if (startDateStamp > nowStamp || endDateStamp > nowStamp) {
-            console.log('Future event so skipping');
             continue;
         }
 
@@ -92,15 +94,6 @@ const {
                 const urlRegex = /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=+$,\w]+@)?[A-Za-z0-9.-]+|(?:www.|[-;:&=+$,\w]+@)[A-Za-z0-9.-]+)((?:\/[+~%/.\w-_]*)?\??(?:[-+=&;%@.\w_]*)#?(?:[\w]*))?)/;
                 const raceStartDateStamp = new Date(race.start_time).getTime();
                 const raceEndDateStamp = new Date(race.end_time).getTime();
-
-                if (
-                    raceStartDateStamp > nowStamp ||
-                    raceEndDateStamp > nowStamp
-                ) {
-                    console.log('Future race so skipping');
-                    continue;
-                }
-
                 if (!race.player_name || !urlRegex.test(race.player_name)) {
                     race.player_name = getRacePlayerNameURL(
                         eventObjSave.original_id,
@@ -123,8 +116,9 @@ const {
                         race
                     );
 
+                    const originalRaceId = race.id.toString();
                     const raceObjSave = {
-                        id: uuidv4(),
+                        id: unfinishedRaceIdsMap[originalRaceId] || uuidv4(),
                         original_id: race.id,
                         event: eventObjSave.id,
                         event_original_id: eventObjSave.original_id,
@@ -138,7 +132,14 @@ const {
                         url: race.player_name,
                         player_version: playerVersion,
                     };
-
+                    const isUnfinished =
+                        raceStartDateStamp > nowStamp ||
+                        raceEndDateStamp > nowStamp;
+                    if (isUnfinished) {
+                        scrapedUnfinishedOrigIds.push(
+                            raceObjSave.original_id.toString()
+                        );
+                    }
                     const lineSave = [];
                     const groundPlaceSave = [];
                     const positionSave = [];
@@ -169,51 +170,6 @@ const {
                         const allRequest = await axios.get(
                             dataUrl + 'all.json'
                         );
-                        const {
-                            groundPlaces,
-                            lines,
-                        } = await fetchVirtualitiesData(dataUrl, eventObjSave);
-                        appendArray(groundPlaceSave, groundPlaces);
-                        appendArray(lineSave, lines);
-                        const weatherData = getWeatherData(
-                            allRequest.data.weathers,
-                            raceObjSave
-                        );
-                        appendArray(weatherSave, weatherData);
-
-                        const actorsData = getActorsData(
-                            allRequest.data.actors,
-                            raceObjSave
-                        );
-                        if (actorsData) {
-                            actorsData.forEach((actorObjSave) => {
-                                const { originalActorObject } = actorObjSave;
-                                delete actorObjSave.originalActorObject;
-                                trackables[originalActorObject.id] = {
-                                    trackable_type: 'actor',
-                                    id: actorObjSave.id,
-                                    original_id: originalActorObject.id,
-                                };
-                                actorSave.push(actorObjSave);
-                            });
-                        }
-
-                        const splittimeData = getSplittimesData(
-                            allRequest.data.splittimes,
-                            actorsData,
-                            raceObjSave
-                        );
-                        if (splittimeData) {
-                            appendArray(
-                                splittimeSave,
-                                splittimeData.splittimesSave
-                            );
-                            appendArray(
-                                splittimeObjectSave,
-                                splittimeData.splittimeObjectsSave
-                            );
-                        }
-
                         const coursesData = getCoursesData(
                             allRequest.data.courses,
                             raceObjSave
@@ -233,37 +189,91 @@ const {
                                 courseElementSave.push(ce);
                             });
                         }
+                        // only do for finished race, future race will skip this step
+                        if (!isUnfinished) {
+                            const {
+                                groundPlaces,
+                                lines,
+                            } = await fetchVirtualitiesData(
+                                dataUrl,
+                                eventObjSave
+                            );
+                            appendArray(groundPlaceSave, groundPlaces);
+                            appendArray(lineSave, lines);
+                            const weatherData = getWeatherData(
+                                allRequest.data.weathers,
+                                raceObjSave
+                            );
+                            appendArray(weatherSave, weatherData);
 
-                        const binaryUrls = await page.evaluate(() => {
-                            // eslint-disable-next-line no-undef
-                            return Object.keys(URL_BIN_LOADED);
-                        });
-                        for (const posIndex in binaryUrls) {
-                            const posUrl =
-                                'https://player.georacing.com/datas/' +
-                                eventObjSave.original_id +
-                                '/' +
-                                race.id +
-                                '/positions/' +
-                                binaryUrls[posIndex];
-                            try {
-                                const positionData = await fetchPositionsData(
-                                    posUrl,
-                                    raceObjSave,
-                                    race,
-                                    binaryUrls[posIndex],
-                                    trackables
-                                );
-                                appendArray(actorSave, positionData.actorSave);
+                            const actorsData = getActorsData(
+                                allRequest.data.actors,
+                                raceObjSave
+                            );
+                            if (actorsData) {
+                                actorsData.forEach((actorObjSave) => {
+                                    const {
+                                        originalActorObject,
+                                    } = actorObjSave;
+                                    delete actorObjSave.originalActorObject;
+                                    trackables[originalActorObject.id] = {
+                                        trackable_type: 'actor',
+                                        id: actorObjSave.id,
+                                        original_id: originalActorObject.id,
+                                    };
+                                    actorSave.push(actorObjSave);
+                                });
+                            }
+
+                            const splittimeData = getSplittimesData(
+                                allRequest.data.splittimes,
+                                actorsData,
+                                raceObjSave
+                            );
+                            if (splittimeData) {
                                 appendArray(
-                                    positionSave,
-                                    positionData.positionSave
+                                    splittimeSave,
+                                    splittimeData.splittimesSave
                                 );
-                            } catch (err) {
-                                console.log(
-                                    'Failed to fetch and parse positions! This happens in the web app too!',
-                                    err.toString()
+                                appendArray(
+                                    splittimeObjectSave,
+                                    splittimeData.splittimeObjectsSave
                                 );
+                            }
+                            const binaryUrls = await page.evaluate(() => {
+                                // eslint-disable-next-line no-undef
+                                return Object.keys(URL_BIN_LOADED);
+                            });
+                            for (const posIndex in binaryUrls) {
+                                const posUrl =
+                                    'https://player.georacing.com/datas/' +
+                                    eventObjSave.original_id +
+                                    '/' +
+                                    race.id +
+                                    '/positions/' +
+                                    binaryUrls[posIndex];
+                                try {
+                                    const positionData = await fetchPositionsData(
+                                        posUrl,
+                                        raceObjSave,
+                                        race,
+                                        binaryUrls[posIndex],
+                                        trackables
+                                    );
+                                    appendArray(
+                                        actorSave,
+                                        positionData.actorSave
+                                    );
+                                    appendArray(
+                                        positionSave,
+                                        positionData.positionSave
+                                    );
+                                } catch (err) {
+                                    console.log(
+                                        'Failed to fetch and parse positions! This happens in the web app too!',
+                                        err.toString()
+                                    );
+                                }
                             }
                         }
                     } else if (playerVersion === 3) {
@@ -279,74 +289,76 @@ const {
                         const configRequest = await axios.get(
                             dataUrl + 'config/' + filesRequest.data.file_config
                         );
-
-                        const virtualitiesGrounds = getVirtualitiesGroundsData(
-                            configRequest.data.virtualities.grounds,
-                            raceObjSave
-                        );
-                        appendArray(groundPlaceSave, virtualitiesGrounds);
-                        const virtualitiesPlaces = getVirtualitiesPlacesData(
-                            configRequest.data.virtualities.places,
-                            raceObjSave
-                        );
-                        appendArray(groundPlaceSave, virtualitiesPlaces);
-
                         const virtualitiesLines = getVirtualitiesLinesData(
                             configRequest.data.virtualities.lines,
                             raceObjSave
                         );
                         appendArray(lineSave, virtualitiesLines);
-
-                        configRequest.data.actors.forEach((a) => {
-                            const actorObjSave = buildActorObject(
-                                a,
+                        if (!isUnfinished) {
+                            const virtualitiesGrounds = getVirtualitiesGroundsData(
+                                configRequest.data.virtualities.grounds,
                                 raceObjSave
                             );
-                            trackables[a.id] = {
-                                trackable_type: 'actor',
-                                id: actorObjSave.id,
-                                original_id: a.id,
-                            };
-                            actorSave.push(actorObjSave);
-                        });
+                            appendArray(groundPlaceSave, virtualitiesGrounds);
+                            const virtualitiesPlaces = getVirtualitiesPlacesData(
+                                configRequest.data.virtualities.places,
+                                raceObjSave
+                            );
+                            appendArray(groundPlaceSave, virtualitiesPlaces);
 
-                        for (const positionsFilesIndex in filesRequest.data
-                            .files_data) {
-                            const url =
-                                dataUrl +
-                                'positions/' +
-                                filesRequest.data.files_data[
-                                    positionsFilesIndex
-                                ];
+                            configRequest.data.actors.forEach((a) => {
+                                const actorObjSave = buildActorObject(
+                                    a,
+                                    raceObjSave
+                                );
+                                trackables[a.id] = {
+                                    trackable_type: 'actor',
+                                    id: actorObjSave.id,
+                                    original_id: a.id,
+                                };
+                                actorSave.push(actorObjSave);
+                            });
+                            for (const positionsFilesIndex in filesRequest.data
+                                .files_data) {
+                                const url =
+                                    dataUrl +
+                                    'positions/' +
+                                    filesRequest.data.files_data[
+                                        positionsFilesIndex
+                                    ];
 
-                            try {
-                                const positionData = await fetchPositionsData(
-                                    url,
-                                    raceObjSave,
-                                    race,
-                                    null,
-                                    trackables
-                                );
-                                appendArray(actorSave, positionData.actorSave);
-                                appendArray(
-                                    positionSave,
-                                    positionData.positionSave
-                                );
-                            } catch (err) {
-                                console.log(
-                                    'FAILURE VERSION 3, fetch and parse positions url: ' +
-                                        url
-                                );
-                                console.log(err.toString());
+                                try {
+                                    const positionData = await fetchPositionsData(
+                                        url,
+                                        raceObjSave,
+                                        race,
+                                        null,
+                                        trackables
+                                    );
+                                    appendArray(
+                                        actorSave,
+                                        positionData.actorSave
+                                    );
+                                    appendArray(
+                                        positionSave,
+                                        positionData.positionSave
+                                    );
+                                } catch (err) {
+                                    console.log(
+                                        'FAILURE VERSION 3, fetch and parse positions url: ' +
+                                            url
+                                    );
+                                    console.log(err.toString());
+                                }
                             }
                         }
                     } else {
                         console.log(
-                            `Race player has version ${playerVersion} url is ${race.player_name}`
+                            `Race player has version ${playerVersion} url is ${race.player_name}, isUnfinished  = ${isUnfinished}`
                         );
                     }
 
-                    if (positionSave.length === 0) {
+                    if (positionSave.length === 0 && !isUnfinished) {
                         console.log('No positions. Skipping.');
                         continue;
                     }
@@ -406,6 +418,7 @@ const {
             await registerFailedUrl(SOURCE, event.id, err.toString());
         }
     }
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     process.exit();
 })();
 

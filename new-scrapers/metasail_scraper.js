@@ -367,7 +367,7 @@ async function getRaceUrls(page) {
         }
         return urls;
     });
-    return raceUrls.slice(0, 2);
+    return raceUrls;
 }
 
 async function fetchRaceData(currentRaceUrl, browser) {
@@ -398,7 +398,9 @@ async function fetchRaceData(currentRaceUrl, browser) {
         await racePage.waitForFunction('Object.keys(garaList).length > 0', {
             timeout: 300000,
         });
-        await racePage.waitForTimeout(1000); // This is for loading the boaList[0].gpsData1, buoy's initial lat lon
+        await racePage.waitForNetworkIdle({
+            idleTime: 1000, // Metasail website has an interval of 1s in their request. This is for loading the boaList[0].gpsData1, buoy's initial lat lon
+        });
 
         const raceData = await racePage.evaluate(
             () => {
