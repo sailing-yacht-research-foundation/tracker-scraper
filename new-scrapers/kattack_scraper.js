@@ -5,6 +5,8 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
@@ -24,7 +26,7 @@ const {
     const alphabet = 'a b c d e f g h i j k l m n o p q r s t u v q x y z A B C D E F G H I J K L M N O P Q R S T U V W X Y Z 1 2 3 4 5 6 7 8 9 0 _'.split(
         ' '
     );
-    await fetchAndSaveClubs();
+    // await fetchAndSaveClubs();
     // TODO: Make all URLs, cookies, headers, etc part of kattack metadata.
     // TODO: make FEED_LIMIT part of kattack metadaa.
 
@@ -35,6 +37,16 @@ const {
         console.log('Error getting existing urls', err);
         process.exit();
     }
+
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
+
     let counter = 100;
     console.log('Looking for new feed IDs...');
     while (counter < FEED_LIMIT) {
@@ -48,9 +60,7 @@ const {
             const feedPage = await axios.get(raceUrl);
             const pageText = feedPage.data.toString();
             const errorMsg = `Error: Invalid Feed ID: ${counter.toString()}`;
-            if (pageText.includes(errorMsg)) {
-                await registerFailedUrl(SOURCE, raceUrl, errorMsg);
-            } else {
+            if (!pageText.includes(errorMsg)) {
                 feedIds[counter] = counter;
             }
         } catch (err) {
@@ -98,7 +108,6 @@ const {
             });
             const metadata = feedMetadataRequest.data.d;
 
-            // If this race starts or stops in the future, ignore it. We'll get it next time.
             const startDate = new Date(
                 parseInt(
                     metadata.StartTime.replace('/Date(', '').replace(')/', '')
@@ -110,13 +119,15 @@ const {
                 )
             );
             if (todaysDate < startDate || todaysDate < stopDate) {
-                console.log('This race is in the future so lets skip it.');
-                continue;
+                console.log(
+                    `Feed id ${feedId} is unfinished. Excluding from cleanup`
+                );
+                scrapedUnfinishedOrigIds.push(feedId);
             }
 
             console.log('Saving race...');
             const currentRace = {};
-            currentRace.id = uuidv4();
+            currentRace.id = unfinishedRaceIdsMap[feedId] || uuidv4();
             currentRace.original_id = feedId;
             currentRace.name = metadata.Name;
             currentRace.original_paradigm = 'Feed';
@@ -173,15 +184,17 @@ const {
             currentRace.js_race_course_id = metadata.JSRaceCourseID;
             currentRace.url = raceUrl;
 
-            const leaderboardRequest = await axios.get(
-                'http://kws.kattack.com/GEPlayer/GELeaderBoard.aspx?FeedID=' +
-                    feedId +
-                    '&CourseID=' +
-                    metadata.CourseID
-            );
-            const leaderboardData = leaderboardRequest.data;
+            // This is not used in syrf schema anymore, only in scraper DB.
+            // TODO: Remove once scraber DB has been deleted
+            // const leaderboardRequest = await axios.get(
+            //     'http://kws.kattack.com/GEPlayer/GELeaderBoard.aspx?FeedID=' +
+            //         feedId +
+            //         '&CourseID=' +
+            //         metadata.CourseID
+            // );
+            // const leaderboardData = leaderboardRequest.data;
 
-            currentRace.leaderboard_data = leaderboardData;
+            // currentRace.leaderboard_data = leaderboardData;
 
             console.log('Saving waypoints...');
             const courseWaypointRequest = await axios({
@@ -491,7 +504,6 @@ const {
 
             const metadata = raceMetadataRequest.data.d;
 
-            // If this race starts or stops in the future, ignore it. We'll get it next time.
             const startDate = new Date(
                 parseInt(
                     metadata.StartTime.replace('/Date(', '').replace(')/', '')
@@ -503,11 +515,13 @@ const {
                 )
             );
             if (todaysDate < startDate || todaysDate < stopDate) {
-                console.log('This race is in the future so lets skip it.');
-                continue;
+                console.log(
+                    `Race id ${raceId} is unfinished. Excluding from cleanup`
+                );
+                scrapedUnfinishedOrigIds.push(raceId);
             }
             const currentRace = {};
-            currentRace.id = uuidv4();
+            currentRace.id = unfinishedRaceIdsMap[raceId] || uuidv4();
             currentRace.original_id = raceId;
             currentRace.name = metadata.Name;
             currentRace.original_paradigm = 'Race';
@@ -563,6 +577,9 @@ const {
             currentRace.js_race_feed_id = metadata.JSRaceFeedID;
             currentRace.js_race_course_id = metadata.JSRaceCourseID;
             currentRace.url = raceUrl;
+
+            // This is not used in syrf schema anymore, only in scraper DB.
+            // TODO: Remove once scraber DB has been deleted
 
             // let leaderboardRequest = await axios.get('http://kws.kattack.com/GEPlayer/GELeaderBoard.aspx?FeedID=' + feedId  + '&CourseID=' + metadata.CourseID)
             // let leaderboardData = leaderboardRequest.data
@@ -755,49 +772,53 @@ const {
     }
     console.log('Finished scraping all races.');
 
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     process.exit();
 })();
 
-async function fetchAndSaveClubs() {
-    console.log('Fetching clubs');
-    const yachtClubListPage = await axios.get(
-        'http://kws.kattack.com/player/browselist.aspx'
-    );
-    const clubRegex = /regatta.aspx\?YachtClubID=[a-zA-Z0-9-]*" style="display:inline-block;">.*<\/a>/g;
-    const clubMatches = yachtClubListPage.data.toString().match(clubRegex);
-    const clubs = [];
-    for (const matchIndex in clubMatches) {
-        const match = clubMatches[matchIndex];
-        const extractor = /regatta.aspx\?YachtClubID=([a-zA-Z0-9-]*)" style="display:inline-block;">(.*)<\/a>/;
-        const results = match.match(extractor);
-        const club = {
-            id: uuidv4(),
-            original_id: results[1],
-            name: results[2],
-            external_url: null,
-        };
-        clubs.push(club);
-    }
-    console.log('Saving new clubs...');
-    for (const clubIndex in clubs) {
-        const club = clubs[clubIndex];
-        const clubPage = await axios.get(
-            'http://kws.kattack.com/player/regatta.aspx?YachtClubID=' +
-                club.original_id
-        );
-        const clubData = clubPage.data.toString();
-        const externalUrlRegex = /<a id="Image_Banner" href="(.*)"><img src/;
-        club.external_url = clubData.match(externalUrlRegex)[1];
-    }
-    try {
-        await createAndSendTempJsonFile({
-            KattackRace: [], // Used by raw-data-server to know its for kattack scraper
-            KattackYachtClub: clubs,
-        });
-    } catch (err) {
-        console.log(
-            'Failed creating and sending temp json file for clubs',
-            err
-        );
-    }
-}
+// This is not used in syrf schema anymore, only in scraper DB.
+// TODO: Remove once scraber DB has been deleted
+
+// async function fetchAndSaveClubs() {
+//     console.log('Fetching clubs');
+//     const yachtClubListPage = await axios.get(
+//         'http://kws.kattack.com/player/browselist.aspx'
+//     );
+//     const clubRegex = /regatta.aspx\?YachtClubID=[a-zA-Z0-9-]*" style="display:inline-block;">.*<\/a>/g;
+//     const clubMatches = yachtClubListPage.data.toString().match(clubRegex);
+//     const clubs = [];
+//     for (const matchIndex in clubMatches) {
+//         const match = clubMatches[matchIndex];
+//         const extractor = /regatta.aspx\?YachtClubID=([a-zA-Z0-9-]*)" style="display:inline-block;">(.*)<\/a>/;
+//         const results = match.match(extractor);
+//         const club = {
+//             id: uuidv4(),
+//             original_id: results[1],
+//             name: results[2],
+//             external_url: null,
+//         };
+//         clubs.push(club);
+//     }
+//     console.log('Saving new clubs...');
+//     for (const clubIndex in clubs) {
+//         const club = clubs[clubIndex];
+//         const clubPage = await axios.get(
+//             'http://kws.kattack.com/player/regatta.aspx?YachtClubID=' +
+//                 club.original_id
+//         );
+//         const clubData = clubPage.data.toString();
+//         const externalUrlRegex = /<a id="Image_Banner" href="(.*)"><img src/;
+//         club.external_url = clubData.match(externalUrlRegex)[1];
+//     }
+//     try {
+//         await createAndSendTempJsonFile({
+//             KattackRace: [], // Used by raw-data-server to know its for kattack scraper
+//             KattackYachtClub: clubs,
+//         });
+//     } catch (err) {
+//         console.log(
+//             'Failed creating and sending temp json file for clubs',
+//             err
+//         );
+//     }
+// }
