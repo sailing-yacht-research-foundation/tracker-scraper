@@ -20,7 +20,7 @@ async function getPageResponse(url) {
 }
 
 /**
- * Get archive urls for scrapper
+ * Get archive urls for scraper
  * Important note: the curr
  * @returns
  */
@@ -121,7 +121,7 @@ function getRootUrl(url) {
     return url.split('?')[0];
 }
 /**
- * Scrap geovoile data for specific race
+ * Scrape geovoile data for specific race
  * @param {string} url
  * @returns scraped data
  */
@@ -280,7 +280,8 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}) {
         }
 
         // skip scrape other data
-        if (race.eventState !== 'FINISH' && race.raceState !== 'FINISH') {
+        const now = Date.now();
+        if (race.startTime * 1000 > now || race.endTime * 1000 > now) {
             return {
                 geovoileRace: race,
                 source: SOURCE,
@@ -500,29 +501,27 @@ async function registerFailed(url, redirectUrl, err) {
         try {
             result = await scrapePage(url, unfinishedRaceIdsMap);
         } catch (e) {
-            console.log(`Failed to scrap data  for url ${url}`);
+            console.log(`Failed to scrape data  for url ${url}`);
             await registerFailed(url, null, e.toString());
             failedCount++;
             continue;
         }
-        if (!result || !result.geovoileRace) {
-            console.log(`Failed to scrap data for url ${url}`);
+        if (!result?.geovoileRace) {
+            console.log(`Failed to scrape data for url ${url}`);
             failedCount++;
             await registerFailed(
                 url,
                 result?.redirectUrl,
-                `Failed to scrap data  for url ${url}`
+                `Failed to scrape data  for url ${url}`
             );
             continue;
         }
 
-        if (!result) {
-            continue;
-        }
         // if race is not finished, push the race in excluded ids
+        const now = Date.now();
         if (
-            result.geovoileRace?.eventState !== 'FINISH' &&
-            result.geovoileRace?.raceState !== 'FINISH'
+            result.geovoileRace.startTime * 1000 > now ||
+            result.geovoileRace.endTime * 1000 > now
         ) {
             scrapedUnfinishedOrigIds.push(result.geovoileRace.scrapedUrl);
         }
