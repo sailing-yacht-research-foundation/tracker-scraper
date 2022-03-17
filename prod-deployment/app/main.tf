@@ -240,7 +240,7 @@ resource "aws_ecs_task_definition" "kattack-scraper-prod" {
       "name": "kattack-scraper",
       "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
-      "command": ["node","new-scrapers/kattack_scraper.js"],
+      "command": ["node","--max_old_space_size=4096","new-scrapers/kattack_scraper.js"],
 
       "environmentFiles": [
                {
@@ -258,14 +258,14 @@ resource "aws_ecs_task_definition" "kattack-scraper-prod" {
         }
       },
       "workingDirectory": "/home/node/app",
-      "memory": 2048,
+      "memory": 8192,
       "cpu": 1024
     }
   ]
   DEFINITION
   requires_compatibilities = ["FARGATE"] # Stating that we are using ECS Fargate
   network_mode             = "awsvpc"    # Using awsvpc as our network mode as this is required for Fargate
-  memory                   = 2048        # Specifying the memory our container requires
+  memory                   = 8192        # Specifying the memory our container requires
   cpu                      = 1024        # Specifying the CPU our container requires
   execution_role_arn       = aws_iam_role.scraperTaskExecutionRole.arn
 }
