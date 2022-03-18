@@ -11,6 +11,10 @@ const { appendArray } = require('../utils/array');
 const axiosRetry = require('axios-retry');
 
 const SOURCE = 'raceqs';
+const RACEQS = {
+    START_PREFIX: 'raceqs-start-',
+    DIVISION_PREFIX: 'raceqs-division-',
+};
 
 (async () => {
     axiosRetry(axios, {
@@ -30,13 +34,16 @@ const SOURCE = 'raceqs';
     let maxRaceIndex;
     try {
         const existingData = await getExistingData(SOURCE);
-        const successRaceIds = existingData
-            .map((u) => u.original_id)
-            .filter((id) => !!id);
-        const prevMaxRaceId = successRaceIds.reduce(
-            (a, b) => Math.max(a, b),
-            0
-        );
+        const prevMaxRaceId = existingData.reduce((acc, d) => {
+            const origId = +d.original_id
+                ?.replace(RACEQS.START_PREFIX, '')
+                .replace(RACEQS.DIVISION_PREFIX, '')
+                .split('-')[0];
+            if (origId > acc) {
+                acc = origId;
+            }
+            return acc;
+        }, 0);
         maxRaceIndex = prevMaxRaceId + RACE_SCRAPE_RANGE || RACE_SCRAPE_RANGE;
         existingUrls = existingData.map((u) => u.url);
     } catch (err) {
