@@ -1243,6 +1243,18 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
             const existingRaceId = unfinishedRaceIdsMap[raceCode];
             const raceNewId = existingRaceId || uuidv4();
 
+            // Sometimes the currentCode differs from the race code like satt2012_2 = satt2012l2, which should still be the same
+            if (
+                raceCodes.findIndex(
+                    (c) => c.toLowerCase() === raceCode.toLowerCase()
+                ) > -1
+            ) {
+                console.log(
+                    `${currentCode} race already exist as ${raceCode} in database. Skipping race...`
+                );
+                continue;
+            }
+
             const race = {
                 id: raceNewId,
                 tz: setupData.tz,
