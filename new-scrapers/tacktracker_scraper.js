@@ -5,8 +5,9 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
-const FormData = require('form-data');
 const { ungzip } = require('node-gzip');
 const parser = require('xml2json');
 
@@ -25,6 +26,15 @@ const parser = require('xml2json');
         console.log('Error getting existing urls', err);
         process.exit();
     }
+
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
     const existingRegattaIds = [];
     const existingRegattaMap = {};
     const existingUsers = [];
@@ -353,7 +363,7 @@ const parser = require('xml2json');
 
     const raceIds = Object.keys(raceIdHash);
     console.log('Finished getting list of existing race ids.');
-    const todaysDate = new Date();
+    const todaysDateMs = Date.now();
     for (const raceIdIndex in raceIds) {
         const raceId = raceIds[raceIdIndex];
         const raceUrl = raceIdHash[raceId];
@@ -363,12 +373,10 @@ const parser = require('xml2json');
             );
             continue;
         }
-        console.log(`Scraping race with url ${raceUrl}`);
+        console.log(
+            `Scraping race with url ${raceUrl} with original race id ${raceId}`
+        );
         try {
-            const raceFormData = new FormData();
-            raceFormData.append('raceId', raceId);
-            raceFormData.append('viewer', 'web');
-
             const raceRequest = await axios({
                 method: 'post',
                 responseType: 'arraybuffer',
@@ -409,7 +417,7 @@ const parser = require('xml2json');
             // Race data
             // raceId
 
-            const newRaceId = uuidv4();
+            const newRaceId = unfinishedRaceIdsMap[raceId] || uuidv4();
 
             let regattaOriginalId = urlToRegatta[raceUrl];
             let userOriginalId = urlToUser[raceUrl];
@@ -430,16 +438,11 @@ const parser = require('xml2json');
             }
             const regatta = existingRegattaMap[regattaOriginalId];
             const user = existingUserMap[userOriginalId];
+            const state = raceDataJson.state;
             const start = eventData.Start;
-            const date = new Date(Date.parse(start));
-            if (date >= todaysDate) {
-                console.log('We only want races that are over.');
-                continue;
-            }
             const eventNotes = eventData.EventNotes;
             const courseNotes = eventData.CourseNotes;
             const uploadParams = eventData.UploadParms;
-            const state = raceDataJson.state;
             const eventName = raceDataJson.event;
             const type = eventData.Type;
             const finishAtStart = eventData.FinishAtStart;
@@ -649,12 +652,18 @@ const parser = require('xml2json');
                 }
             }
 
-            if (!boatsToSave.length) {
-                throw new Error('No boats in race');
-            }
-
-            if (!positionsToSave.length) {
-                throw new Error('No positions in race');
+            const startDateMs = Date.parse(start);
+            if (startDateMs >= todaysDateMs || state !== 'Complete') {
+                console.log(`Unfinished race detected with url ${raceUrl}`);
+                scrapedUnfinishedOrigIds.push(raceToSave.original_id);
+            } else {
+                // Only check boat and positions if race is finished
+                if (!boatsToSave.length) {
+                    throw new Error('No boats in race');
+                }
+                if (!positionsToSave.length) {
+                    throw new Error('No positions in race');
+                }
             }
 
             const objectsToSave = {
@@ -690,6 +699,7 @@ const parser = require('xml2json');
             await registerFailedUrl(SOURCE, raceUrl, err.toString());
         }
     }
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     console.log('Finished scraping all races.');
     process.exit();
 })();
