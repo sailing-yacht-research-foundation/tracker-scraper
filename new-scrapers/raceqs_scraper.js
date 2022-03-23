@@ -387,6 +387,15 @@ async function saveData({
     newPositions,
     newRegattas,
 }) {
+    if (!newPositions?.length) {
+        throw new Error('No positions in race');
+    }
+    if (!newUsers?.length) {
+        throw new Error('No boats in race');
+    }
+    if (!newDivisions?.length) {
+        throw new Error('No divisions in race');
+    }
     const objectsToSave = {
         RaceQsRegatta: newRegattas,
         RaceQsEvent: newEvents,

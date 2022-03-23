@@ -45,16 +45,21 @@ const createAndSendTempJsonFile = async (data, url = 'api/v1/upload-file') => {
     const zipReadStream = fs.createReadStream(filePath);
     formData.append('raw_data', zipReadStream);
     const secret = generateRawDataServerSecret();
-    await axios.post(`${RAW_DATA_SERVER_API}/${url}`, formData, {
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity,
-        headers: {
-            authorization: secret,
-            'content-type': `multipart/form-data; boundary=${formData._boundary}`,
-        },
-    });
-    zipReadStream.destroy();
-    console.log('Finished creating and sending temp file', filePath);
+    try {
+        await axios.post(`${RAW_DATA_SERVER_API}/${url}`, formData, {
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+            headers: {
+                authorization: secret,
+                'content-type': `multipart/form-data; boundary=${formData._boundary}`,
+            },
+        });
+        console.log('Finished creating and sending temp file', filePath);
+    } catch (err) {
+        console.log('Failed sending zip file', err);
+    } finally {
+        zipReadStream.destroy();
+    }
 };
 
 const getExistingData = async (tracker) => {
