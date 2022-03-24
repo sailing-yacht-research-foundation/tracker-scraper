@@ -6,6 +6,8 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
@@ -32,6 +34,15 @@ const {
         console.log('Error getting existing urls', err);
         process.exit();
     }
+
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
 
     let counter = 1;
     const maximum = 600;
@@ -131,17 +142,12 @@ const {
             const startDate = new Date(eventJSON.startDate.date);
             const endDate = new Date(eventJSON.endDate.date);
             const todaysDate = new Date();
-
+            const isFinished = todaysDate > startDate && todaysDate > endDate;
             if (
-                todaysDate < startDate ||
-                todaysDate < endDate ||
-                allEventData.raceJSON.length === 0 ||
-                typeof allEventData.trackJSON.ids === 'undefined' ||
-                allEventData.trackJSON.ids.length === 0
+                (isFinished && !allEventData.raceJSON?.length) ||
+                !allEventData.trackJSON.ids?.length
             ) {
-                console.log(
-                    'Skipping this event because it is not over yet or no tracks available'
-                );
+                console.log('Event has no races or tracks. Skipping');
                 counter++;
                 continue;
             }
@@ -211,8 +217,14 @@ const {
             const raceExtras = [];
             const courseMarkIdMap = {};
             raceJSON.forEach((race) => {
+                if (existingUrls.includes(race.url)) {
+                    console.log(
+                        `Race url already exist in database ${race.url}. Skipping`
+                    );
+                    return;
+                }
                 const r = {
-                    id: uuidv4(),
+                    id: unfinishedRaceIdsMap[race.id] || uuidv4(),
                     original_id: race.id,
                     event: event.id,
                     original_event_id: race.event,
@@ -223,6 +235,12 @@ const {
                     url: race.url,
                     track_ids: race.trackIds,
                 };
+                if (
+                    race.startTime * 1000 > todaysDate.getTime() ||
+                    race.stopTime * 1000 > todaysDate.getTime()
+                ) {
+                    scrapedUnfinishedOrigIds.push(race.id);
+                }
 
                 const courseMarks = [];
                 const marks = [];
@@ -341,13 +359,30 @@ const {
              * id, name, user.name, user.id, participant.sailnumber, participant.name, participant.id, participant.classEntity, startTime, stopTime, points = []
              */
 
-            const trackIds = trackJSON.ids;
-            let urlSuffix = '';
+            // Filter trackIds that has not been scraped
+            const allRaceTrackIds = [
+                ...raceExtras.reduce((accSet, re) => {
+                    const raceTrackIds = re.raceObject.track_ids;
+                    // Only get tracks if it is finished
+                    if (
+                        !scrapedUnfinishedOrigIds.includes(
+                            re.raceObject.original_id
+                        ) &&
+                        raceTrackIds?.length
+                    ) {
+                        raceTrackIds.forEach(accSet.add, accSet);
+                    }
+                    return accSet;
+                }, new Set()),
+            ];
 
+            const trackIds =
+                trackJSON.ids?.filter((t) => allRaceTrackIds.includes(t)) || [];
+            let urlSuffix = '';
             trackIds.forEach((id) => {
-                urlSuffix = urlSuffix + 'trackIds%5B%5D=' + id + '&';
+                urlSuffix += `trackIds%5B%5D=${id}&`;
             });
-            console.log('Getting tracks');
+            console.log('Getting tracks', trackIds);
             result = await axios.get(
                 'http://app.i-sail.com/ajax/getPoints?' + urlSuffix
             );
@@ -437,6 +472,11 @@ const {
                 newStartlines = newStartlines.concat(raceExtra.startlines);
                 newResults = newResults.concat(raceExtra.results);
             });
+
+            if (!newRaces.length) {
+                counter++;
+                continue;
+            }
             const objectsToSave = {
                 iSailEvent: [event],
                 iSailRace: newRaces,
@@ -466,6 +506,7 @@ const {
         counter++;
     }
     await browser.close();
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     console.log('Finished scraping all events.');
     process.exit();
 })();
