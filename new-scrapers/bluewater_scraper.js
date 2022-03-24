@@ -5,6 +5,8 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
@@ -20,14 +22,6 @@ const {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
     }
-    console.log(`Getting race list with url ${raceListApiUrl}`);
-    let result;
-    try {
-        result = await axios.get(raceListApiUrl);
-    } catch (err) {
-        console.log('An error occured getting the race list', err);
-        process.exit();
-    }
 
     let existingUrls;
     try {
@@ -36,7 +30,27 @@ const {
         console.log('Error getting existing urls', err);
         process.exit();
     }
-    const races = result.data.raceList;
+
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
+
+    console.log(`Getting race list with url ${raceListApiUrl}`);
+    let result;
+    try {
+        result = await axios.get(raceListApiUrl);
+    } catch (err) {
+        console.log('An error occured getting the race list', err);
+        process.exit();
+    }
+    const races = result.data.raceList.filter(
+        (r) => r.slug === '2022-orcv-50th-melbourne-to-king-island'
+    );
 
     for (const index in races) {
         const raceObj = races[index];
@@ -44,6 +58,7 @@ const {
         const objectsToSave = {};
 
         if (existingUrls.includes(raceObj.slug)) {
+            console.log(`Race slug ${raceObj.slug} already exist. Skipping`);
             continue;
         }
 
@@ -61,20 +76,16 @@ const {
         const race = resultData.race;
         const trackTimeStart = race.trackTimeStart;
         const trackTimeFinish = race.trackTimeFinish;
-        const startTimestamp = new Date(trackTimeStart).getTime();
-        const endTimestamp = new Date(trackTimeFinish).getTime();
+        const raceStartTimeMs = new Date(race.raceStartTime).getTime();
+        const raceEndTimeMs = new Date(trackTimeFinish).getTime();
 
-        const nowTimestamp = new Date().getTime();
-        if (
-            startTimestamp > nowTimestamp ||
-            endTimestamp === null ||
-            endTimestamp > nowTimestamp
-        ) {
-            console.log(`Future race with url ${raceUrl}`);
-            continue;
-        }
+        const now = Date.now();
+        const isUnfinished =
+            raceStartTimeMs > now || !trackTimeFinish || raceEndTimeMs > now;
 
-        if (positions.length === 0) {
+        if (isUnfinished) {
+            scrapedUnfinishedOrigIds.push(raceObj._id);
+        } else if (!positions?.length) {
             const errMsg = `No positions with race url ${raceUrl}. Skipping`;
             console.log(errMsg);
             await registerFailedUrl(SOURCE, raceObj.slug, errMsg);
@@ -86,7 +97,7 @@ const {
         const finishTimezone = race.finishTimezone;
         const announcement = race.announcement;
         const currentRace = {
-            id: uuidv4(),
+            id: unfinishedRaceIdsMap[raceObj._id] || uuidv4(),
             original_id: raceObj._id,
             name: race.raceName,
             referral_url: BASE_REFERRAL_URL + raceObj.slug,
@@ -253,5 +264,6 @@ const {
         }
     }
     console.log('Finished scraping races');
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     process.exit(0);
 })();
