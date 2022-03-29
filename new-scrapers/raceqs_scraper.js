@@ -6,6 +6,8 @@ const {
     createAndSendTempJsonFile,
     getExistingData,
     registerFailedUrl,
+    getUnfinishedRaceIds,
+    cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { appendArray } = require('../utils/array');
 const axiosRetry = require('axios-retry');
@@ -51,6 +53,15 @@ const RACEQS = {
         process.exit();
     }
 
+    let unfinishedRaceIdsMap;
+    try {
+        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+    } catch (err) {
+        console.log('Error getting unfinished race ids', err);
+        process.exit();
+    }
+    const scrapedUnfinishedOrigIds = [];
+
     let pageIndex = 1;
     while (pageIndex <= maxRaceIndex) {
         const eventUrl = `https://raceqs.com/tv-beta/tv.htm#eventId=${pageIndex}`;
@@ -68,14 +79,21 @@ const RACEQS = {
             console.log(`Scraping event with url ${eventUrl}`);
             const config = await fetchConfigData(eventId);
 
-            if (
-                config.events.length === 0 ||
-                !config.events[0]?.tillDtm ||
-                config.events[0]?.tillDtm > new Date().getTime()
-            ) {
-                console.log('No events or future event. So skipping.');
+            const now = Date.now();
+            if (config.events.length === 0) {
+                console.log('No events. Skipping.');
                 pageIndex++;
                 continue;
+            }
+            let isUnfinished = false;
+            if (
+                config.events[0]?.fromDtm > now ||
+                !config.events[0]?.tillDtm ||
+                config.events[0]?.tillDtm > now
+            ) {
+                console.log('Unfinished race detected', eventUrl);
+                isUnfinished = true;
+                scrapedUnfinishedOrigIds.push(config.events[0].id);
             }
 
             // EVENTS is array of one object:
@@ -98,8 +116,16 @@ const RACEQS = {
                 divisions,
                 starts,
                 routes,
-            } = getEventData(config, checkRegatta, eventUrl);
+            } = getEventData(
+                config,
+                checkRegatta,
+                eventUrl,
+                unfinishedRaceIdsMap
+            );
 
+            if (isUnfinished) {
+                newEventStat.isUnfinished = true;
+            }
             newEvents.push(newEventStat);
             appendArray(newWaypoints, waypoints);
             appendArray(newDivisions, divisions);
@@ -137,6 +163,7 @@ const RACEQS = {
 
         pageIndex++;
     }
+    await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     console.log('Finished scraping all events and races.');
     process.exit();
 })();
@@ -214,18 +241,20 @@ function getDivisions(newEventStat, config) {
 }
 
 function getStarts(newEventStat, config, divisionsMap) {
-    return config.starts.map((s) => ({
-        id: uuidv4(),
-        original_id: s.id,
-        event: newEventStat.id,
-        event_original_id: newEventStat.original_id,
-        division: divisionsMap[s.divisionId],
-        division_original_id: s.divisionId,
-        from: s.fromDtm,
-        type: s.type,
-        wind: s.wind,
-        min_duration: s.minDuration,
-    }));
+    return (
+        config.starts?.map((s) => ({
+            id: uuidv4(),
+            original_id: s.id,
+            event: newEventStat.id,
+            event_original_id: newEventStat.original_id,
+            division: divisionsMap[s.divisionId],
+            division_original_id: s.divisionId,
+            from: s.fromDtm,
+            type: s.type,
+            wind: s.wind,
+            min_duration: s.minDuration,
+        })) || []
+    );
 }
 
 function getRoutes(newEventStat, config, startsMap, waypointsMap) {
@@ -246,7 +275,7 @@ function getRoutes(newEventStat, config, startsMap, waypointsMap) {
     }));
 }
 
-function getEventData(config, checkRegatta, eventUrl) {
+function getEventData(config, checkRegatta, eventUrl, unfinishedRaceIdsMap) {
     const newEventStat = {};
     newEventStat.id = uuidv4();
     newEventStat.original_id = config.events[0].id;
@@ -270,6 +299,8 @@ function getEventData(config, checkRegatta, eventUrl) {
         wpts[w.original_id] = w.id;
     });
 
+    const existingEventId = unfinishedRaceIdsMap[newEventStat.original_id];
+
     const divs = {};
     const divisions = getDivisions(newEventStat, config);
     divisions.forEach((d) => {
@@ -278,9 +309,18 @@ function getEventData(config, checkRegatta, eventUrl) {
 
     const startsMap = {};
     const starts = getStarts(newEventStat, config, divs);
-    starts.forEach((s) => {
+    starts.forEach((s, index) => {
+        // Reuse the existing id only for the first start
+        if (index === 0 && existingEventId) {
+            s.id = existingEventId;
+        }
         startsMap[s.original_id] = s.id;
     });
+
+    if (starts.length === 0 && existingEventId && divisions.length) {
+        // if there are no starts, the division id will be used as race id
+        divisions[0].id = existingEventId;
+    }
 
     const routes = getRoutes(newEventStat, config, startsMap, wpts);
 
@@ -387,14 +427,16 @@ async function saveData({
     newPositions,
     newRegattas,
 }) {
-    if (!newPositions?.length) {
-        throw new Error('No positions in race');
-    }
-    if (!newUsers?.length) {
-        throw new Error('No boats in race');
-    }
-    if (!newDivisions?.length) {
-        throw new Error('No divisions in race');
+    if (!newEvents[0].isUnfinished) {
+        if (!newPositions?.length) {
+            throw new Error('No positions in race');
+        }
+        if (!newUsers?.length) {
+            throw new Error('No boats in race');
+        }
+        if (!newDivisions?.length) {
+            throw new Error('No divisions in race');
+        }
     }
     const objectsToSave = {
         RaceQsRegatta: newRegattas,
