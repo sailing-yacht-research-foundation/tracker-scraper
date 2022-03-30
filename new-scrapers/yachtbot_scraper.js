@@ -124,7 +124,7 @@ const SOURCE = 'yachtbot';
                     if (logs && !(logs instanceof Array)) {
                         logs = [logs];
                     }
-                    logs.forEach((entry) => {
+                    logs?.forEach((entry) => {
                         const data = entry.data;
                         const firstKey = Object.keys(data)[0];
                         if (firstKey === 'object_data') {
