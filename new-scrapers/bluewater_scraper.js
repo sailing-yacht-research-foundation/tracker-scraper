@@ -81,7 +81,9 @@ const {
 
         const now = Date.now();
         const isUnfinished =
-            raceStartTimeMs > now || !trackTimeFinish || raceEndTimeMs > now;
+            raceStartTimeMs > now ||
+            (raceStartTimeMs && !trackTimeFinish) ||
+            raceEndTimeMs > now;
 
         if (isUnfinished) {
             scrapedUnfinishedOrigIds.push(raceObj._id);

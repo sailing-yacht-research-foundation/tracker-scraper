@@ -88,7 +88,7 @@ const RACEQS = {
             let isUnfinished = false;
             if (
                 config.events[0]?.fromDtm > now ||
-                !config.events[0]?.tillDtm ||
+                (config.events[0]?.fromDtm && !config.events[0]?.tillDtm) ||
                 config.events[0]?.tillDtm > now
             ) {
                 console.log('Unfinished race detected', eventUrl);
