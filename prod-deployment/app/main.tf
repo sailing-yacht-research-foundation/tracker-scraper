@@ -615,7 +615,7 @@ resource "aws_cloudwatch_event_rule" "estela-scraper-prod-daily" {
   name                = "estela-scraper-prod-daily"
   description         = "Runs the estela scraper daily at 12:15AM (UTC)"
   schedule_expression = "cron(15 00 * * ? *)"
-  is_enabled          = true // Change to true to enable scheduling
+  is_enabled          = false // Change to true to enable scheduling
 }
 
 resource "aws_cloudwatch_event_target" "estela-scraper-prod-daily-target" {
