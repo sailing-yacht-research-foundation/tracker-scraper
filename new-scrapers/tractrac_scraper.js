@@ -340,12 +340,8 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
 }
                  */
 
-        const startTime = new Date(
-            raceMeta.tracking_starttime.split(' ')[0]
-        ).getTime();
-        const endTime = new Date(
-            raceMeta.tracking_endtime.split(' ')[0]
-        ).getTime();
+        const startTime = new Date(raceMeta.tracking_starttime).getTime();
+        const endTime = new Date(raceMeta.tracking_endtime).getTime();
 
         const now = Date.now();
         if (startTime > now || endTime > now) {
