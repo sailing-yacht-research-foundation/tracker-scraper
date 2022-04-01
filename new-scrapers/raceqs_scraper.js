@@ -276,8 +276,10 @@ function getRoutes(newEventStat, config, startsMap, waypointsMap) {
 }
 
 function getEventData(config, checkRegatta, eventUrl, unfinishedRaceIdsMap) {
+    const existingEventId =
+        unfinishedRaceIdsMap[config.events[0].id?.toString()];
     const newEventStat = {};
-    newEventStat.id = uuidv4();
+    newEventStat.id = existingEventId || uuidv4();
     newEventStat.original_id = config.events[0].id;
     newEventStat.regatta = checkRegatta.id;
     newEventStat.regatta_original_id = checkRegatta.original_id;
@@ -298,9 +300,6 @@ function getEventData(config, checkRegatta, eventUrl, unfinishedRaceIdsMap) {
     waypoints.forEach((w) => {
         wpts[w.original_id] = w.id;
     });
-
-    const existingEventId =
-        unfinishedRaceIdsMap[newEventStat.original_id?.toString()];
 
     const divs = {};
     const divisions = getDivisions(newEventStat, config);
