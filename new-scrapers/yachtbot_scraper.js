@@ -90,15 +90,6 @@ const SOURCE = 'yachtbot';
                     pageUrl
                 );
                 if (token) {
-                    const forceScrapeRaceData = forceScrapeRacesMap[idx];
-                    const raceSaveObj = {
-                        id:
-                            forceScrapeRaceData?.id ||
-                            unfinishedRaceIdsMap[idx] ||
-                            uuidv4(),
-                        original_id: idx,
-                    };
-
                     const session = await fetchSession(idx, token);
                     if (!session) {
                         console.log(
@@ -107,7 +98,14 @@ const SOURCE = 'yachtbot';
                         idx++;
                         continue;
                     }
-
+                    const forceScrapeRaceData = forceScrapeRacesMap[idx];
+                    const raceSaveObj = {
+                        id:
+                            forceScrapeRaceData?.id ||
+                            unfinishedRaceIdsMap[idx] ||
+                            uuidv4(),
+                        original_id: idx,
+                    };
                     const startTime = session.data.session.start_time;
                     const endTime = session.data.session.end_time;
 
@@ -297,13 +295,13 @@ const fetchSession = async (idx, token) => {
                 resolve(response);
             })
             .catch((error) => {
-                if (error.response) {
+                if (error.response && error.response.status !== 401) {
                     console.log(
                         `the url ${url} has error with status = ${error.response.status}, statusText = ${error.response.statusText}`
                     );
                     console.log(error.response.data);
                 }
-                console.log(resolve(null));
+                resolve(null);
             });
     });
 };

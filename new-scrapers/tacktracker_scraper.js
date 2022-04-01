@@ -1,18 +1,35 @@
 const axios = require('axios');
+const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { ungzip } = require('node-gzip');
 const parser = require('xml2json');
 
 (async () => {
+    // These are only used for limited scraping. If these are set, the urls are filtered. Example below
+    // const raceIdsToScrape = ['534824773'];
+    // const allRegattasHash = {
+    //   '/cloud/regattas/show/1641932743': '/cloud/regattas/show/1641932743',
+    // };
+    // const allUsersHash = {
+    //   'MMYC': 'MMYC'
+    // };
+    const raceIdsToScrape = [];
+    const allRegattasHash = {};
+    const allUsersHash = {};
+    const skipWordSearch =
+        Object.keys(allRegattasHash).length > 0 ||
+        Object.keys(allUsersHash).length > 0;
+
     const SOURCE = 'tacktracker';
+    const TACKTRACKER_MOMENT_FORMAT = 'YYYY-MM-DDThh:mm:ss';
     const REGATTA_URL_PREFIX = 'https://tacktracker.com/cloud/regattas/show/';
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
@@ -27,9 +44,12 @@ const parser = require('xml2json');
         process.exit();
     }
 
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -41,230 +61,234 @@ const parser = require('xml2json');
     const existingUserMap = {};
     const urlToUser = {};
     const urlToRegatta = {};
-    const allUsersHash = {};
-    const lowerAlphabet = Array.from(Array(26)).map((e, i) =>
-        String.fromCharCode(i + 97)
-    ); // a-z
-    const upperAlphabet = Array.from(Array(26)).map((e, i) =>
-        String.fromCharCode(i + 65)
-    ); // A-Z
-    const digits = Array.from(Array(10).keys()).map((i) => i.toString()); // 0-9
-    const alphabet = [].concat(lowerAlphabet, upperAlphabet, digits, '_');
-    console.log('Searching for all users...');
-    for (const index in alphabet) {
-        const search = alphabet[index];
-        const searchUrl =
-            'https://tacktracker.com/cloud/service/matching_usernames?term=' +
-            search;
 
-        const searchResult = await axios.get(searchUrl);
-        const results = searchResult.data;
-        for (const resultIndex in results) {
-            const user = results[resultIndex];
-            allUsersHash[user] = user;
-        }
-    }
-    console.log('Finished getting all users. Searching for all regattas...');
+    if (!skipWordSearch) {
+        const lowerAlphabet = Array.from(Array(26)).map((e, i) =>
+            String.fromCharCode(i + 97)
+        ); // a-z
+        const upperAlphabet = Array.from(Array(26)).map((e, i) =>
+            String.fromCharCode(i + 65)
+        ); // A-Z
+        const digits = Array.from(Array(10).keys()).map((i) => i.toString()); // 0-9
+        const alphabet = [].concat(lowerAlphabet, upperAlphabet, digits, '_');
+        console.log('Searching for all users...');
+        for (const index in alphabet) {
+            const search = alphabet[index];
+            const searchUrl =
+                'https://tacktracker.com/cloud/service/matching_usernames?term=' +
+                search;
 
-    // All regattas: this is rough.
-
-    const overflow = [
-        'cup',
-        'regatta',
-        'series',
-        'championship',
-        'worlds',
-        'race',
-        'euros',
-        'IRC',
-        'Asia',
-        'youth',
-        'class',
-        'national',
-        'class',
-        'sail',
-        'race',
-        'YC',
-        'club',
-        'yacht',
-        'ys',
-    ];
-
-    const underflow = [
-        'Winter',
-        'Summer',
-        'Fall',
-        'Autumn',
-        'Spring',
-        'pacific',
-        'champs',
-        'etchell',
-        '2025',
-        '2024',
-        '2023',
-        '2022',
-        '2021',
-        '2020',
-        '2019',
-        '2018',
-        '2017',
-        '2016',
-        '2015',
-        '2014',
-        '2013',
-        '2012',
-        '2011',
-        '2010',
-        '2009',
-        '2008',
-        '2007',
-        '2006',
-        '2005',
-        '2004',
-        '2003',
-        '505',
-        'dragon',
-        '470',
-        '49er FX',
-        'RS:X',
-        'Laser',
-        'Nacra',
-        'Laser Radial',
-        '2.4mR',
-        '49er',
-        'Finn',
-        'Skud',
-        'Sonar',
-        'T293',
-        'open',
-        'Perth',
-        'Edinburgh',
-        'Pacific',
-        'Europa',
-        'São Paulo',
-        'Britain',
-        'UK',
-        'Shearwater',
-        'Carsington',
-        'Melbourne',
-        'USA',
-        'Brisbane',
-        'Sydney',
-        'Victoria',
-        'Oslo',
-        'Semana',
-        'Italia',
-        'dubai',
-        'china',
-        'international',
-        'cowes',
-        'ORR',
-        'ORC',
-        'bay',
-        'lake',
-        'harbour',
-        'gulf',
-        'port',
-        'porti',
-        'vice',
-        'junior',
-        'men',
-        'women',
-        'team',
-        'solo',
-        'memorial',
-        'state',
-        'great',
-        'league',
-        'round',
-        'division',
-        'international',
-        'island',
-        'round',
-        'lighthouse',
-        'commodore',
-        'navigation',
-        'fleet',
-        'British',
-        'Australian',
-        'Danish',
-        'French',
-        'Italian',
-        'prince',
-        'distance',
-        'racing',
-        'st',
-        'Lambay ',
-        'contender',
-        'holiday',
-        'easter',
-        'captain',
-        'yacht club',
-        'January',
-        'February',
-        'March',
-        'April',
-        'May',
-        'June',
-        'July',
-        'August',
-        'September',
-        'October',
-        'November',
-        'December',
-    ];
-
-    const allWords = [].concat(underflow);
-    lowerAlphabet.forEach((letter) => {
-        lowerAlphabet.forEach((letter2) => {
-            const combo = letter + letter2 + 'yc';
-            allWords.push(combo);
-        });
-    });
-
-    overflow.forEach((word) => {
-        overflow.forEach((w) => {
-            const newWord = word + ' ' + w;
-            allWords.push(newWord);
-        });
-    });
-
-    const allRegattasHash = {};
-    for (const index in allWords) {
-        const regexp = /\/cloud\/regattas\/show\/[0-9]*/g;
-        const searchWord = allWords[index];
-        const search = await axios({
-            method: 'post',
-            url: 'https://tacktracker.com/cloud/regattas/search',
-            data: 'search=' + searchWord,
-            headers: {
-                Connection: 'keep-alive',
-                Accept: 'text/html, */*; q=0.01',
-                'X-Requested-With': 'XMLHttpRequest',
-                'User-Agent':
-                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.135 Safari/537.36',
-                'Content-Type':
-                    'application/x-www-form-urlencoded; charset=UTF-8',
-                Origin: 'https://tacktracker.com',
-                'Sec-Fetch-Site': 'same-origin',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Dest': 'empty',
-                Referer: 'https://tacktracker.com/cloud/regattas/show',
-                'Accept-Language': 'en-US,en;q=0.9',
-                Cookie:
-                    'tt8473=a78ctrgrnt7o9ohd7ooq6mv4bg558s2v; _ga=GA1.2.1428073689.1598324711; _gid=GA1.2.921704798.1599683485',
-            },
-        });
-        const searchResults = search.data;
-        const array = searchResults.toString().match(regexp);
-        if (array != null) {
-            for (const resultIndex in array) {
-                const regattaUrl = array[resultIndex];
-                allRegattasHash[regattaUrl] = regattaUrl;
+            const searchResult = await axios.get(searchUrl);
+            const results = searchResult.data;
+            for (const resultIndex in results) {
+                const user = results[resultIndex];
+                allUsersHash[user] = user;
             }
         }
+        console.log(
+            'Finished getting all users. Searching for all regattas...'
+        );
+
+        // All regattas: this is rough.
+
+        const overflow = [
+            'cup',
+            'regatta',
+            'series',
+            'championship',
+            'worlds',
+            'race',
+            'euros',
+            'IRC',
+            'Asia',
+            'youth',
+            'class',
+            'national',
+            'class',
+            'sail',
+            'race',
+            'YC',
+            'club',
+            'yacht',
+            'ys',
+        ];
+
+        const underflow = [
+            'Winter',
+            'Summer',
+            'Fall',
+            'Autumn',
+            'Spring',
+            'pacific',
+            'champs',
+            'etchell',
+            '2025',
+            '2024',
+            '2023',
+            '2022',
+            '2021',
+            '2020',
+            '2019',
+            '2018',
+            '2017',
+            '2016',
+            '2015',
+            '2014',
+            '2013',
+            '2012',
+            '2011',
+            '2010',
+            '2009',
+            '2008',
+            '2007',
+            '2006',
+            '2005',
+            '2004',
+            '2003',
+            '505',
+            'dragon',
+            '470',
+            '49er FX',
+            'RS:X',
+            'Laser',
+            'Nacra',
+            'Laser Radial',
+            '2.4mR',
+            '49er',
+            'Finn',
+            'Skud',
+            'Sonar',
+            'T293',
+            'open',
+            'Perth',
+            'Edinburgh',
+            'Pacific',
+            'Europa',
+            'São Paulo',
+            'Britain',
+            'UK',
+            'Shearwater',
+            'Carsington',
+            'Melbourne',
+            'USA',
+            'Brisbane',
+            'Sydney',
+            'Victoria',
+            'Oslo',
+            'Semana',
+            'Italia',
+            'dubai',
+            'china',
+            'international',
+            'cowes',
+            'ORR',
+            'ORC',
+            'bay',
+            'lake',
+            'harbour',
+            'gulf',
+            'port',
+            'porti',
+            'vice',
+            'junior',
+            'men',
+            'women',
+            'team',
+            'solo',
+            'memorial',
+            'state',
+            'great',
+            'league',
+            'round',
+            'division',
+            'international',
+            'island',
+            'round',
+            'lighthouse',
+            'commodore',
+            'navigation',
+            'fleet',
+            'British',
+            'Australian',
+            'Danish',
+            'French',
+            'Italian',
+            'prince',
+            'distance',
+            'racing',
+            'st',
+            'Lambay ',
+            'contender',
+            'holiday',
+            'easter',
+            'captain',
+            'yacht club',
+            'January',
+            'February',
+            'March',
+            'April',
+            'May',
+            'June',
+            'July',
+            'August',
+            'September',
+            'October',
+            'November',
+            'December',
+        ];
+
+        const allWords = [].concat(underflow);
+        lowerAlphabet.forEach((letter) => {
+            lowerAlphabet.forEach((letter2) => {
+                const combo = letter + letter2 + 'yc';
+                allWords.push(combo);
+            });
+        });
+
+        overflow.forEach((word) => {
+            overflow.forEach((w) => {
+                const newWord = word + ' ' + w;
+                allWords.push(newWord);
+            });
+        });
+
+        for (const index in allWords) {
+            const regexp = /\/cloud\/regattas\/show\/[0-9]*/g;
+            const searchWord = allWords[index];
+            const search = await axios({
+                method: 'post',
+                url: 'https://tacktracker.com/cloud/regattas/search',
+                data: 'search=' + searchWord,
+                headers: {
+                    Connection: 'keep-alive',
+                    Accept: 'text/html, */*; q=0.01',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'User-Agent':
+                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.135 Safari/537.36',
+                    'Content-Type':
+                        'application/x-www-form-urlencoded; charset=UTF-8',
+                    Origin: 'https://tacktracker.com',
+                    'Sec-Fetch-Site': 'same-origin',
+                    'Sec-Fetch-Mode': 'cors',
+                    'Sec-Fetch-Dest': 'empty',
+                    Referer: 'https://tacktracker.com/cloud/regattas/show',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    Cookie:
+                        'tt8473=a78ctrgrnt7o9ohd7ooq6mv4bg558s2v; _ga=GA1.2.1428073689.1598324711; _gid=GA1.2.921704798.1599683485',
+                },
+            });
+            const searchResults = search.data;
+            const array = searchResults.toString().match(regexp);
+            if (array != null) {
+                for (const resultIndex in array) {
+                    const regattaUrl = array[resultIndex];
+                    allRegattasHash[regattaUrl] = regattaUrl;
+                }
+            }
+        }
+        console.log('Finished getting all regattas.');
     }
-    console.log('Finished getting all regattas.');
+
     console.log('Making new user objects.');
     const allUserUrls = [];
     const allRegattaUrls = [];
@@ -325,8 +349,14 @@ const parser = require('xml2json');
                 const match = matches[matchIndex];
                 const regex2 = /[0-9]+/;
                 const raceId = match.match(regex2)[0];
-                raceIdHash[raceId] = currentUrl + '/' + raceId;
-                usersToRaces[currentUser].push(raceId);
+                if (
+                    raceIdsToScrape.length === 0 ||
+                    (raceIdsToScrape.length > 0 &&
+                        raceIdsToScrape.includes(raceId))
+                ) {
+                    raceIdHash[raceId] = currentUrl + '/' + raceId;
+                    usersToRaces[currentUser].push(raceId);
+                }
             }
         }
     }
@@ -353,8 +383,14 @@ const parser = require('xml2json');
                 const ids = match.match(regex2);
                 const raceId = ids[0];
                 const raceOrder = ids[1];
-                raceIdHash[raceId] = `${currentUrl}/${raceOrder}`;
-                regattasToRaces[currentRegatta].push(raceId);
+                if (
+                    raceIdsToScrape.length === 0 ||
+                    (raceIdsToScrape.length > 0 &&
+                        raceIdsToScrape.includes(raceId))
+                ) {
+                    raceIdHash[raceId] = `${currentUrl}/${raceOrder}`;
+                    regattasToRaces[currentRegatta].push(raceId);
+                }
             }
         }
     }
@@ -417,7 +453,11 @@ const parser = require('xml2json');
             // Race data
             // raceId
 
-            const newRaceId = unfinishedRaceIdsMap[raceId] || uuidv4();
+            const forceScrapeRaceData = forceScrapeRacesMap[raceId];
+            const newRaceId =
+                forceScrapeRaceData?.id ||
+                unfinishedRaceIdsMap[raceId] ||
+                uuidv4();
 
             let regattaOriginalId = urlToRegatta[raceUrl];
             let userOriginalId = urlToUser[raceUrl];
@@ -652,8 +692,22 @@ const parser = require('xml2json');
                 }
             }
 
-            const startDateMs = Date.parse(start);
-            if (startDateMs >= todaysDateMs || state !== 'Complete') {
+            let startDateMs = Date.parse(start);
+            if (forceScrapeRaceData) {
+                const now = Date.now();
+                if (startDateMs > now) {
+                    // if start time is in the future set it today
+                    startDateMs = now;
+                    raceToSave.start = moment
+                        .utc(now)
+                        .format(TACKTRACKER_MOMENT_FORMAT);
+                }
+                raceToSave.state = 'COMPLETE';
+            }
+            if (
+                startDateMs >= todaysDateMs ||
+                raceToSave.state !== 'Complete'
+            ) {
                 console.log(`Unfinished race detected with url ${raceUrl}`);
                 scrapedUnfinishedOrigIds.push(raceToSave.original_id);
             } else {
