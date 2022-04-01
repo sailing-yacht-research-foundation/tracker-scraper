@@ -6,7 +6,7 @@ const {
     createAndSendTempJsonFile,
     getExistingData,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { appendArray } = require('../utils/array');
@@ -53,9 +53,12 @@ const RACEQS = {
         process.exit();
     }
 
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -85,11 +88,15 @@ const RACEQS = {
                 pageIndex++;
                 continue;
             }
+
+            const forceScrapeRaceData =
+                forceScrapeRacesMap[config.events[0].id?.toString()];
             let isUnfinished = false;
             if (
-                config.events[0]?.fromDtm > now ||
-                (config.events[0]?.fromDtm && !config.events[0]?.tillDtm) ||
-                config.events[0]?.tillDtm > now
+                !forceScrapeRaceData &&
+                (config.events[0].fromDtm > now ||
+                    (config.events[0].fromDtm && !config.events[0].tillDtm) ||
+                    config.events[0].tillDtm > now)
             ) {
                 console.log('Unfinished race detected', eventUrl);
                 isUnfinished = true;
@@ -120,7 +127,8 @@ const RACEQS = {
                 config,
                 checkRegatta,
                 eventUrl,
-                unfinishedRaceIdsMap
+                unfinishedRaceIdsMap,
+                forceScrapeRaceData
             );
 
             if (isUnfinished) {
@@ -275,8 +283,15 @@ function getRoutes(newEventStat, config, startsMap, waypointsMap) {
     }));
 }
 
-function getEventData(config, checkRegatta, eventUrl, unfinishedRaceIdsMap) {
+function getEventData(
+    config,
+    checkRegatta,
+    eventUrl,
+    unfinishedRaceIdsMap,
+    forceScrapeRaceData
+) {
     const existingEventId =
+        forceScrapeRaceData?.id ||
         unfinishedRaceIdsMap[config.events[0].id?.toString()];
     const newEventStat = {};
     newEventStat.id = existingEventId || uuidv4();
@@ -301,6 +316,17 @@ function getEventData(config, checkRegatta, eventUrl, unfinishedRaceIdsMap) {
         wpts[w.original_id] = w.id;
     });
 
+    const now = Date.now();
+
+    if (forceScrapeRaceData) {
+        if (newEventStat.from > now) {
+            newEventStat.from = now;
+            newEventStat.till = now;
+        } else {
+            newEventStat.till = forceScrapeRaceData.approx_end_time_ms;
+        }
+    }
+
     const divs = {};
     const divisions = getDivisions(newEventStat, config);
     divisions.forEach((d) => {
@@ -313,6 +339,12 @@ function getEventData(config, checkRegatta, eventUrl, unfinishedRaceIdsMap) {
         // Reuse the existing id only for the first start
         if (index === 0 && existingEventId) {
             s.id = existingEventId;
+        }
+        if (forceScrapeRaceData) {
+            // if force scrape then update the start time and end time
+            if (s.fromDtm > now) {
+                s.fromDtm = now;
+            }
         }
         startsMap[s.original_id] = s.id;
     });
