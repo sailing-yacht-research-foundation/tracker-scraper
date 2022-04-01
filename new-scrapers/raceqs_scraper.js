@@ -299,7 +299,8 @@ function getEventData(config, checkRegatta, eventUrl, unfinishedRaceIdsMap) {
         wpts[w.original_id] = w.id;
     });
 
-    const existingEventId = unfinishedRaceIdsMap[newEventStat.original_id];
+    const existingEventId =
+        unfinishedRaceIdsMap[newEventStat.original_id?.toString()];
 
     const divs = {};
     const divisions = getDivisions(newEventStat, config);
