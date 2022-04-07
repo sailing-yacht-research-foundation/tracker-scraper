@@ -5,13 +5,17 @@ const {
     createAndSendTempJsonFile,
     getExistingData,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { appendArray } = require('../utils/array');
 const SOURCE = 'kwindoo';
 
 (async () => {
+    // These are only used for limited scraping. If these are set, the urls are filtered
+    const eventOriginalIdsToScrape = []; // event original id as integer
+    const raceOriginalIdsToScrape = []; // race original id as integer
+
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
@@ -21,6 +25,11 @@ const SOURCE = 'kwindoo';
     let regattas;
     try {
         regattas = await fetchRegattaList();
+        if (eventOriginalIdsToScrape.length) {
+            regattas = regattas.filter((reg) =>
+                eventOriginalIdsToScrape.includes(reg.id)
+            );
+        }
     } catch (err) {
         console.log('Failed getting regatta list', err);
         process.exit();
@@ -34,9 +43,12 @@ const SOURCE = 'kwindoo';
         process.exit();
     }
 
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -65,8 +77,16 @@ const SOURCE = 'kwindoo';
                 runningGroups,
             } = await checkAndCreateRegattaData(currentRegatta, regattaDetails);
 
+            let raceList;
+            if (raceOriginalIdsToScrape.length) {
+                raceList = regattaDetails.races.filter((r) =>
+                    raceOriginalIdsToScrape.includes(r.id)
+                );
+            } else {
+                raceList = regattaDetails.races;
+            }
             console.log(
-                `Going through all races, length ${regattaDetails.races.length}... `
+                `Going through all races, length ${raceList.length}... `
             );
 
             const objectsToSave = {
@@ -84,8 +104,8 @@ const SOURCE = 'kwindoo';
                 KwindooVideoStream: videoStreams,
                 KwindooWaypoint: [],
             };
-            for (const raceIndex in regattaDetails.races) {
-                const currentRace = regattaDetails.races[raceIndex];
+            for (const raceIndex in raceList) {
+                const currentRace = raceList[raceIndex];
                 const raceUrl = `https://www.kwindoo.com/tracking/${newOrExistingRegatta.original_id}-${newOrExistingRegatta.name_slug}?race_id=${currentRace.id}`;
                 const isRaceExist = existingData.some(
                     (r) =>
@@ -99,12 +119,16 @@ const SOURCE = 'kwindoo';
                     continue;
                 }
                 console.log(
-                    `Scraping race ${raceIndex} of ${regattaDetails.races.length} with url ${raceUrl}`
+                    `Scraping race ${raceIndex} of ${raceList.length} with url ${raceUrl}`
                 );
                 try {
                     const newRace = {};
-                    const existingRaceId = unfinishedRaceIdsMap[currentRace.id];
-                    newRace.id = existingRaceId || uuidv4();
+                    const forceScrapeRaceData =
+                        forceScrapeRacesMap[currentRace.id];
+                    newRace.id =
+                        forceScrapeRaceData?.id ||
+                        unfinishedRaceIdsMap[currentRace.id] ||
+                        uuidv4();
                     newRace.original_id = currentRace.id;
                     newRace.regatta = newOrExistingRegatta.id;
                     newRace.regatta_original_id =
@@ -124,6 +148,16 @@ const SOURCE = 'kwindoo';
                         newOrExistingRegatta
                     );
 
+                    if (forceScrapeRaceData) {
+                        if (newRace.start_timestamp * 1000 > now) {
+                            // if start time is in the future set it today
+                            newRace.start_timestamp = now / 1000;
+                            newRace.end_timestamp = now / 1000;
+                        } else {
+                            newRace.end_timestamp =
+                                forceScrapeRaceData.approx_end_time_ms / 1000;
+                        }
+                    }
                     if (
                         newRace.start_timestamp * 1000 > now ||
                         newRace.end_timestamp * 1000 > now
