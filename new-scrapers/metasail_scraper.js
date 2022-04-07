@@ -7,7 +7,7 @@ const {
     createAndSendTempJsonFile,
     getExistingData,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
@@ -16,6 +16,10 @@ const NO_RACES_WARNING = 'No race still available';
 const SOURCE = 'metasail';
 
 (async () => {
+    // These are only used for limited scraping. If these are set, the urls are filtered
+    const eventUrlsToScrape = [];
+    const raceOriginalIdsToScrape = []; // use race original id (as string) since url contains the token which changes
+
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
         process.exit();
@@ -43,9 +47,12 @@ const SOURCE = 'metasail';
         process.exit();
     }
 
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -56,6 +63,11 @@ const SOURCE = 'metasail';
         browser = await launchBrowser();
         page = await browser.newPage();
         eventUrls = await getEventUrls(page);
+        if (eventUrlsToScrape.length) {
+            eventUrls = eventUrls.filter((url) =>
+                eventUrlsToScrape.includes(url)
+            );
+        }
     } catch (err) {
         console.log('Failed getting event urls', err);
         process.exit();
@@ -109,6 +121,13 @@ const SOURCE = 'metasail';
                     );
                     continue;
                 }
+                // If raceOriginalIdsToScrape is set and raceOrigId is not in the list skip it
+                if (
+                    raceOriginalIdsToScrape.length &&
+                    !raceOriginalIdsToScrape.includes(raceOrigId)
+                ) {
+                    continue;
+                }
                 try {
                     const {
                         unknownIdentifier,
@@ -117,7 +136,11 @@ const SOURCE = 'metasail';
                         redirectedUrl,
                     } = await fetchRaceData(currentRaceUrl, browser);
 
-                    const newRaceId = unfinishedRaceIdsMap[idgara] || uuidv4();
+                    const forceScrapeRaceData = forceScrapeRacesMap[idgara];
+                    const newRaceId =
+                        forceScrapeRaceData?.id ||
+                        unfinishedRaceIdsMap[idgara] ||
+                        uuidv4();
 
                     const newRace = {
                         id: newRaceId,
@@ -147,6 +170,16 @@ const SOURCE = 'metasail';
                     };
 
                     const now = Date.now();
+                    if (forceScrapeRaceData) {
+                        if (raceData.start > now) {
+                            // if start time is in the future set it today
+                            raceData.start = now;
+                            raceData.stop = now;
+                        } else {
+                            raceData.stop =
+                                forceScrapeRaceData.approx_end_time_ms;
+                        }
+                    }
                     if (
                         raceData.start > now ||
                         raceData.stop > now ||
