@@ -6,7 +6,7 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
@@ -57,9 +57,12 @@ const PAGENUM = '{$PAGENUM$}';
         process.exit();
     }
 
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -219,9 +222,13 @@ const PAGENUM = '{$PAGENUM$}';
             });
 
             raceInfo.race.url = currentRaceUrl;
+            const forceScrapeRaceData = forceScrapeRacesMap[raceInfo.race.id];
 
             const newRace = {
-                id: unfinishedRaceIdsMap[raceInfo.race.id] || uuidv4(),
+                id:
+                    forceScrapeRaceData?.id ||
+                    unfinishedRaceIdsMap[raceInfo.race.id] ||
+                    uuidv4(),
                 original_id: raceInfo.race.id,
                 initLon: raceInfo.race.initLon,
                 initLat: raceInfo.race.initLat,
@@ -242,10 +249,22 @@ const PAGENUM = '{$PAGENUM$}';
             };
 
             const now = Date.now();
+
+            if (forceScrapeRaceData) {
+                if (newRace.start_timestamp * 1000 > now) {
+                    // if start time is in the future set it today
+                    newRace.start_timestamp = now / 1000;
+                    newRace.end_timestamp = now / 1000;
+                } else {
+                    newRace.end_timestamp =
+                        forceScrapeRaceData.approx_end_time_ms / 1000;
+                }
+                newRace.has_ended = true;
+            }
             if (
-                raceInfo.race.start_timestamp * 1000 > now ||
-                !raceInfo.race.has_ended ||
-                raceInfo.race.end_timestamp * 1000 > now
+                newRace.start_timestamp * 1000 > now ||
+                !newRace.has_ended ||
+                newRace.end_timestamp * 1000 > now
             ) {
                 console.log(
                     'Unfinished race. Only scraping race info',
