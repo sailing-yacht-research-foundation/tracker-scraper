@@ -7,13 +7,13 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { v4: uuidv4 } = require('uuid');
 const SOURCE = 'geovoile';
-
 const MORDERN_SCRAPER_MIN_YEAR = 2016;
+
 async function getPageResponse(url) {
     const pageResponse = await axios.get(url);
     return pageResponse.data.toString();
@@ -125,7 +125,7 @@ function getRootUrl(url) {
  * @param {string} url
  * @returns scraped data
  */
-async function scrapePage(url, unfinishedRaceIdsMap = {}) {
+async function scrapePage(url, unfinishedRaceIdsMap = {}, forceScrapeRacesMap) {
     const browser = await launchBrowser();
     const page = await browser.newPage();
     try {
@@ -196,8 +196,23 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}) {
             };
         });
         race.scrapedUrl = url;
-        const existingRaceId = unfinishedRaceIdsMap[race.scrapedUrl];
-        race.id = existingRaceId || uuidv4();
+        const now = Date.now();
+        const forceScrapeRaceData = forceScrapeRacesMap[race.scrapedUrl];
+        if (forceScrapeRaceData) {
+            // if force scrape true modify start and end time to try and scrape it
+            if (race.startTime * 1000 > now) {
+                // if start time is in the future set it today
+                race.startTime = now / 1000;
+                race.endTime = now / 1000;
+            } else {
+                race.endTime = forceScrapeRaceData.approx_end_time_ms / 1000;
+            }
+        }
+
+        race.id =
+            forceScrapeRaceData?.id ||
+            unfinishedRaceIdsMap[race.scrapedUrl] ||
+            uuidv4();
         race.original_id = uuidv4();
         if (race?.numLegs > 1) {
             race.name = `${race.name} - Leg ${race.legNum}`;
@@ -280,7 +295,6 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}) {
         }
 
         // skip scrape other data
-        const now = Date.now();
         if (race.startTime * 1000 > now || race.endTime * 1000 > now) {
             return {
                 geovoileRace: race,
@@ -414,6 +428,7 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}) {
         browser.close();
     }
 }
+
 async function registerFailed(url, redirectUrl, err) {
     await registerFailedUrl(SOURCE, url, err);
     if (redirectUrl && redirectUrl !== url) {
@@ -423,6 +438,7 @@ async function registerFailed(url, redirectUrl, err) {
         await registerFailedUrl(SOURCE, redirectUrl, err);
     }
 }
+
 (async () => {
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');
@@ -436,9 +452,12 @@ async function registerFailed(url, redirectUrl, err) {
         console.log('Failed getting race urls', err);
         process.exit();
     }
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -499,7 +518,11 @@ async function registerFailed(url, redirectUrl, err) {
         }
         let result;
         try {
-            result = await scrapePage(url, unfinishedRaceIdsMap);
+            result = await scrapePage(
+                url,
+                unfinishedRaceIdsMap,
+                forceScrapeRacesMap
+            );
         } catch (e) {
             console.log(`Failed to scrape data  for url ${url}`);
             await registerFailed(url, null, e.toString());
