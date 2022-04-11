@@ -11,7 +11,7 @@ const {
     createAndSendTempJsonFile,
     getExistingData,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
@@ -35,9 +35,12 @@ const SOURCE = 'yachtbot';
             existingRaceIds[id] = true;
         });
 
-        let unfinishedRaceIdsMap;
+        let unfinishedRaceIdsMap, forceScrapeRacesMap;
         try {
-            unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+            ({
+                unfinishedRaceIdsMap,
+                forceScrapeRacesMap,
+            } = await getUnfinishedRaceData(SOURCE));
         } catch (err) {
             console.log('Error getting unfinished race ids', err);
             throw err;
@@ -87,11 +90,6 @@ const SOURCE = 'yachtbot';
                     pageUrl
                 );
                 if (token) {
-                    const raceSaveObj = {
-                        id: unfinishedRaceIdsMap[idx] || uuidv4(),
-                        original_id: idx,
-                    };
-
                     const session = await fetchSession(idx, token);
                     if (!session) {
                         console.log(
@@ -100,7 +98,14 @@ const SOURCE = 'yachtbot';
                         idx++;
                         continue;
                     }
-
+                    const forceScrapeRaceData = forceScrapeRacesMap[idx];
+                    const raceSaveObj = {
+                        id:
+                            forceScrapeRaceData?.id ||
+                            unfinishedRaceIdsMap[idx] ||
+                            uuidv4(),
+                        original_id: idx,
+                    };
                     const startTime = session.data.session.start_time;
                     const endTime = session.data.session.end_time;
 
@@ -207,7 +212,22 @@ const SOURCE = 'yachtbot';
                         raceSaveObj
                     );
 
-                    if (startTime > Date.now() || endTime > Date.now()) {
+                    const now = Date.now();
+                    if (forceScrapeRaceData) {
+                        if (raceSaveObj.start_time > now) {
+                            // if start time is in the future set it today
+                            raceSaveObj.start_time = now;
+                            raceSaveObj.end_time = now;
+                        } else {
+                            raceSaveObj.end_time =
+                                forceScrapeRaceData.approx_end_time_ms;
+                        }
+                    }
+
+                    if (
+                        raceSaveObj.start_time > now ||
+                        raceSaveObj.end_time > now
+                    ) {
                         console.log(
                             'Unfinished race. Allow sending even if without boats or positions',
                             pageUrl
@@ -275,13 +295,13 @@ const fetchSession = async (idx, token) => {
                 resolve(response);
             })
             .catch((error) => {
-                if (error.response) {
+                if (error.response && error.response.status !== 401) {
                     console.log(
                         `the url ${url} has error with status = ${error.response.status}, statusText = ${error.response.statusText}`
                     );
                     console.log(error.response.data);
                 }
-                console.log(resolve(null));
+                resolve(null);
             });
     });
 };
