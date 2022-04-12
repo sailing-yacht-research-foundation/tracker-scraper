@@ -1,18 +1,24 @@
 const { launchBrowser } = require('../utils/puppeteerLauncher');
 const { appendArray } = require('../utils/array');
 const axios = require('axios');
+const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
+    // These are only used for limited scraping. If these are set, the urls are filtered
+    const eventOriginalIdsToScrape = [];
+    const raceOriginalIdsToScrape = [];
+
     const SOURCE = 'georacing';
+    const GEORACING_MOMENT_FORMAT = 'YYYY-MM-DDThh:mm:ss[Z]';
     const allRacesURL =
         'https://player.georacing.com/datas/applications/app_12.json';
     let allRacesRequest, browser, page;
@@ -38,9 +44,12 @@ const {
         process.exit();
     }
 
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -53,16 +62,24 @@ const {
         console.log('Failed in getting all race urls.', err);
         process.exit();
     }
-    const allEvents = allRacesRequest.data.events;
+    let allEvents = allRacesRequest.data.events;
+    if (eventOriginalIdsToScrape.length) {
+        allEvents = allEvents.filter((e) =>
+            eventOriginalIdsToScrape.includes(e.id)
+        );
+    }
+    const now = Date.now();
     for (const eventsIndex in allEvents) {
         const event = allEvents[eventsIndex];
-        const nowStamp = new Date().getTime();
 
         if (existingUrls.includes(event.id)) {
             continue;
         }
 
-        const races = event.races;
+        let races = event.races;
+        if (raceOriginalIdsToScrape) {
+            races = races.filter((r) => raceOriginalIdsToScrape.includes(r.id));
+        }
 
         try {
             const objectsToSave = {};
@@ -92,8 +109,6 @@ const {
             for (const raceIndex in races) {
                 const race = races[raceIndex];
                 const urlRegex = /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=+$,\w]+@)?[A-Za-z0-9.-]+|(?:www.|[-;:&=+$,\w]+@)[A-Za-z0-9.-]+)((?:\/[+~%/.\w-_]*)?\??(?:[-+=&;%@.\w_]*)#?(?:[\w]*))?)/;
-                const raceStartDateStamp = new Date(race.start_time).getTime();
-                const raceEndDateStamp = new Date(race.end_time).getTime();
                 if (!race.player_name || !urlRegex.test(race.player_name)) {
                     race.player_name = getRacePlayerNameURL(
                         eventObjSave.original_id,
@@ -117,8 +132,34 @@ const {
                     );
 
                     const originalRaceId = race.id.toString();
+                    const forceScrapeRaceData =
+                        forceScrapeRacesMap[originalRaceId];
+                    let raceStartDateStamp = Date.parse(race.start_time);
+                    let raceEndDateStamp = Date.parse(race.end_time);
+                    if (forceScrapeRaceData) {
+                        if (raceStartDateStamp > now) {
+                            // if start time is in the future set it today
+                            raceStartDateStamp = now;
+                            raceEndDateStamp = now;
+                            race.start_time = moment
+                                .utc(now)
+                                .format(GEORACING_MOMENT_FORMAT);
+                            race.end_time = moment
+                                .utc(now)
+                                .format(GEORACING_MOMENT_FORMAT);
+                        } else {
+                            raceEndDateStamp =
+                                forceScrapeRaceData.approx_end_time_ms;
+                            race.end_time = moment
+                                .utc(forceScrapeRaceData.approx_end_time_ms)
+                                .format(GEORACING_MOMENT_FORMAT);
+                        }
+                    }
                     const raceObjSave = {
-                        id: unfinishedRaceIdsMap[originalRaceId] || uuidv4(),
+                        id:
+                            forceScrapeRaceData?.id ||
+                            unfinishedRaceIdsMap[originalRaceId] ||
+                            uuidv4(),
                         original_id: race.id,
                         event: eventObjSave.id,
                         event_original_id: eventObjSave.original_id,
@@ -133,8 +174,7 @@ const {
                         player_version: playerVersion,
                     };
                     const isUnfinished =
-                        raceStartDateStamp > nowStamp ||
-                        raceEndDateStamp > nowStamp;
+                        raceStartDateStamp > now || raceEndDateStamp > now;
                     if (isUnfinished) {
                         scrapedUnfinishedOrigIds.push(
                             raceObjSave.original_id.toString()

@@ -1,17 +1,22 @@
 const axios = require('axios');
+const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 const { launchBrowser } = require('../utils/puppeteerLauncher');
 
-// Get all events.
 (async () => {
+    // These are only used for limited scraping. If these are set, the urls are filtered
+    const eventUrlsToScrape = [];
+    const raceUrlsToScrape = [];
+
+    const TRACTRAC_MOMENT_FORMAT = 'YYYY-MM-DD hh:mm:ss';
     const SOURCE = 'tractrac';
     let browser, page;
 
@@ -28,9 +33,12 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
         process.exit();
     }
 
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -303,7 +311,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
         };
     };
 
-    const parseRace = async (race, event) => {
+    const parseRace = async (race, event, forceScrapeRaceData) => {
         const raceMeta = race;
 
         /**
@@ -434,15 +442,20 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
             await page.click('#time-control-play');
             console.log('Waiting for section race');
             await page.waitForSelector('#contTop > div > section.race');
-            console.log('Check if slider will load');
-            await page.waitForFunction(
-                'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] !== ""',
-                { timeout: 30000 }
-            );
-            const waitForFullyLoaded =
-                'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"';
-            console.log('Waiting for time slider to finish');
-            await page.waitForFunction(waitForFullyLoaded, { timeout: 120000 });
+            if (!forceScrapeRaceData) {
+                // If force scrape, do not need to wait for slider to finish since it wont finish if it is live
+                console.log('Check if slider will load');
+                await page.waitForFunction(
+                    'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] !== ""',
+                    { timeout: 30000 }
+                );
+                const waitForFullyLoaded =
+                    'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"';
+                console.log('Waiting for time slider to finish');
+                await page.waitForFunction(waitForFullyLoaded, {
+                    timeout: 120000,
+                });
+            }
             console.log('Loaded race, beginning to parse from website.');
             const raceDetails = await page.evaluate(() => {
                 const context = document.querySelector(
@@ -736,7 +749,14 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
         console.log('Failed getting events.', err);
         process.exit();
     }
-    const allEvents = allEventsRequest.data.events;
+    let allEvents;
+    if (eventUrlsToScrape.length) {
+        allEvents = allEventsRequest.data.events.filter((e) =>
+            eventUrlsToScrape.includes(e.races_url)
+        );
+    } else {
+        allEvents = allEventsRequest.data.events;
+    }
 
     for (const eventIndex in allEvents) {
         const eventObject = allEvents[eventIndex];
@@ -808,7 +828,14 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
             }
 
             const eventDetails = racesRequest.data.event;
-            const races = racesRequest.data.races;
+            let races;
+            if (raceUrlsToScrape.length) {
+                races = racesRequest.data.races.filter((r) =>
+                    raceUrlsToScrape.includes(r.url_html)
+                );
+            } else {
+                races = racesRequest.data.races;
+            }
 
             if (eventDetails === undefined) {
                 console.log('No event details. Skipping');
@@ -894,11 +921,36 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                 }
                 let details;
                 const raceToFormat = {};
+                const forceScrapeRaceData = forceScrapeRacesMap[raceObject.id];
                 const existingRaceId = unfinishedRaceIdsMap[raceObject.id]; // in case its already been scraped as unfinished race
-                raceToFormat.id = existingRaceId || uuidv4();
+                raceToFormat.id =
+                    forceScrapeRaceData?.id || existingRaceId || uuidv4();
                 raceToFormat.original_id = raceObject.id;
+                if (forceScrapeRaceData) {
+                    const now = Date.now();
+                    const startTime = new Date(
+                        raceObject.tracking_starttime
+                    ).getTime();
+                    if (startTime > now) {
+                        // if start time is in the future set it today
+                        raceObject.tracking_starttime = moment
+                            .utc(now)
+                            .format(TRACTRAC_MOMENT_FORMAT);
+                        raceObject.tracking_endtime = moment
+                            .utc(now)
+                            .format(TRACTRAC_MOMENT_FORMAT);
+                    } else {
+                        raceObject.tracking_endtime = moment
+                            .utc(forceScrapeRaceData.approx_end_time_ms)
+                            .format(TRACTRAC_MOMENT_FORMAT);
+                    }
+                }
                 try {
-                    details = await parseRace(raceObject, eventSaveObj);
+                    details = await parseRace(
+                        raceObject,
+                        eventSaveObj,
+                        forceScrapeRaceData
+                    );
                 } catch (err) {
                     console.log('Failed parsing race', err);
                     await registerFailedUrl(
@@ -999,7 +1051,14 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
         console.log('Failed getting clubs.', err);
         process.exit();
     }
-    const allClubs = allClubsRequest.data.events;
+    let allClubs;
+    if (eventUrlsToScrape.length) {
+        allClubs = allClubsRequest.data.events.filter((e) =>
+            eventUrlsToScrape.includes(e.races_url)
+        );
+    } else {
+        allClubs = allClubsRequest.data.events;
+    }
 
     for (const clubIndex in allClubs) {
         const clubObject = allClubs[clubIndex];
@@ -1052,7 +1111,14 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
             continue;
         }
 
-        const clubRaces = clubRacesRequest.data.races;
+        let clubRaces;
+        if (raceUrlsToScrape.length) {
+            clubRaces = clubRacesRequest.data.races.filter((r) =>
+                raceUrlsToScrape.includes(r.url_html)
+            );
+        } else {
+            clubRaces = clubRacesRequest.data.races;
+        }
         for (const raceIndex in clubRaces) {
             const raceObject = clubRaces[raceIndex];
             /**
@@ -1100,11 +1166,37 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                     continue;
                 }
                 const raceToFormat = {};
+                const forceScrapeRaceData = forceScrapeRacesMap[raceObject.id];
                 const existingRaceId = unfinishedRaceIdsMap[raceObject.id]; // in case its already been scraped as unfinished race
-                raceToFormat.id = existingRaceId || uuidv4();
+                raceToFormat.id =
+                    forceScrapeRaceData?.id || existingRaceId || uuidv4();
                 raceToFormat.original_id = raceObject.id;
-                const details = await parseRace(raceObject);
 
+                if (forceScrapeRaceData) {
+                    const now = Date.now();
+                    const startTime = new Date(
+                        raceObject.tracking_starttime
+                    ).getTime();
+                    if (startTime > now) {
+                        // if start time is in the future set it today
+                        raceObject.tracking_starttime = moment
+                            .utc(now)
+                            .format(TRACTRAC_MOMENT_FORMAT);
+                        raceObject.tracking_endtime = moment
+                            .utc(now)
+                            .format(TRACTRAC_MOMENT_FORMAT);
+                    } else {
+                        raceObject.tracking_endtime = moment
+                            .utc(forceScrapeRaceData.approx_end_time_ms)
+                            .format(TRACTRAC_MOMENT_FORMAT);
+                    }
+                }
+
+                const details = await parseRace(
+                    raceObject,
+                    null,
+                    forceScrapeRaceData
+                );
                 if (!details) {
                     continue;
                 }

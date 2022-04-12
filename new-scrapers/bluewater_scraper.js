@@ -1,19 +1,24 @@
 const axios = require('axios');
+const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
+    // This is only used for limited scraping. If these are set, the urls are filtered
+    const slugsToScrape = [];
+
     const SOURCE = 'bluewater';
     const BASE_URL = 'https://api.bluewatertracks.com/api/race/';
     const BASE_REFERRAL_URL = 'https://race.bluewatertracks.com/';
     const FROM_UPDATE_TIME = '2015-03-12T19:33:50.187Z';
+    const BLUEWATER_MOMENT_FORMAT = 'YYYY-MM-DDThh:mm:ss.SSS[Z]';
     const todayPlusMonth = new Date();
     todayPlusMonth.setMonth(todayPlusMonth.getMonth() + 1);
     const raceListApiUrl = `https://api.bluewatertracks.com/api/racelist/${FROM_UPDATE_TIME}/${todayPlusMonth.toISOString()}`;
@@ -31,9 +36,12 @@ const {
         process.exit();
     }
 
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -48,9 +56,10 @@ const {
         console.log('An error occured getting the race list', err);
         process.exit();
     }
-    const races = result.data.raceList.filter(
-        (r) => r.slug === '2022-orcv-50th-melbourne-to-king-island'
-    );
+    let races = result.data.raceList;
+    if (slugsToScrape.length) {
+        races = races.filter((r) => slugsToScrape.includes(r.slug));
+    }
 
     for (const index in races) {
         const raceObj = races[index];
@@ -74,15 +83,33 @@ const {
         const resultData = result.data;
         const positions = resultData.positions;
         const race = resultData.race;
-        const trackTimeStart = race.trackTimeStart;
-        const trackTimeFinish = race.trackTimeFinish;
-        const raceStartTimeMs = new Date(race.raceStartTime).getTime();
-        const raceEndTimeMs = new Date(trackTimeFinish).getTime();
+        let raceStartTimeMs = Date.parse(race.raceStartTime);
+        let raceEndTimeMs = Date.parse(race.trackTimeFinish);
 
         const now = Date.now();
+        const forceScrapeRaceData = forceScrapeRacesMap[raceObj._id];
+
+        if (forceScrapeRaceData) {
+            if (raceStartTimeMs > now) {
+                // if start time is in the future set it today
+                raceStartTimeMs = now;
+                raceEndTimeMs = now;
+                race.raceStartTime = moment
+                    .utc(now)
+                    .format(BLUEWATER_MOMENT_FORMAT);
+                race.trackTimeFinish = moment
+                    .utc(now)
+                    .format(BLUEWATER_MOMENT_FORMAT);
+            } else {
+                raceEndTimeMs = forceScrapeRaceData.approx_end_time_ms;
+                race.trackTimeFinish = moment
+                    .utc(forceScrapeRaceData.approx_end_time_ms)
+                    .format(BLUEWATER_MOMENT_FORMAT);
+            }
+        }
         const isUnfinished =
             raceStartTimeMs > now ||
-            (raceStartTimeMs && !trackTimeFinish) ||
+            (raceStartTimeMs && !race.trackTimeFinish) ||
             raceEndTimeMs > now;
 
         if (isUnfinished) {
@@ -99,7 +126,10 @@ const {
         const finishTimezone = race.finishTimezone;
         const announcement = race.announcement;
         const currentRace = {
-            id: unfinishedRaceIdsMap[raceObj._id] || uuidv4(),
+            id:
+                forceScrapeRaceData?.id ||
+                unfinishedRaceIdsMap[raceObj._id] ||
+                uuidv4(),
             original_id: raceObj._id,
             name: race.raceName,
             referral_url: BASE_REFERRAL_URL + raceObj.slug,
@@ -108,8 +138,8 @@ const {
             timezone_offset: timezone.offset,
             finish_timezone_location: finishTimezone.location,
             finish_timezone_offset: finishTimezone.offset,
-            track_time_start: trackTimeStart,
-            track_time_finish: trackTimeFinish,
+            track_time_start: race.trackTimeStart,
+            track_time_finish: race.trackTimeFinish,
             account_name: race.accountName,
             account_website: race.accountWebsite,
             calculation: race.calculation,

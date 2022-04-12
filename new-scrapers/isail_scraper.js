@@ -6,11 +6,15 @@ const {
     createAndSendTempJsonFile,
     getExistingUrls,
     registerFailedUrl,
-    getUnfinishedRaceIds,
+    getUnfinishedRaceData,
     cleanUnfinishedRaces,
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
+    // These are only used for limited scraping. If these are set, the urls are filtered
+    const eventOriginalIdsToScrape = [];
+    const raceOriginalIdsToScrape = [];
+
     const SOURCE = 'isail';
     const existingClasses = {};
     let browser, page;
@@ -35,9 +39,12 @@ const {
         process.exit();
     }
 
-    let unfinishedRaceIdsMap;
+    let unfinishedRaceIdsMap, forceScrapeRacesMap;
     try {
-        unfinishedRaceIdsMap = await getUnfinishedRaceIds(SOURCE);
+        ({
+            unfinishedRaceIdsMap,
+            forceScrapeRacesMap,
+        } = await getUnfinishedRaceData(SOURCE));
     } catch (err) {
         console.log('Error getting unfinished race ids', err);
         process.exit();
@@ -47,6 +54,13 @@ const {
     let counter = 1;
     const maximum = 600;
     while (counter < maximum) {
+        if (
+            eventOriginalIdsToScrape.length &&
+            !eventOriginalIdsToScrape.includes(counter)
+        ) {
+            counter++;
+            continue;
+        }
         const url = `http://app.i-sail.com/eventDetails/${counter}`;
         if (existingUrls.includes(url)) {
             console.log(`Url already exist in database ${url}. Skipping.`);
@@ -212,7 +226,12 @@ const {
             const startlineJSON = allEventData.startlineJSON;
 
             const resultJSON = allEventData.resultJSON;
-            const raceJSON = allEventData.raceJSON;
+            let raceJSON = allEventData.raceJSON;
+            if (raceOriginalIdsToScrape.length) {
+                raceJSON = raceJSON.filter((r) =>
+                    raceOriginalIdsToScrape.includes(r.id)
+                );
+            }
 
             const raceExtras = [];
             const courseMarkIdMap = {};
@@ -223,8 +242,30 @@ const {
                     );
                     return;
                 }
+                const forceScrapeRaceData = forceScrapeRacesMap[race.id];
+                const now = todaysDate.getTime();
+
+                if (forceScrapeRaceData) {
+                    if (race.startTime * 1000 > now) {
+                        // if start time is in the future set it today
+                        race.startTime = now / 1000;
+                        race.stopTime = now / 1000;
+                    } else {
+                        race.stopTime =
+                            forceScrapeRaceData.approx_end_time_ms / 1000;
+                    }
+                } else if (
+                    race.startTime * 1000 > now ||
+                    race.stopTime * 1000 > now
+                ) {
+                    scrapedUnfinishedOrigIds.push(race.id);
+                }
+
                 const r = {
-                    id: unfinishedRaceIdsMap[race.id] || uuidv4(),
+                    id:
+                        forceScrapeRaceData?.id ||
+                        unfinishedRaceIdsMap[race.id] ||
+                        uuidv4(),
                     original_id: race.id,
                     event: event.id,
                     original_event_id: race.event,
@@ -235,12 +276,6 @@ const {
                     url: race.url,
                     track_ids: race.trackIds,
                 };
-                if (
-                    race.startTime * 1000 > todaysDate.getTime() ||
-                    race.stopTime * 1000 > todaysDate.getTime()
-                ) {
-                    scrapedUnfinishedOrigIds.push(race.id);
-                }
 
                 const courseMarks = [];
                 const marks = [];
