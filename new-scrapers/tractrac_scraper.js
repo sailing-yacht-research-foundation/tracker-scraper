@@ -436,7 +436,10 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
 
         try {
             console.log(`Scraping race with url ${raceMeta.url_html}`);
-            await page.goto(raceMeta.url_html, { waitUntil: 'networkidle2' });
+            await page.goto(raceMeta.url_html, {
+                waitUntil: 'networkidle2',
+                timeout: 60000,
+            });
             console.log('Waiting for time control play');
             await page.waitForSelector('#time-control-play');
             await page.click('#time-control-play');
@@ -444,17 +447,20 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
             await page.waitForSelector('#contTop > div > section.race');
             if (!forceScrapeRaceData) {
                 // If force scrape, do not need to wait for slider to finish since it wont finish if it is live
-                console.log('Check if slider will load');
-                await page.waitForFunction(
-                    'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] !== ""',
-                    { timeout: 30000 }
-                );
-                const waitForFullyLoaded =
-                    'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"';
-                console.log('Waiting for time slider to finish');
-                await page.waitForFunction(waitForFullyLoaded, {
-                    timeout: 120000,
-                });
+                try {
+                    const waitForFullyLoaded =
+                        'document.querySelector("#time-slider > div") != null && document.querySelector("#time-slider > div").style["width"] === "100%"';
+                    console.log('Waiting for time slider to finish');
+                    await page.waitForFunction(waitForFullyLoaded, {
+                        timeout: 120000,
+                    });
+                } catch (err) {
+                    console.log(
+                        'Error waiting for time slider to finish. Will still try to get boat positions if there are any',
+                        err
+                    );
+                    // continue even if slider has error because some race has no width on the slider even if it has tracks
+                }
             }
             console.log('Loaded race, beginning to parse from website.');
             const raceDetails = await page.evaluate(() => {
@@ -995,6 +1001,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
 
                     if (!thingsToSave.competitorPositionsToSave.length) {
                         const errMsg = 'No positions in race';
+                        console.log(errMsg);
                         await registerFailedUrl(
                             SOURCE,
                             raceObject.url_html,
