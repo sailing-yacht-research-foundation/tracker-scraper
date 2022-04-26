@@ -625,6 +625,18 @@ async function registerFailed(url, redirectUrl, err) {
         }
 
         try {
+            if (
+                !scrapedUnfinishedOrigIds.includes(
+                    result.geovoileRace.scrapedUrl
+                )
+            ) {
+                if (!result.boats?.length) {
+                    throw new Error('No boats in race');
+                }
+                if (!result.positions?.length) {
+                    throw new Error('No positions in race');
+                }
+            }
             console.log(`Sending json file to raw-data-server for url: ${url}`);
             await createAndSendTempJsonFile(result);
         } catch (err) {

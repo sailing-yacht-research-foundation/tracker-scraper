@@ -115,7 +115,7 @@ const {
         if (isUnfinished) {
             scrapedUnfinishedOrigIds.push(raceObj._id);
         } else if (!positions?.length) {
-            const errMsg = `No positions with race url ${raceUrl}. Skipping`;
+            const errMsg = 'No positions in race';
             console.log(errMsg);
             await registerFailedUrl(SOURCE, raceObj.slug, errMsg);
             continue;

@@ -388,6 +388,14 @@ const SOURCE = 'kattack';
                     positions.push(position);
                 });
             }
+            if (!scrapedUnfinishedOrigIds.includes(currentRace.original_id)) {
+                if (!devices.length) {
+                    throw new Error('No boats in race');
+                }
+                if (!positions.length) {
+                    throw new Error('No positions in race');
+                }
+            }
             objectsToSave.KattackRace = [currentRace];
             objectsToSave.KattackDevice = devices;
             objectsToSave.KattackPosition = positions;
@@ -717,6 +725,14 @@ const SOURCE = 'kattack';
                 });
             }
 
+            if (!scrapedUnfinishedOrigIds.includes(currentRace.original_id)) {
+                if (!devices.length) {
+                    throw new Error('No boats in race');
+                }
+                if (!positions.length) {
+                    throw new Error('No positions in race');
+                }
+            }
             objectsToSave.KattackRace = [currentRace];
             objectsToSave.KattackDevice = devices;
             objectsToSave.KattackPosition = positions;
