@@ -496,7 +496,7 @@ function buildGateAndBuoyData(newRaceId, raceData, idgara) {
     const newGates = [];
     const newBuoys = [];
     const buoyIds = {};
-    raceData.buoyList.forEach((b) => {
+    raceData.buoyList.forEach((b, index) => {
         if (b.seriale2 === '' || b.seriale2 === '-' || b.seriale2 === ' ') {
             const newMark = {
                 id: uuidv4(),
@@ -510,6 +510,7 @@ function buildGateAndBuoyData(newRaceId, raceData, idgara) {
                 lon: b.lng1 || b.gpsData1?.Longitudine,
                 lat_m: b.latM1 || b.gpsData1?.LatitudineMetri,
                 lon_m: b.lngM1 || b.gpsData1?.LongitudineMetri,
+                order: index + 1,
             };
 
             buoyIds[b.seriale1] = newMark.id;
@@ -555,6 +556,7 @@ function buildGateAndBuoyData(newRaceId, raceData, idgara) {
                 buoy_1_original_id: newMark1.original_id,
                 buoy_2: newMark2.id,
                 buoy_2_original_id: newMark2.original_id,
+                order: index + 1,
             };
 
             newGates.push(newGate);
