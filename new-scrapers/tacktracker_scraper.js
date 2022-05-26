@@ -680,15 +680,22 @@ const parser = require('xml2json');
                 const data = track.trk.trkseg.trkpt;
                 for (const positionIndex in data) {
                     const positionData = data[positionIndex];
-                    const position = {
-                        id: uuidv4(),
-                        boat: boatId,
-                        race: newRaceId,
-                        time: positionData.time,
-                        lat: positionData.lat,
-                        lon: positionData.lon,
-                    };
-                    positionsToSave.push(position);
+                    if (
+                        positionData.lat !== null &&
+                        !isNaN(+positionData.lat) &&
+                        positionData.lon !== null &&
+                        !isNaN(+positionData.lon)
+                    ) {
+                        const position = {
+                            id: uuidv4(),
+                            boat: boatId,
+                            race: newRaceId,
+                            time: positionData.time,
+                            lat: positionData.lat,
+                            lon: positionData.lon,
+                        };
+                        positionsToSave.push(position);
+                    }
                 }
             }
 
@@ -712,7 +719,14 @@ const parser = require('xml2json');
                 scrapedUnfinishedOrigIds.push(raceToSave.original_id);
             } else {
                 // Only check boat and positions if race is finished
-                if (!boatsToSave.length) {
+                if (
+                    !boatsToSave.filter(
+                        (b) =>
+                            !['Mark', 'Marker', 'CourseMark'].includes(
+                                b.unknown_4
+                            )
+                    ).length
+                ) {
                     throw new Error('No boats in race');
                 }
                 if (!positionsToSave.length) {

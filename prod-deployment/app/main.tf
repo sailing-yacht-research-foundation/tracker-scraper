@@ -473,7 +473,7 @@ resource "aws_ecs_task_definition" "yachtbot-scraper-prod" {
       "name": "yachtbot-scraper",
       "image": "${aws_ecr_repository.scraper-runner.repository_url}@${data.aws_ecr_image.scraper_runner_image.image_digest}",
       "essential": true,
-      "command": ["node","new-scrapers/yachtbot_scraper.js"],
+      "command": ["node","--max_old_space_size=4096","new-scrapers/yachtbot_scraper.js"],
 
       "environmentFiles": [
                {
@@ -491,14 +491,14 @@ resource "aws_ecs_task_definition" "yachtbot-scraper-prod" {
         }
       },
       "workingDirectory": "/home/node/app",
-      "memory": 2048,
+      "memory": 5120,
       "cpu": 1024
     }
   ]
   DEFINITION
   requires_compatibilities = ["FARGATE"] # Stating that we are using ECS Fargate
   network_mode             = "awsvpc"    # Using awsvpc as our network mode as this is required for Fargate
-  memory                   = 2048        # Specifying the memory our container requires
+  memory                   = 5120        # Specifying the memory our container requires
   cpu                      = 1024        # Specifying the CPU our container requires
   execution_role_arn       = aws_iam_role.scraperTaskExecutionRole.arn
 }
@@ -795,8 +795,8 @@ resource "aws_cloudwatch_event_target" "metasail-scraper-prod-daily-target" {
 #cloudwatch events for raceqs
 resource "aws_cloudwatch_event_rule" "raceqs-scraper-prod-daily" {
   name                = "raceqs-scraper-prod-daily"
-  description         = "Runs the raceqs scraper daily at 12:45AM (UTC)"
-  schedule_expression = "cron(45 00 * * ? *)"
+  description         = "Runs the raceqs scraper daily at 03:30AM (UTC)"
+  schedule_expression = "cron(30 03 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
 
@@ -849,8 +849,8 @@ resource "aws_cloudwatch_event_target" "tacktracker-scraper-prod-daily-target" {
 #cloudwatch events for tacktrac
 resource "aws_cloudwatch_event_rule" "tractrac-scraper-prod-daily" {
   name                = "tractrac-scraper-prod-daily"
-  description         = "Runs the tractrac scraper daily at 2:00AM (UTC)"
-  schedule_expression = "cron(00 02 * * ? *)"
+  description         = "Runs the tractrac scraper daily at 1:30AM (UTC)"
+  schedule_expression = "cron(30 01 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
 
@@ -875,8 +875,8 @@ resource "aws_cloudwatch_event_target" "tractrac-scraper-prod-daily-target" {
 #cloudwatch events for yatchbot
 resource "aws_cloudwatch_event_rule" "yachtbot-scraper-prod-daily" {
   name                = "yachtbot-scraper-prod-daily"
-  description         = "Runs the yachtbot scraper daily at 3:00AM (UTC)"
-  schedule_expression = "cron(00 03 * * ? *)"
+  description         = "Runs the yachtbot scraper daily at 2:00AM (UTC)"
+  schedule_expression = "cron(00 02 * * ? *)"
   is_enabled          = true // Change to true to enable scheduling
 }
 
