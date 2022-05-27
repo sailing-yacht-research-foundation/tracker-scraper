@@ -893,7 +893,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                 );
             }
 
-            eventSaveObj.name = eventDetails.name;
+            eventSaveObj.name = eventObject.name || eventDetails.name;
             eventSaveObj.country = eventObject.country;
             eventSaveObj.city = eventObject.city;
             eventSaveObj.type = eventObject.type;
@@ -914,11 +914,12 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
 
             console.log('Got race list. Going through each race now.');
             for (const raceIndex in races) {
-                console.log(
-                    `Scraping race index ${raceIndex} of ${races.length}`
-                );
                 const raceObject = races[raceIndex];
 
+                console.log(
+                    `Scraping race index ${raceIndex} of ${races.length} with url`,
+                    raceObject.url_html
+                );
                 if (existingUrls.includes(raceObject.url_html)) {
                     console.log(
                         `Existing race url in database ${raceObject.url_html}. Skipping`

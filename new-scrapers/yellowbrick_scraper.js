@@ -1336,14 +1336,6 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
             if (!setupData.teams?.length) {
                 throw new Error('No boats in race');
             }
-            const kmlUrl = `${YB_WEB_URL}/${currentCode}.kml`;
-            console.log(`Getting kml data with url ${kmlUrl}`);
-            const kml = await axios.get(kmlUrl);
-            const kmlToSave = {
-                id: uuidv4(),
-                data: kml.data,
-            };
-            race.kml_s3_id = kmlToSave.id;
 
             const leaderBoardUrl = `${YB_WEB_URL}/l/${currentCode}`;
             console.log(`Getting leaderboard data with url ${leaderBoardUrl}`);
@@ -1522,7 +1514,6 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
             objectsToSave.YellowbrickTeam = teamsSave;
             objectsToSave.YellowbrickLeaderboardTeam = leaderboardTeams;
             objectsToSave.YellowbrickPosition = allPositions;
-            objectsToSave.YellowbrickKml = [kmlToSave];
 
             await createAndSendTempJsonFile(objectsToSave);
             raceCodes.push(raceCode);
