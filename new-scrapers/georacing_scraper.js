@@ -77,7 +77,7 @@ const {
         }
 
         let races = event.races;
-        if (raceOriginalIdsToScrape) {
+        if (raceOriginalIdsToScrape?.length) {
             races = races.filter((r) => raceOriginalIdsToScrape.includes(r.id));
         }
 
