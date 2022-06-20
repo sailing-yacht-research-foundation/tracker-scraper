@@ -235,7 +235,7 @@ const SOURCE = 'yachtbot';
                         scrapedUnfinishedOrigIds.push(raceSaveObj.original_id);
                     } else if (!boats?.length) {
                         throw new Error('No boats in race');
-                    } else if (!positions?.length) {
+                    } else if (!positions?.filter((p) => !!p.yacht).length) {
                         throw new Error('No positions in race');
                     }
 
