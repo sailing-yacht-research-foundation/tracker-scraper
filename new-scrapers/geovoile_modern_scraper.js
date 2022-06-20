@@ -247,12 +247,12 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}, forceScrapeRacesMap) {
             for (const gate of sig.raceGates) {
                 const line = _createGeometryLine(
                     {
-                        lat: gate._pointA[1],
-                        lon: gate._pointA[0],
+                        lat: gate._pointA[0],
+                        lon: gate._pointA[1],
                     },
                     {
-                        lat: gate._pointB[1],
-                        lon: gate._pointB[0],
+                        lat: gate._pointB[0],
+                        lon: gate._pointB[1],
                     },
                     { name: gate.id }
                 );
@@ -268,7 +268,7 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}, forceScrapeRacesMap) {
         }
         const marks = await page.evaluate(() => {
             const allMarks = [];
-            document.querySelectorAll('#poiLayer g[rel="0"] g').forEach((i) => {
+            document.querySelectorAll('#poiLayer > g > g').forEach((i) => {
                 const transformVal = i.getAttribute('transform');
                 const name = i.querySelector('text')?.textContent || '';
                 const type = i.getAttribute('class')?.trim() || '';
