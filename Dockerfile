@@ -1,5 +1,5 @@
-FROM node:14.17-alpine
-RUN apk add g++ make python
+FROM node:16-alpine
+RUN apk add g++ make python2
 # Install chromium in container instead of letting puppeteer install because there is an issue in docker using puppeteer's chromium
 # https://github.com/puppeteer/puppeteer/blob/main/docs/troubleshooting.md#running-puppeteer-in-docker
 RUN apk add chromium
