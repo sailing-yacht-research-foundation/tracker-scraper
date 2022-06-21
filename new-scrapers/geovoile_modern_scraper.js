@@ -273,17 +273,19 @@ async function scrapePage(url, unfinishedRaceIdsMap = {}, forceScrapeRacesMap) {
                 const name = i.querySelector('text')?.textContent || '';
                 const type = i.getAttribute('class')?.trim() || '';
                 const xy = transformVal
-                    .match(/-?\d+(\.\d+)? -?\d+(\.\d+)?/g)[0]
+                    .match(/-?\d+(\.\d+)? -?\d+(\.\d+)?/g)?.[0]
                     .split(' ');
-                const lon = sig.getLng(xy[0], xy[1]);
-                const lat = sig.getLat(xy[0], xy[1]);
-                allMarks.push({
-                    name,
-                    type,
-                    lon,
-                    lat,
-                    xy,
-                });
+                if (xy?.length >= 2) {
+                    const lon = sig.getLng(xy[0], xy[1]);
+                    const lat = sig.getLat(xy[0], xy[1]);
+                    allMarks.push({
+                        name,
+                        type,
+                        lon,
+                        lat,
+                        xy,
+                    });
+                }
             });
 
             return allMarks;
