@@ -197,7 +197,7 @@ const {
                         console.log('Version 2', {
                             playerName: race.player_name,
                         });
-                        await waitForPlayerVersion2Ready(page);
+                        await waitForPlayerVersion2Ready(page, isUnfinished);
 
                         // EXAMPLE RACE: https://player.georacing.com/?event=101837&race=97390&name=Course%205%20-%20Cancelled&location=Saint-Brieuc
                         const dataUrl = getRaceDataURL(
@@ -2412,9 +2412,12 @@ async function waitAndGetUrlDataPlayerVersion3(page) {
     }
 }
 
-async function waitForPlayerVersion2Ready(page) {
-    const loadedTest =
-        'ALL_DATAS_LOADED && ALLJSON_LOADED && URL_JSON_LOADED && URL_BIN_LOADED && BINARY_LOADED && PLAYER_ISREADYFORPLAY && ALL_DATAS_LOADED && BINARY_LOADED && (LOAD_PERCENT >= 90)';
+async function waitForPlayerVersion2Ready(page, isUnfinished) {
+    let loadedTest =
+        'URL_JSON_LOADED && URL_BIN_LOADED && BINARY_LOADED && PLAYER_ISREADYFORPLAY && BINARY_LOADED && (LOAD_PERCENT >= 90)';
+    if (!isUnfinished) {
+        loadedTest += '&& ALL_DATAS_LOADED && ALLJSON_LOADED';
+    }
     await page.waitForFunction(loadedTest, {
         timeout: 300000,
     });
