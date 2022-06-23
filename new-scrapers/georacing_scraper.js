@@ -399,8 +399,11 @@ const {
                     }
 
                     if (positionSave.length === 0 && !isUnfinished) {
-                        console.log('No positions. Skipping.');
-                        continue;
+                        throw new Error('No positions in race');
+                    }
+
+                    if (actorSave.length === 0 && !isUnfinished) {
+                        throw new Error('No boats in race');
                     }
 
                     objectsToSave.GeoracingRace.push(raceObjSave);
@@ -2140,8 +2143,12 @@ function getCoursesData(courses, raceObjSave) {
                 coursesObjectSave.push(coSave);
                 if (co.course_elements) {
                     co.course_elements.forEach((ce) => {
+                        // For reused elements, should have same id to be able to use correct course element positions
+                        const existingElement = coursesElementSave.find(
+                            (ee) => ee.original_id === ce.id
+                        );
                         const element = {
-                            id: uuidv4(),
+                            id: existingElement?.id || uuidv4(),
                             original_id: ce.id,
                             race: raceObjSave.id,
                             race_original_id: raceObjSave.original_id,
