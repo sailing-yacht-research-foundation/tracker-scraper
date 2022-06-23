@@ -197,7 +197,7 @@ const {
                         console.log('Version 2', {
                             playerName: race.player_name,
                         });
-                        await waitForPlayerVersion2Ready(page);
+                        await waitForPlayerVersion2Ready(page, isUnfinished);
 
                         // EXAMPLE RACE: https://player.georacing.com/?event=101837&race=97390&name=Course%205%20-%20Cancelled&location=Saint-Brieuc
                         const dataUrl = getRaceDataURL(
@@ -399,8 +399,11 @@ const {
                     }
 
                     if (positionSave.length === 0 && !isUnfinished) {
-                        console.log('No positions. Skipping.');
-                        continue;
+                        throw new Error('No positions in race');
+                    }
+
+                    if (actorSave.length === 0 && !isUnfinished) {
+                        throw new Error('No boats in race');
                     }
 
                     objectsToSave.GeoracingRace.push(raceObjSave);
@@ -2140,8 +2143,12 @@ function getCoursesData(courses, raceObjSave) {
                 coursesObjectSave.push(coSave);
                 if (co.course_elements) {
                     co.course_elements.forEach((ce) => {
+                        // For reused elements, should have same id to be able to use correct course element positions
+                        const existingElement = coursesElementSave.find(
+                            (ee) => ee.original_id === ce.id
+                        );
                         const element = {
-                            id: uuidv4(),
+                            id: existingElement?.id || uuidv4(),
                             original_id: ce.id,
                             race: raceObjSave.id,
                             race_original_id: raceObjSave.original_id,
@@ -2412,9 +2419,12 @@ async function waitAndGetUrlDataPlayerVersion3(page) {
     }
 }
 
-async function waitForPlayerVersion2Ready(page) {
-    const loadedTest =
-        'ALL_DATAS_LOADED && ALLJSON_LOADED && URL_JSON_LOADED && URL_BIN_LOADED && BINARY_LOADED && PLAYER_ISREADYFORPLAY && ALL_DATAS_LOADED && BINARY_LOADED && (LOAD_PERCENT >= 90)';
+async function waitForPlayerVersion2Ready(page, isUnfinished) {
+    let loadedTest =
+        'URL_JSON_LOADED && URL_BIN_LOADED && BINARY_LOADED && PLAYER_ISREADYFORPLAY && BINARY_LOADED && (LOAD_PERCENT >= 90)';
+    if (!isUnfinished) {
+        loadedTest += '&& ALL_DATAS_LOADED && ALLJSON_LOADED';
+    }
     await page.waitForFunction(loadedTest, {
         timeout: 300000,
     });
