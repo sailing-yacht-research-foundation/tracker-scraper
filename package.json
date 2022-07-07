@@ -1,6 +1,6 @@
 {
   "name": "tracker-scraper",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "description": "Contains scripts for scraping data and normalization",
   "main": "index.js",
   "scripts": {
@@ -28,7 +28,6 @@
     "sequelize": "^6.3.4",
     "sync-exec": "^0.6.2",
     "temp": "^0.9.4",
-    "tracker-schema": "file:tracker-schema",
     "uuid": "^8.3.0",
     "xml2json": "^0.12.0"
   },

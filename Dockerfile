@@ -14,10 +14,8 @@ WORKDIR /home/node/app
 
 COPY package.json .
 COPY package-lock.json .
-COPY tracker-schema ./tracker-schema
 RUN npm install --production
 COPY .env.sample ./.env
-COPY tracker-schema/.env.sample ./tracker-schema/.env
 
 USER node
 
