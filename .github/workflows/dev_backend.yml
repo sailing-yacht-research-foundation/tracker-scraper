@@ -5,6 +5,10 @@ on:
             - develop
             - dev-test
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
     job1:
         name: Build image and Push to ECR for prod
