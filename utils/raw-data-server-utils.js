@@ -8,7 +8,9 @@ const fs = require('fs');
 const axios = require('axios');
 const FormData = require('form-data');
 const { doGzipObject } = require('./zipFile');
+const { sleep } = require('./utils');
 
+const SEND_DELAY_IN_MS = 2000; // delay to not overwhelm the raw-data-server. Useful for unfinished races
 const RAW_DATA_SERVER_API = process.env.RAW_DATA_SERVER_API;
 
 const generateRawDataServerSecret = () => {
@@ -55,6 +57,7 @@ const createAndSendTempJsonFile = async (data, url = 'api/v1/upload-file') => {
             },
         });
         console.log('Finished creating and sending temp file', filePath);
+        await sleep(SEND_DELAY_IN_MS);
     } catch (err) {
         console.log('Failed sending zip file', err);
     } finally {
