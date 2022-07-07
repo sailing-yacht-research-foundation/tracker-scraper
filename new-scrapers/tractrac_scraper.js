@@ -764,9 +764,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
         allEvents = allEventsRequest.data.events;
     }
 
-    for (const eventIndex in allEvents) {
-        const eventObject = allEvents[eventIndex];
-
+    for (const eventObject of allEvents) {
         /** evennt object
             *
             * { id: '1957',
