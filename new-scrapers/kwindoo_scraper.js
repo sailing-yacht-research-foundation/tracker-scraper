@@ -119,7 +119,9 @@ const SOURCE = 'kwindoo';
                     continue;
                 }
                 console.log(
-                    `Scraping race ${raceIndex} of ${raceList.length} with url ${raceUrl}`
+                    `Scraping race ${raceIndex + 1} of ${
+                        raceList.length
+                    } with url ${raceUrl}`
                 );
                 try {
                     const newRace = {};
@@ -560,53 +562,68 @@ async function fetchRacePositions(
     boatsData,
     newOrExistingRegatta
 ) {
-    const fromTimestamp = currentRace.start_timestamp;
-    const toTimestamp = currentRace.end_timestamp;
+    const loadBoatsIntervalOffset = 1200; // 20mins interval, same used by kwindoo website. Needed for long races with many boats
+    let fromTimestamp = currentRace.start_timestamp;
+    let toTimestamp = fromTimestamp;
 
-    console.log('Getting positions.');
+    console.log('Getting positions');
     const positionObjects = [];
-    const posUrl =
-        'https://api.kwindoo.com/tracking/get-locations?stream=archive&fromTimestamp=' +
-        fromTimestamp.toString() +
-        '&raceId=' +
-        newRace.original_id +
-        '&toTimestamp=' +
-        toTimestamp;
-    const positionsDataRequest = await axios({
-        method: 'get',
-        headers: {
-            Accept: '*/*',
-            'User-Agent': 'KwindooLive/3.6 (iPhone; iOS 13.7; Scale/3.00)',
-        },
-        url: posUrl,
-    });
-    const positions = positionsDataRequest.data.response.tracking_locations;
-    const boatOriginalIds = Object.keys(positions);
-    boatOriginalIds.forEach((oid) => {
-        const pos = positions[oid];
-        pos.forEach((position) => {
-            const p = {
-                id: uuidv4(),
-                regatta: newOrExistingRegatta.id,
-                regatta_original_id: newOrExistingRegatta.original_id,
-                race: newRace.id,
-                race_original_id: newRace.original_id,
-                boat: boatsData.find((b) => b.original_id?.toString() === oid)
-                    ?.id,
-                boat_original_id: oid,
-                i: position.i,
-                u: position.u,
-                t: position.t,
-                lat: position.l,
-                lon: position.o,
-                b: position.b,
-                a: position.a,
-                d: position.d,
-                s: position.s,
-                y: position.y,
-            };
-            positionObjects.push(p);
-        });
-    });
+    do {
+        fromTimestamp = toTimestamp;
+        toTimestamp = fromTimestamp + loadBoatsIntervalOffset;
+        const posUrl =
+            'https://api.kwindoo.com/tracking/get-locations?stream=archive&fromTimestamp=' +
+            fromTimestamp.toString() +
+            '&raceId=' +
+            newRace.original_id +
+            '&toTimestamp=' +
+            toTimestamp;
+        try {
+            const positionsDataRequest = await axios({
+                method: 'get',
+                headers: {
+                    Accept: '*/*',
+                    'User-Agent':
+                        'KwindooLive/3.6 (iPhone; iOS 13.7; Scale/3.00)',
+                },
+                url: posUrl,
+            });
+            const positions =
+                positionsDataRequest.data.response.tracking_locations;
+            const boatOriginalIds = Object.keys(positions);
+            boatOriginalIds.forEach((oid) => {
+                const pos = positions[oid];
+                pos.forEach((position) => {
+                    const p = {
+                        id: uuidv4(),
+                        regatta: newOrExistingRegatta.id,
+                        regatta_original_id: newOrExistingRegatta.original_id,
+                        race: newRace.id,
+                        race_original_id: newRace.original_id,
+                        boat: boatsData.find(
+                            (b) => b.original_id?.toString() === oid
+                        )?.id,
+                        boat_original_id: oid,
+                        i: position.i,
+                        u: position.u,
+                        t: position.t,
+                        lat: position.l,
+                        lon: position.o,
+                        b: position.b,
+                        a: position.a,
+                        d: position.d,
+                        s: position.s,
+                        y: position.y,
+                    };
+                    positionObjects.push(p);
+                });
+            });
+        } catch (err) {
+            console.log(
+                `Failed getting positions fromTimestamp=${fromTimestamp}, toTimestamp=${toTimestamp}, race.endTimestamp=${currentRace.end_timestamp}`,
+                err
+            );
+        }
+    } while (toTimestamp <= currentRace.end_timestamp);
     return positionObjects;
 }

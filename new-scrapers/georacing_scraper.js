@@ -122,7 +122,9 @@ const {
                     continue;
                 }
                 console.log(
-                    `Scraping race ${raceIndex} of ${races.length} with url ${race.player_name}`
+                    `Scraping race ${raceIndex + 1} of ${
+                        races.length
+                    } with url ${race.player_name}`
                 );
 
                 try {
