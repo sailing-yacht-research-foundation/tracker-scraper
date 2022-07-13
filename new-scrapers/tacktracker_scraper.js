@@ -719,18 +719,19 @@ const parser = require('xml2json');
                 scrapedUnfinishedOrigIds.push(raceToSave.original_id);
             } else {
                 // Only check boat and positions if race is finished
-                if (
-                    !boatsToSave.filter(
-                        (b) =>
-                            !['Mark', 'Marker', 'CourseMark'].includes(
-                                b.unknown_4
-                            )
-                    ).length
-                ) {
+                const boatParticipants = boatsToSave.filter(
+                    (b) =>
+                        !['Mark', 'Marker', 'CourseMark'].includes(b.unknown_4)
+                );
+                if (!boatParticipants.length) {
                     throw new Error('No boats in race');
                 }
-                if (!positionsToSave.length) {
-                    throw new Error('No positions in race');
+                if (
+                    !positionsToSave.filter((pos) =>
+                        boatParticipants.map((bp) => bp.id).includes(pos.boat)
+                    ).length
+                ) {
+                    throw new Error('No boat positions in race');
                 }
             }
 
