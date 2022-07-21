@@ -14,7 +14,7 @@ const {
 
 (async () => {
     // These are only used for limited scraping. If these are set, the urls are filtered
-    const eventOriginalIdsToScrape = [];
+    const eventOriginalIdsToScrape = []; // set as integers
     const raceOriginalIdsToScrape = [];
 
     const SOURCE = 'georacing';
@@ -91,6 +91,7 @@ const {
                 time_zone: event.time_zone,
                 description_en: event.description_en,
                 description_fr: event.description_fr,
+                short_description: event.short_description,
                 start_time: event.start_time,
                 end_time: event.end_time,
             };
@@ -122,7 +123,7 @@ const {
                     continue;
                 }
                 console.log(
-                    `Scraping race ${raceIndex + 1} of ${
+                    `Scraping race ${+raceIndex + 1} of ${
                         races.length
                     } with url ${race.player_name}`
                 );
