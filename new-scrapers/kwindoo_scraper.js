@@ -119,7 +119,7 @@ const SOURCE = 'kwindoo';
                     continue;
                 }
                 console.log(
-                    `Scraping race ${raceIndex + 1} of ${
+                    `Scraping race ${+raceIndex + 1} of ${
                         raceList.length
                     } with url ${raceUrl}`
                 );
@@ -309,7 +309,7 @@ async function createVideoStreams(regattaDetails, newOrExistingRegatta) {
             original_id: stream.id,
             regatta: newOrExistingRegatta.id,
             regatta_original_id: newOrExistingRegatta.original_id,
-            source: stream.source,
+            source: stream.video_source,
             video_id: stream.video_id,
             start_time: stream.start_time,
             end_time: stream.end_time,

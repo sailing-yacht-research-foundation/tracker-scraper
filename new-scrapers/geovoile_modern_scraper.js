@@ -577,6 +577,12 @@ async function registerFailed(url, redirectUrl, err) {
             } else {
                 rootUrlMap.set(rootUrl, result.geovoileRace.legNum);
             }
+            result.geovoileEvent = {
+                id: uuidv4(),
+                original_id: rootUrl,
+                name: result.geovoileRace.name.split(' - Leg ')[0],
+                url: rootUrl,
+            };
             // The url contains the params path
             // For example:
             // https://tracker.theoceanrace.com/leg01/en/index.html => leg01
