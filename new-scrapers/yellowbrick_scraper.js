@@ -1256,9 +1256,21 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
             }
 
             let event;
-            let meta = metadatas.find(
-                (m) => m.base_url?.toLowerCase() === currentCode.toLowerCase()
-            );
+            let meta = metadatas.find((m) => {
+                const baseUrl = m.base_url;
+                if (typeof baseUrl === 'string') {
+                    return baseUrl.toLowerCase() === currentCode.toLowerCase();
+                } else if (baseUrl instanceof Array) {
+                    // if there are multiple base-url tag on xml
+                    return (
+                        baseUrl.findIndex(
+                            (b) =>
+                                b?.toLowerCase() === currentCode.toLowerCase()
+                        ) > -1
+                    );
+                }
+                return false;
+            });
             if (meta) {
                 let eventId = uuidv4();
                 if (meta.parent) {
