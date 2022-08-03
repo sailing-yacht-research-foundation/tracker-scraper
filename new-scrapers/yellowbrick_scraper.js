@@ -109,12 +109,7 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
         const m = ybCodeList2JSON[codeIndex];
 
         if (usedCodes[m['race-id']] === undefined) {
-            let endpoint = '';
-            if (m.endpointl !== undefined) {
-                endpoint = m.endpointl;
-            } else {
-                endpoint = m.endpoint;
-            }
+            const endpoint = m.endpointl ?? m.endpoint;
             const metadata = {
                 id: uuidv4(),
                 race_id: m['race-id'],
@@ -152,12 +147,7 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
     for (const codeIndex in ybCodeListJSON) {
         const m = ybCodeListJSON[codeIndex];
         if (usedCodes[m['race-id']] === undefined) {
-            let endpoint = '';
-            if (m.endpointl !== undefined) {
-                endpoint = m.endpointl;
-            } else {
-                endpoint = m.endpoint;
-            }
+            const endpoint = m.endpointl ?? m.endpoint;
             const metadata = {
                 id: uuidv4(),
                 race_id: m['race-id'],
