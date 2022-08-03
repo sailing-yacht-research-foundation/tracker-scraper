@@ -101,6 +101,7 @@ const RACEQS = {
                 console.log('Unfinished race detected', eventUrl);
                 isUnfinished = true;
                 scrapedUnfinishedOrigIds.push(config.events[0].id);
+                continue; // Temporary disable/skip unfinished raceQs scraping as requested by Jon
             }
 
             // EVENTS is array of one object:
