@@ -17,6 +17,8 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
 
 (async () => {
     const codesToScrape = []; // This is only used for limited scraping. If this is set, the getting of codes are skipped
+    const USER_KEY = 'ca6f2ddda62a4bda5ba585597a4c7cd4b6554615';
+    const UDID = 'F58731B3-E421-459B-BF02-0DED5F4B7490';
     let codes;
     // Axios retry is used in yellowbrick because the url https://yb.tl/JSON/{code}/RaceSetup sometimes returns 503 on the first try and succeeds on the next req
     axiosRetry(axios, {
@@ -53,34 +55,30 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
     }
     const scrapedUnfinishedOrigIds = [];
 
+    const YB_RACE_LIST_URL = `${YB_MOBILE_URL}/App/Races?version=3`;
+    let raceList;
+    try {
+        // Need to purchase (associate) free races so it shows on the get list version 4 api
+        const ybRaceListResult = await axios.get(YB_RACE_LIST_URL);
+        const ybRaceListXML = ybRaceListResult.data;
+        const ybRaceListJSON = JSON.parse(xml2json.toJson(ybRaceListXML));
+        raceList = ybRaceListJSON.r.races.race;
+    } catch (err) {
+        console.log(
+            `Failed getting owned race in database or getting and parsing race list from ${YB_RACE_LIST_URL}`,
+            err
+        );
+        process.exit();
+    }
+
     if (!codesToScrape.length) {
-        const YB_RACE_LIST_URL = `${YB_MOBILE_URL}/App/Races?version=3`;
-        let raceList;
-        try {
-            // GET CODES
-
-            // TODO: Put user-key, udid, urls in DB
-            // TODO: Save list of race-id and codes.
-            // TODO: Check to see if I need to even "purchase" the race id based on above mentioned saved list.
-            const ybRaceListResult = await axios.get(YB_RACE_LIST_URL);
-            const ybRaceListXML = ybRaceListResult.data;
-            const ybRaceListJSON = JSON.parse(xml2json.toJson(ybRaceListXML));
-            raceList = ybRaceListJSON.r.races.race;
-        } catch (err) {
-            console.log(
-                `Failed getting owned race in database or getting and parsing race list from ${YB_RACE_LIST_URL}`,
-                err
-            );
-            process.exit();
-        }
-
         for (let raceIndex = 0; raceIndex < raceList.length; raceIndex++) {
             console.log('Getting ' + raceIndex + ' of ' + raceList.length);
             const raceMetadata = raceList[raceIndex];
             const productId = raceMetadata['ios-productid'];
             console.log('Associating ' + raceIndex + ' of ' + raceList.length);
             const associateUrl =
-                `${YB_MOBILE_URL}/App/purchase?version=2&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&product-id=` +
+                `${YB_MOBILE_URL}/App/purchase?version=2&user-key=${USER_KEY}&udid=${UDID}&product-id=` +
                 productId +
                 '&receipt=' +
                 productId +
@@ -88,92 +86,94 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
 
             await axios.get(associateUrl);
         }
+    }
 
-        const ybCodeListXMLResult = await axios.get(
-            `${YB_MOBILE_URL}/App/MyRaces?version=2`
-        );
-        const ybCodeList2XMLResult = await axios.get(
-            `${YB_MOBILE_URL}/App/MyRaces?version=4&user-key=ca6f2ddda62a4bda5ba585597a4c7cd4b6554615&udid=F58731B3-E421-459B-BF02-0DED5F4B7490&os=i&sv=4021&osv=12.4.1`
-        );
+    const ybCodeListXMLResult = await axios.get(
+        `${YB_MOBILE_URL}/App/MyRaces?version=2`
+    );
+    const ybCodeList2XMLResult = await axios.get(
+        `${YB_MOBILE_URL}/App/MyRaces?version=4&user-key=${USER_KEY}&udid=${UDID}&os=i&sv=4021&osv=12.4.1`
+    );
 
-        const ybCodeListXML = ybCodeListXMLResult.data;
-        const ybCodeList2XML = ybCodeList2XMLResult.data;
+    const ybCodeListXML = ybCodeListXMLResult.data;
+    const ybCodeList2XML = ybCodeList2XMLResult.data;
 
-        const ybCodeListJSON = JSON.parse(xml2json.toJson(ybCodeListXML)).r
-            .myraces.race;
-        const ybCodeList2JSON = JSON.parse(xml2json.toJson(ybCodeList2XML)).r
-            .myraces.race;
+    const ybCodeListJSON = JSON.parse(xml2json.toJson(ybCodeListXML)).r.myraces
+        .race;
+    const ybCodeList2JSON = JSON.parse(xml2json.toJson(ybCodeList2XML)).r
+        .myraces.race;
 
-        const usedCodes = {};
-        const metadatas = [];
-        for (const codeIndex in ybCodeList2JSON) {
-            const m = ybCodeList2JSON[codeIndex];
+    const usedCodes = {};
+    const metadatas = [];
+    for (const codeIndex in ybCodeList2JSON) {
+        const m = ybCodeList2JSON[codeIndex];
 
-            if (usedCodes[m['race-id']] === undefined) {
-                let endpoint = '';
-                if (m.endpointl !== undefined) {
-                    endpoint = m.endpointl;
-                } else {
-                    endpoint = m.endpoint;
-                }
-                const metadata = {
-                    id: uuidv4(),
-                    race_id: m['race-id'],
-                    date: m.date,
-                    title: m.title,
-                    blurb: m.blurb,
-                    url_logo: m['url-logo'],
-                    url_map: m['url-map'],
-                    base_url: m['base-url'],
-                    endpoint: endpoint,
-                };
-                usedCodes[m['race-id']] = metadata;
-                metadatas.push(metadata);
-                if (m.children !== undefined) {
-                    for (const childIndex in m.children.race) {
-                        const c = m.children.race[childIndex];
+        if (usedCodes[m['race-id']] === undefined) {
+            let endpoint = '';
+            if (m.endpointl !== undefined) {
+                endpoint = m.endpointl;
+            } else {
+                endpoint = m.endpoint;
+            }
+            const metadata = {
+                id: uuidv4(),
+                race_id: m['race-id'],
+                date: m.date,
+                title: m.title,
+                blurb: m.blurb,
+                url_logo: m['url-logo'],
+                url_map: m['url-map'],
+                base_url: m['base-url'],
+                endpoint: endpoint,
+            };
+            usedCodes[m['race-id']] = metadata;
+            metadatas.push(metadata);
+            if (m.children !== undefined) {
+                for (const childIndex in m.children.race) {
+                    const c = m.children.race[childIndex];
 
-                        const child = {
-                            id: uuidv4(),
-                            race_id: m['race-id'],
-                            date: c.date,
-                            title: c.title,
-                            blurb: '',
-                            url_logo: m['url-logo'],
-                            url_map: m['url-map'],
-                            base_url: c['base-url'],
-                            endpoint: c.endpoint,
-                            parent: metadata.id,
-                        };
-                        metadatas.push(child);
-                    }
+                    const child = {
+                        id: uuidv4(),
+                        race_id: m['race-id'],
+                        date: c.date,
+                        title: c.title,
+                        blurb: '',
+                        url_logo: m['url-logo'],
+                        url_map: m['url-map'],
+                        base_url: c['base-url'],
+                        endpoint: c.endpoint,
+                        parent: metadata.id,
+                    };
+                    metadatas.push(child);
                 }
             }
         }
-        for (const codeIndex in ybCodeListJSON) {
-            const m = ybCodeListJSON[codeIndex];
-            if (usedCodes[m['race-id']] === undefined) {
-                let endpoint = '';
-                if (m.endpointl !== undefined) {
-                    endpoint = m.endpointl;
-                } else {
-                    endpoint = m.endpoint;
-                }
-                const metadata = {
-                    id: uuidv4(),
-                    race_id: m['race-id'],
-                    title: m.title,
-                    blurb: m.blurb,
-                    url_logo: m['url-logo'],
-                    url_map: m['url-map'],
-                    base_url: m['base-url'],
-                    endpoint: endpoint,
-                };
-                usedCodes[m['race-id']] = metadata;
-                metadatas.push(metadata);
+    }
+    for (const codeIndex in ybCodeListJSON) {
+        const m = ybCodeListJSON[codeIndex];
+        if (usedCodes[m['race-id']] === undefined) {
+            let endpoint = '';
+            if (m.endpointl !== undefined) {
+                endpoint = m.endpointl;
+            } else {
+                endpoint = m.endpoint;
             }
+            const metadata = {
+                id: uuidv4(),
+                race_id: m['race-id'],
+                title: m.title,
+                blurb: m.blurb,
+                url_logo: m['url-logo'],
+                url_map: m['url-map'],
+                base_url: m['base-url'],
+                endpoint: endpoint,
+            };
+            usedCodes[m['race-id']] = metadata;
+            metadatas.push(metadata);
         }
+    }
 
+    if (!codesToScrape.length) {
         // TODO: Replace this with already saved races.
         codes = [
             '151miglia2012',
@@ -1265,6 +1265,27 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
                 continue;
             }
 
+            let event;
+            let meta = metadatas.find(
+                (m) => m.base_url?.toLowerCase() === currentCode.toLowerCase()
+            );
+            if (meta) {
+                let eventId = uuidv4();
+                if (meta.parent) {
+                    // This is for v4 races that has associated to other races
+                    meta = metadatas.find((m) => m.id === meta.parent);
+                    eventId = meta.eventId || eventId;
+                }
+                event = {
+                    id: eventId,
+                    name: meta.title,
+                    description:
+                        typeof meta.blurb === 'string' ? meta.blurb : '',
+                    original_id: meta.race_id,
+                };
+                meta.eventId = eventId;
+            }
+
             const race = {
                 id: raceNewId,
                 tz: setupData.tz,
@@ -1324,6 +1345,7 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
             ) {
                 console.log('Unfinished race. Only scraping race info', race);
                 await createAndSendTempJsonFile({
+                    YellowbrickEvent: [event],
                     YellowbrickRace: [race],
                     YellowbrickCourseNode: courseNodes,
                     YellowbrickPoi: poisSave,
@@ -1507,6 +1529,7 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
                 throw new Error('No positions in race');
             }
             const objectsToSave = {};
+            objectsToSave.YellowbrickEvent = [event];
             objectsToSave.YellowbrickRace = [race];
             objectsToSave.YellowbrickPoi = poisSave;
             objectsToSave.YellowbrickCourseNode = courseNodes;
