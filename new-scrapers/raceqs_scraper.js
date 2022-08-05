@@ -65,15 +65,13 @@ const RACEQS = {
     }
     const scrapedUnfinishedOrigIds = [];
 
-    let pageIndex = 1;
-    while (pageIndex <= maxRaceIndex) {
+    for (let pageIndex = 1; pageIndex <= maxRaceIndex; pageIndex++) {
         const eventUrl = `https://raceqs.com/tv-beta/tv.htm#eventId=${pageIndex}`;
 
         if (existingUrls.includes(eventUrl)) {
             console.log(
                 `Event already exist in database with url ${eventUrl}.`
             );
-            pageIndex++;
             continue;
         }
 
@@ -85,7 +83,6 @@ const RACEQS = {
             const now = Date.now();
             if (config.events.length === 0) {
                 console.log('No events. Skipping.');
-                pageIndex++;
                 continue;
             }
 
@@ -169,8 +166,6 @@ const RACEQS = {
             console.log(err);
             await registerFailedUrl(SOURCE, eventUrl, err.toString());
         }
-
-        pageIndex++;
     }
     await cleanUnfinishedRaces(SOURCE, scrapedUnfinishedOrigIds);
     console.log('Finished scraping all events and races.');
