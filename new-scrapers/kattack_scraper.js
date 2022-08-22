@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const {
     RAW_DATA_SERVER_API,
     createAndSendTempJsonFile,
-    getExistingUrls,
+    getExistingData,
     registerFailedUrl,
     getUnfinishedRaceData,
     cleanUnfinishedRaces,
@@ -29,9 +29,13 @@ const SOURCE = 'kattack';
     // TODO: Make all URLs, cookies, headers, etc part of kattack metadata.
     // TODO: make FEED_LIMIT part of kattack metadaa.
 
-    let existingUrls;
+    let existingUrls, existingOrigIds;
     try {
-        existingUrls = await getExistingUrls(SOURCE);
+        const existingData = await getExistingData(SOURCE);
+        existingUrls = existingData.map((d) => d.url);
+        existingOrigIds = existingData
+            .map((d) => d.original_id)
+            .filter(Boolean);
     } catch (err) {
         console.log('Error getting existing urls', err);
         process.exit();
@@ -69,10 +73,6 @@ const SOURCE = 'kattack';
     for (const feedIndex in Object.keys(feedIds)) {
         const feedId = Object.keys(feedIds)[feedIndex];
         const raceUrl = `http://kws.kattack.com/GEPlayer/GMPosDisplay.aspx?FeedID=${feedId}`;
-        if (existingUrls.includes(raceUrl)) {
-            console.log(`Url already exist in database ${raceUrl}. Skipping.`);
-            continue;
-        }
         try {
             const objectsToSave = {};
             console.log(`Scraping race feed with url ${raceUrl}`);
@@ -108,6 +108,16 @@ const SOURCE = 'kattack';
             let raceStartTimeMs = +_parseKattackDate(metadata.RaceStartTimeUTC);
             let raceLength = metadata.RaceLengthSec;
             const forceScrapeRaceData = forceScrapeRacesMap[feedId];
+            const raceOriginalId = [feedId, raceStartTimeMs]
+                .filter(Boolean)
+                .join('-');
+
+            if (existingOrigIds.includes(raceOriginalId)) {
+                console.log(
+                    `Url already exist in database ${raceOriginalId}. Skipping.`
+                );
+                continue;
+            }
 
             if (forceScrapeRaceData) {
                 if (raceStartTimeMs > now) {
@@ -134,7 +144,7 @@ const SOURCE = 'kattack';
                 forceScrapeRaceData?.id ||
                 unfinishedRaceIdsMap[feedId] ||
                 uuidv4();
-            currentRace.original_id = feedId;
+            currentRace.original_id = raceOriginalId;
             currentRace.name = metadata.Name;
             currentRace.original_paradigm = 'Feed';
             currentRace.yacht_club = null;
