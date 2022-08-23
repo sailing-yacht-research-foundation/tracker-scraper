@@ -54,7 +54,7 @@ const SOURCE = 'kattack';
     const scrapedUnfinishedOrigIds = [];
 
     if (!skipFeedAndWordSearch) {
-        await _getValidFeedIds(existingUrls, feedIds);
+        await _getValidFeedIds(feedIds);
     } else {
         Object.assign(
             feedIds,
@@ -767,17 +767,13 @@ const SOURCE = 'kattack';
     process.exit();
 })();
 
-async function _getValidFeedIds(existingUrls, feedIds) {
+async function _getValidFeedIds(feedIds) {
     const FEED_LIMIT = 2000;
     let counter = 100;
     console.log('Looking for new feed IDs...');
     while (counter < FEED_LIMIT) {
         console.log(`Checking for feed ${counter} of ${FEED_LIMIT}...`);
         const raceUrl = `http://kws.kattack.com/GEPlayer/GMPosDisplay.aspx?FeedID=${counter.toString()}`;
-        if (existingUrls.includes(raceUrl)) {
-            counter++;
-            continue;
-        }
         try {
             const feedPage = await axios.get(raceUrl);
             const pageText = feedPage.data.toString();
