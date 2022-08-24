@@ -113,10 +113,10 @@ const SOURCE = 'kattack';
             let stopTimeMs = +_parseKattackDate(metadata.StopTime);
             let raceStartTimeMs = +_parseKattackDate(metadata.RaceStartTimeUTC);
             let raceLength = metadata.RaceLengthSec;
-            const forceScrapeRaceData = forceScrapeRacesMap[feedId];
             const raceOriginalId = [feedId, raceStartTimeMs]
                 .filter(Boolean)
                 .join('-');
+            const forceScrapeRaceData = forceScrapeRacesMap[raceOriginalId];
 
             if (existingOrigIds.includes(raceOriginalId)) {
                 console.log(
@@ -139,16 +139,16 @@ const SOURCE = 'kattack';
 
             if (raceStartTimeMs > now || stopTimeMs > now) {
                 console.log(
-                    `Feed id ${feedId} is unfinished. Excluding from cleanup`
+                    `Feed with original id ${raceOriginalId} is unfinished. Excluding from cleanup`
                 );
-                scrapedUnfinishedOrigIds.push(feedId);
+                scrapedUnfinishedOrigIds.push(raceOriginalId);
             }
 
             console.log('Saving race...');
             const currentRace = {};
             currentRace.id =
                 forceScrapeRaceData?.id ||
-                unfinishedRaceIdsMap[feedId] ||
+                unfinishedRaceIdsMap[raceOriginalId] ||
                 uuidv4();
             currentRace.original_id = raceOriginalId;
             currentRace.name = metadata.Name;
