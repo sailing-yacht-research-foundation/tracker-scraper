@@ -822,13 +822,41 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
             try {
                 racesRequest = await axios.get(eventObject.races_url);
             } catch (err) {
-                console.log('Failed getting event url', err);
-                await registerFailedUrl(
-                    SOURCE,
-                    eventObject.races_url,
-                    err.toString()
+                console.log(
+                    `Failed getting event url ${eventObject.races_url}`,
+                    err
                 );
-                continue;
+                // If certificate is invalid try it with http
+                if (
+                    err?.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' &&
+                    eventObject.races_url.includes('https://')
+                ) {
+                    eventObject.races_url = eventObject.races_url.replace(
+                        'https://',
+                        'http://'
+                    );
+                    try {
+                        racesRequest = await axios.get(eventObject.races_url);
+                    } catch (err2) {
+                        console.log(
+                            `Failed getting event url on http ${eventObject.races_url}`,
+                            err2
+                        );
+                        await registerFailedUrl(
+                            SOURCE,
+                            eventObject.races_url,
+                            err2.toString()
+                        );
+                        continue;
+                    }
+                } else {
+                    await registerFailedUrl(
+                        SOURCE,
+                        eventObject.races_url,
+                        err.toString()
+                    );
+                    continue;
+                }
             }
 
             const eventDetails = racesRequest.data.event;

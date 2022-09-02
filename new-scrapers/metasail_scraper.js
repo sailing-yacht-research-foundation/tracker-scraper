@@ -126,6 +126,9 @@ const SOURCE = 'metasail';
                     raceOriginalIdsToScrape.length &&
                     !raceOriginalIdsToScrape.includes(raceOrigId)
                 ) {
+                    console.log(
+                        'Race is not on the list to be scraped. Skipping.'
+                    );
                     continue;
                 }
                 try {
@@ -425,15 +428,52 @@ async function fetchRaceData(currentRaceUrl, browser) {
 
         const { unknownIdentifier, idgara } = _parseRaceUrl(redirectedUrl);
 
-        await racePage.waitForFunction(() => 'garaList' in window, {
-            timeout: 300000,
-        });
-        await racePage.waitForFunction('Object.keys(garaList).length > 0', {
-            timeout: 300000,
-        });
-        await racePage.waitForNetworkIdle({
-            idleTime: 1000, // Metasail website has an interval of 1s in their request. This is for loading the boaList[0].gpsData1, buoy's initial lat lon
-        });
+        // Sometimes the scraper times out on waitForNetworkIdle, retrying it succeeds
+        const MAX_RETRY_COUNT = 3;
+        let waitError;
+        for (let ctr = 0; ctr < MAX_RETRY_COUNT; ctr++) {
+            waitError = null;
+            try {
+                console.log('Waiting for garaList');
+                await racePage.waitForFunction(() => 'garaList' in window, {
+                    timeout: 60000,
+                });
+                console.log(
+                    'Waiting for garaList and boaList positions to load'
+                );
+                await racePage.waitForFunction(
+                    () => {
+                        /* eslint-disable no-undef */
+                        // This is for loading the boaList[0].gpsData1, buoy's initial lat lon
+                        const hasLoadedAllMarkPositions =
+                            boaList?.filter(
+                                (b) =>
+                                    b.gpsData1?.Latitudine &&
+                                    b.gpsData1?.Longitudine
+                            ).length === boaList?.length;
+                        return (
+                            Object.keys(garaList).length > 0 &&
+                            hasLoadedAllMarkPositions
+                        );
+                        /* eslint-enable no-undef */
+                    },
+                    {
+                        timeout: 300000,
+                    }
+                );
+                break;
+            } catch (err) {
+                console.log(`Timeout occured. Retry count ${ctr + 1}`, err);
+                if (ctr < MAX_RETRY_COUNT - 1) {
+                    await racePage.reload();
+                } else {
+                    waitError = err;
+                }
+            }
+        }
+        if (waitError) {
+            throw waitError;
+        }
 
         const raceData = await racePage.evaluate(
             () => {
@@ -496,72 +536,80 @@ function buildGateAndBuoyData(newRaceId, raceData, idgara) {
     const newGates = [];
     const newBuoys = [];
     const buoyIds = {};
-    raceData.buoyList.forEach((b, index) => {
-        if (b.seriale2 === '' || b.seriale2 === '-' || b.seriale2 === ' ') {
-            const newMark = {
-                id: uuidv4(),
-                race: newRaceId,
-                race_original_id: idgara,
-                original_id: b.seriale1,
-                name: b.boa1,
-                initials: b.sigla1,
-                description: b.descrizione1,
-                lat: b.lat1 || b.gpsData1?.Latitudine,
-                lon: b.lng1 || b.gpsData1?.Longitudine,
-                lat_m: b.latM1 || b.gpsData1?.LatitudineMetri,
-                lon_m: b.lngM1 || b.gpsData1?.LongitudineMetri,
-                order: index + 1,
-            };
+    []
+        .concat(raceData.buoyList, raceData.buoyListOffCourse)
+        .forEach((b, index) => {
+            if (!b?.gpsData1) return;
+            if (
+                !b.seriale2 ||
+                b.seriale2 === '' ||
+                b.seriale2 === '-' ||
+                b.seriale2 === ' '
+            ) {
+                const newMark = {
+                    id: uuidv4(),
+                    race: newRaceId,
+                    race_original_id: idgara,
+                    original_id: b.seriale1,
+                    name: b.boa1,
+                    initials: b.sigla1,
+                    description: b.descrizione1,
+                    lat: b.lat1 || b.gpsData1.Latitudine,
+                    lon: b.lng1 || b.gpsData1.Longitudine,
+                    lat_m: b.latM1 || b.gpsData1.LatitudineMetri,
+                    lon_m: b.lngM1 || b.gpsData1.LongitudineMetri,
+                    order: index + 1,
+                };
 
-            buoyIds[b.seriale1] = newMark.id;
-            newBuoys.push(newMark);
-        } else {
-            const newMark1 = {
-                id: uuidv4(),
-                race: newRaceId,
-                race_original_id: idgara,
-                original_id: b.seriale1,
-                name: b.boa1,
-                initials: b.sigla1,
-                description: b.descrizione1,
-                lat: b.lat1 || b.gpsData1?.Latitudine,
-                lon: b.lng1 || b.gpsData1?.Longitudine,
-                lat_m: b.latM1 || b.gpsData1?.LatitudineMetri,
-                lon_m: b.lngM1 || b.gpsData1?.LongitudineMetri,
-            };
+                buoyIds[b.seriale1] = newMark.id;
+                newBuoys.push(newMark);
+            } else {
+                const newMark1 = {
+                    id: uuidv4(),
+                    race: newRaceId,
+                    race_original_id: idgara,
+                    original_id: b.seriale1,
+                    name: b.boa1,
+                    initials: b.sigla1,
+                    description: b.descrizione1,
+                    lat: b.lat1 || b.gpsData1.Latitudine,
+                    lon: b.lng1 || b.gpsData1.Longitudine,
+                    lat_m: b.latM1 || b.gpsData1.LatitudineMetri,
+                    lon_m: b.lngM1 || b.gpsData1.LongitudineMetri,
+                };
 
-            const newMark2 = {
-                id: uuidv4(),
-                race: newRaceId,
-                race_original_id: idgara,
-                original_id: b.seriale2,
-                name: b.boa2,
-                initials: b.sigla2,
-                description: b.descrizione2,
-                lat: b.lat2 || b.gpsData2?.Latitudine,
-                lon: b.lng2 || b.gpsData2?.Longitudine,
-                lat_m: b.latM2 || b.gpsData2?.LatitudineMetri,
-                lon_m: b.lngM2 || b.gpsData2?.LongitudineMetri,
-            };
-            newBuoys.push(newMark1);
-            newBuoys.push(newMark2);
-            buoyIds[b.seriale1] = newMark1.id;
-            buoyIds[b.seriale2] = newMark2.id;
+                const newMark2 = {
+                    id: uuidv4(),
+                    race: newRaceId,
+                    race_original_id: idgara,
+                    original_id: b.seriale2,
+                    name: b.boa2,
+                    initials: b.sigla2,
+                    description: b.descrizione2,
+                    lat: b.lat2 || b.gpsData2?.Latitudine,
+                    lon: b.lng2 || b.gpsData2?.Longitudine,
+                    lat_m: b.latM2 || b.gpsData2?.LatitudineMetri,
+                    lon_m: b.lngM2 || b.gpsData2?.LongitudineMetri,
+                };
+                newBuoys.push(newMark1);
+                newBuoys.push(newMark2);
+                buoyIds[b.seriale1] = newMark1.id;
+                buoyIds[b.seriale2] = newMark2.id;
 
-            const newGate = {
-                id: uuidv4(),
-                race: newRaceId,
-                race_original_id: idgara,
-                buoy_1: newMark1.id,
-                buoy_1_original_id: newMark1.original_id,
-                buoy_2: newMark2.id,
-                buoy_2_original_id: newMark2.original_id,
-                order: index + 1,
-            };
+                const newGate = {
+                    id: uuidv4(),
+                    race: newRaceId,
+                    race_original_id: idgara,
+                    buoy_1: newMark1.id,
+                    buoy_1_original_id: newMark1.original_id,
+                    buoy_2: newMark2.id,
+                    buoy_2_original_id: newMark2.original_id,
+                    order: index + 1,
+                };
 
-            newGates.push(newGate);
-        }
-    });
+                newGates.push(newGate);
+            }
+        });
     return {
         newRaceId,
         newGates,
