@@ -1162,7 +1162,6 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
             raceObject.club = clubObject.id;
             raceObject.club_original_id = clubObject.original_id;
             raceObject.has_club = true;
-            raceObject.event_id = null;
 
             if (raceObject.event_type === 'Sailing') {
                 if (existingUrls.includes(raceObject.url_html)) {
@@ -1198,9 +1197,20 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                     }
                 }
 
+                const eventSaveObj = {
+                    id: uuidv4(),
+                    original_id: raceObject.event_id,
+                    name: raceObject.event_name,
+                    description: `Club Name: ${clubObject.name}`,
+                    web_url: clubObject.races_url,
+                    country: clubObject.country,
+                    city: clubObject.city,
+                    type: raceObject.event_type,
+                };
+
                 const details = await parseRace(
                     raceObject,
-                    null,
+                    eventSaveObj,
                     forceScrapeRaceData
                 );
                 if (!details) {
@@ -1210,6 +1220,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                 let objectsToSave;
                 if (details.unfinishedRace) {
                     objectsToSave = {
+                        TracTracEvent: [eventSaveObj],
                         TracTracRace: [
                             Object.assign(details.unfinishedRace, raceToFormat),
                         ],
@@ -1219,7 +1230,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                     );
                 } else {
                     const thingsToSave = formatAndSaveRace(
-                        null,
+                        eventSaveObj,
                         details,
                         raceToFormat
                     );
@@ -1247,6 +1258,7 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                     }
 
                     objectsToSave = {
+                        TracTracEvent: [eventSaveObj],
                         TracTracClass: thingsToSave.classesToSave,
                         TracTracRaceClass: thingsToSave.raceClassesToSave,
                         TracTracRace: thingsToSave.racesToSave,
