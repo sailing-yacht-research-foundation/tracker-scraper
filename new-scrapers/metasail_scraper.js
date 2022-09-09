@@ -558,20 +558,44 @@ function buildGateAndBuoyData(newRaceId, raceData, idgara) {
                 order: index + 1,
             });
             if (b.gpsData1 && !b.gpsData2) {
-                const newMark = createMark(b, 1);
-                buoyIds[b.seriale1] = newMark.id;
-                newBuoys.push(newMark);
+                if (
+                    !newBuoys.some(
+                        (existingBuoy) =>
+                            existingBuoy.original_id === b.seriale1
+                    )
+                ) {
+                    const newMark = createMark(b, 1);
+                    buoyIds[b.seriale1] = newMark.id;
+                    newBuoys.push(newMark);
+                }
             } else if (b.gpsData2 && !b.gpsData1) {
-                const newMark = createMark(b, 2);
-                buoyIds[b.seriale2] = newMark.id;
-                newBuoys.push(newMark);
+                if (
+                    !newBuoys.some(
+                        (existingBuoy) =>
+                            existingBuoy.original_id === b.seriale2
+                    )
+                ) {
+                    const newMark = createMark(b, 2);
+                    buoyIds[b.seriale2] = newMark.id;
+                    newBuoys.push(newMark);
+                }
             } else {
-                const newMark1 = createMark(b, 1);
-                const newMark2 = createMark(b, 2);
-                newBuoys.push(newMark1);
-                newBuoys.push(newMark2);
-                buoyIds[b.seriale1] = newMark1.id;
-                buoyIds[b.seriale2] = newMark2.id;
+                let newMark1 = newBuoys.find(
+                    (existingBuoy) => existingBuoy.original_id === b.seriale1
+                );
+                let newMark2 = newBuoys.find(
+                    (existingBuoy) => existingBuoy.original_id === b.seriale2
+                );
+                if (!newMark1) {
+                    newMark1 = createMark(b, 1);
+                    newBuoys.push(newMark1);
+                    buoyIds[b.seriale1] = newMark1.id;
+                }
+                if (!newMark2) {
+                    newMark2 = createMark(b, 2);
+                    newBuoys.push(newMark2);
+                    buoyIds[b.seriale2] = newMark2.id;
+                }
 
                 const newGate = {
                     id: uuidv4(),
