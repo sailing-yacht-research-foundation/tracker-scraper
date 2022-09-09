@@ -75,7 +75,9 @@ const SOURCE = 'metasail';
     for (const urlIndex in eventUrls) {
         const eventUrl = eventUrls[urlIndex];
         console.log(
-            `Scraping event index ${urlIndex} of ${eventUrls.length} with url ${eventUrl}`
+            `Scraping event index ${urlIndex} of ${
+                eventUrls.length - 1
+            } with url ${eventUrl}`
         );
         const eventOrigId = eventUrl.split('/').pop();
         try {
@@ -201,6 +203,7 @@ const SOURCE = 'metasail';
                             idgara,
                             buoyIds
                         );
+                        console.log('Fetching positions');
                         const allPointsForId = await fetchRaceAllPoints(
                             currentEvent,
                             newRaceId,
@@ -209,6 +212,7 @@ const SOURCE = 'metasail';
                             unknownIdentifier,
                             idgara
                         );
+                        console.log('Fetching race stats');
                         const stats = await fetchRaceStats(
                             currentRaceUrl,
                             unknownIdentifier,
@@ -442,25 +446,16 @@ async function fetchRaceData(currentRaceUrl, browser) {
                     'Waiting for garaList and boaList positions to load'
                 );
                 await racePage.waitForFunction(
-                    () => {
-                        /* eslint-disable no-undef */
-                        // This is for loading the boaList[0].gpsData1, buoy's initial lat lon
-                        const hasLoadedAllMarkPositions =
-                            boaList?.filter(
-                                (b) =>
-                                    b.gpsData1?.Latitudine &&
-                                    b.gpsData1?.Longitudine
-                            ).length === boaList?.length;
-                        return (
-                            Object.keys(garaList).length > 0 &&
-                            hasLoadedAllMarkPositions
-                        );
-                        /* eslint-enable no-undef */
-                    },
+                    'Object.keys(garaList).length > 0',
                     {
                         timeout: 300000,
                     }
                 );
+
+                // This is for loading the boaList[0].gpsData1, buoy's initial lat lon. 5s is just an estimate, 1s seems not enough since some buoy info are missed
+                await racePage.waitForNetworkIdle({
+                    idleTime: 5000,
+                });
                 break;
             } catch (err) {
                 console.log(`Timeout occured. Retry count ${ctr + 1}`, err);
@@ -539,58 +534,40 @@ function buildGateAndBuoyData(newRaceId, raceData, idgara) {
     []
         .concat(raceData.buoyList, raceData.buoyListOffCourse)
         .forEach((b, index) => {
-            if (!b?.gpsData1) return;
-            if (
-                !b.seriale2 ||
-                b.seriale2 === '' ||
-                b.seriale2 === '-' ||
-                b.seriale2 === ' '
-            ) {
-                const newMark = {
-                    id: uuidv4(),
-                    race: newRaceId,
-                    race_original_id: idgara,
-                    original_id: b.seriale1,
-                    name: b.boa1,
-                    initials: b.sigla1,
-                    description: b.descrizione1,
-                    lat: b.lat1 || b.gpsData1.Latitudine,
-                    lon: b.lng1 || b.gpsData1.Longitudine,
-                    lat_m: b.latM1 || b.gpsData1.LatitudineMetri,
-                    lon_m: b.lngM1 || b.gpsData1.LongitudineMetri,
-                    order: index + 1,
-                };
-
+            if (!b?.gpsData1 && !b?.gpsData2) return;
+            const createMark = (boa, boaIndex) => ({
+                id: uuidv4(),
+                race: newRaceId,
+                race_original_id: idgara,
+                original_id: boa[`seriale${boaIndex}`],
+                name: boa[`boa${boaIndex}`],
+                initials: boa[`sigla${boaIndex}`],
+                description: boa[`descrizione${boaIndex}`],
+                lat:
+                    boa[`lat${boaIndex}`] ||
+                    boa[`gpsData${boaIndex}`]?.Latitudine,
+                lon:
+                    boa[`lng${boaIndex}`] ||
+                    boa[`gpsData${boaIndex}`]?.Longitudine,
+                lat_m:
+                    boa[`latM${boaIndex}`] ||
+                    boa[`gpsData${boaIndex}`]?.LatitudineMetri,
+                lon_m:
+                    boa[`lngM${boaIndex}`] ||
+                    boa[`gpsData${boaIndex}`]?.LongitudineMetri,
+                order: index + 1,
+            });
+            if (b.gpsData1 && !b.gpsData2) {
+                const newMark = createMark(b, 1);
                 buoyIds[b.seriale1] = newMark.id;
                 newBuoys.push(newMark);
+            } else if (b.gpsData2 && !b.gpsData1) {
+                const newMark = createMark(b, 2);
+                buoyIds[b.seriale2] = newMark.id;
+                newBuoys.push(newMark);
             } else {
-                const newMark1 = {
-                    id: uuidv4(),
-                    race: newRaceId,
-                    race_original_id: idgara,
-                    original_id: b.seriale1,
-                    name: b.boa1,
-                    initials: b.sigla1,
-                    description: b.descrizione1,
-                    lat: b.lat1 || b.gpsData1.Latitudine,
-                    lon: b.lng1 || b.gpsData1.Longitudine,
-                    lat_m: b.latM1 || b.gpsData1.LatitudineMetri,
-                    lon_m: b.lngM1 || b.gpsData1.LongitudineMetri,
-                };
-
-                const newMark2 = {
-                    id: uuidv4(),
-                    race: newRaceId,
-                    race_original_id: idgara,
-                    original_id: b.seriale2,
-                    name: b.boa2,
-                    initials: b.sigla2,
-                    description: b.descrizione2,
-                    lat: b.lat2 || b.gpsData2?.Latitudine,
-                    lon: b.lng2 || b.gpsData2?.Longitudine,
-                    lat_m: b.latM2 || b.gpsData2?.LatitudineMetri,
-                    lon_m: b.lngM2 || b.gpsData2?.LongitudineMetri,
-                };
+                const newMark1 = createMark(b, 1);
+                const newMark2 = createMark(b, 2);
                 newBuoys.push(newMark1);
                 newBuoys.push(newMark2);
                 buoyIds[b.seriale1] = newMark1.id;
