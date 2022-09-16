@@ -34,10 +34,12 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
         process.exit();
     }
 
-    let raceCodes;
+    let existingRaceCodes;
     try {
-        const existingRaceCodes = await getExistingData(SOURCE);
-        raceCodes = existingRaceCodes.map((r) => r.original_id || r.url); // For failed race the code is in the url
+        existingRaceCodes = await getExistingData(SOURCE);
+        existingRaceCodes = existingRaceCodes.map(
+            (r) => r.original_id || r.url.replace(`${YB_WEB_URL}/`, '')
+        ); // For failed race the code is in the url
     } catch (err) {
         console.log('Error getting existing race codes', err);
         process.exit();
@@ -1221,9 +1223,10 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
     // TODO: get leaderboard from yb.tl/links/code
 
     for (const currentCode of codes) {
+        const raceWebUrl = `${YB_WEB_URL}/${currentCode}`;
         try {
             if (
-                raceCodes.findIndex(
+                existingRaceCodes.findIndex(
                     (c) => c.toLowerCase() === currentCode.toLowerCase()
                 ) > -1
             ) {
@@ -1245,7 +1248,7 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
 
             // Sometimes the currentCode differs from the race code like satt2012_2 = satt2012l2, which should still be the same
             if (
-                raceCodes.findIndex(
+                existingRaceCodes.findIndex(
                     (c) => c.toLowerCase() === raceCode.toLowerCase()
                 ) > -1
             ) {
@@ -1306,7 +1309,7 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
                 flag_stopped: setupData.flagStopped,
                 super_lines: setupData.superLines,
                 distance: setupData.course?.distance,
-                url: `${YB_WEB_URL}/${raceCode}`,
+                url: raceWebUrl,
             };
 
             const courseNodes =
@@ -1541,11 +1544,11 @@ const YB_MOBILE_URL = 'https://app.yb.tl';
             objectsToSave.YellowbrickPosition = allPositions;
 
             await createAndSendTempJsonFile(objectsToSave);
-            raceCodes.push(raceCode);
+            existingRaceCodes.push(raceCode);
             console.log('Finished scraping race.');
         } catch (err) {
             console.log(err);
-            await registerFailedUrl(SOURCE, currentCode, err.toString());
+            await registerFailedUrl(SOURCE, raceWebUrl, err.toString());
             continue;
         }
     }
