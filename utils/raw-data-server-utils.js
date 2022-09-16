@@ -30,7 +30,11 @@ const generateRawDataServerSecret = () => {
 };
 
 const generateSecret = function (plainText) {
-    return crypto.createHash('md5').update(plainText).digest('hex');
+    const secretSalt = process.env.SIMPLE_AUTH_SALT;
+    return crypto
+        .createHash('md5')
+        .update(`${secretSalt}:${plainText}:${secretSalt}`)
+        .digest('hex');
 };
 
 const createAndSendTempJsonFile = async (data, url = 'api/v1/upload-file') => {
