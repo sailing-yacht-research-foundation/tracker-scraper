@@ -866,7 +866,9 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                     raceUrlsToScrape.includes(r.url_html)
                 );
             } else {
-                races = racesRequest.data.races;
+                races = racesRequest.data.races.filter(
+                    (r) => r.visibility !== 'HIDDEN'
+                ); // Hidden races does not load properly
             }
 
             if (eventDetails === undefined) {
