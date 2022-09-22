@@ -859,7 +859,15 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                 }
             }
 
+            if (!racesRequest?.data?.event || !racesRequest?.data?.races) {
+                const errMsg = 'No event or race details';
+                console.log(errMsg);
+                await registerFailedUrl(SOURCE, eventObject.races_url, errMsg);
+                continue;
+            }
+
             const eventDetails = racesRequest.data.event;
+
             let races;
             if (raceUrlsToScrape.length) {
                 races = racesRequest.data.races.filter((r) =>
@@ -869,11 +877,6 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
                 races = racesRequest.data.races.filter(
                     (r) => r.visibility !== 'HIDDEN'
                 ); // Hidden races does not load properly
-            }
-
-            if (eventDetails === undefined) {
-                console.log('No event details. Skipping');
-                continue;
             }
 
             const eventSaveObj = {};
