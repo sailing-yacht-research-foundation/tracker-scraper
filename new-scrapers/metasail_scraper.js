@@ -432,42 +432,60 @@ async function fetchRaceData(currentRaceUrl, browser) {
 
         const { unknownIdentifier, idgara } = _parseRaceUrl(redirectedUrl);
 
-        // Sometimes the scraper times out on waitForNetworkIdle, retrying it succeeds
-        const MAX_RETRY_COUNT = 3;
-        let waitError;
-        for (let ctr = 0; ctr < MAX_RETRY_COUNT; ctr++) {
-            waitError = null;
-            try {
-                console.log('Waiting for garaList');
-                await racePage.waitForFunction(() => 'garaList' in window, {
-                    timeout: 60000,
-                });
-                console.log(
-                    'Waiting for garaList and boaList positions to load'
-                );
-                await racePage.waitForFunction(
-                    'Object.keys(garaList).length > 0',
-                    {
-                        timeout: 300000,
-                    }
-                );
+        /* eslint-disable no-undef */
+        await racePage.waitForFunction(
+            () => 'dtLStart' in window && 'garaInfo' in window,
+            {
+                timeout: 60000,
+            }
+        );
+        const isUnfinished = await racePage.evaluate(
+            () =>
+                dtLStart > Date.now() ||
+                typeof dtLStop === 'undefined' ||
+                dtLStop > Date.now() ||
+                dtLStop < 0
+        );
+        /* eslint-enable no-undef */
 
-                // This is for loading the boaList[0].gpsData1, buoy's initial lat lon. 5s is just an estimate, 1s seems not enough since some buoy info are missed
-                await racePage.waitForNetworkIdle({
-                    idleTime: 5000,
-                });
-                break;
-            } catch (err) {
-                console.log(`Timeout occured. Retry count ${ctr + 1}`, err);
-                if (ctr < MAX_RETRY_COUNT - 1) {
-                    await racePage.reload();
-                } else {
-                    waitError = err;
+        // If unfinished do not need to wait for boat positions
+        if (!isUnfinished) {
+            const MAX_RETRY_COUNT = 3;
+            let waitError;
+            for (let ctr = 0; ctr < MAX_RETRY_COUNT; ctr++) {
+                waitError = null;
+                try {
+                    console.log('Waiting for garaList');
+                    await racePage.waitForFunction(() => 'garaList' in window, {
+                        timeout: 60000,
+                    });
+                    console.log(
+                        'Waiting for garaList and boaList positions to load'
+                    );
+                    await racePage.waitForFunction(
+                        'Object.keys(garaList).length > 0',
+                        {
+                            timeout: 300000,
+                        }
+                    );
+
+                    // This is for loading the boaList[0].gpsData1, buoy's initial lat lon. 5s is just an estimate, 1s seems not enough since some buoy info are missed
+                    await racePage.waitForNetworkIdle({
+                        idleTime: 5000,
+                    });
+                    break;
+                } catch (err) {
+                    console.log(`Timeout occured. Retry count ${ctr + 1}`, err);
+                    if (ctr < MAX_RETRY_COUNT - 1) {
+                        await racePage.reload();
+                    } else {
+                        waitError = err;
+                    }
                 }
             }
-        }
-        if (waitError) {
-            throw waitError;
+            if (waitError) {
+                throw waitError;
+            }
         }
 
         const raceData = await racePage.evaluate(
