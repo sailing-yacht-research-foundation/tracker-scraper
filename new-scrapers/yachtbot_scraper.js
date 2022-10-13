@@ -17,6 +17,7 @@ const {
 
 const SOURCE = 'yachtbot';
 
+// To test modify the variable idx on the loop on Line 66
 (async () => {
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');

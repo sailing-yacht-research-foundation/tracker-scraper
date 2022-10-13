@@ -14,8 +14,8 @@ const {
 
 (async () => {
     // These are only used for limited scraping. If these are set, the urls are filtered
-    const eventOriginalIdsToScrape = []; // set as integers
-    const raceOriginalIdsToScrape = [];
+    const eventOriginalIdsToScrape = []; // set as integers. Example 102007
+    const raceOriginalIdsToScrape = []; // Example 98930
 
     const SOURCE = 'georacing';
     const GEORACING_MOMENT_FORMAT = 'YYYY-MM-DDThh:mm:ss[Z]';

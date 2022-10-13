@@ -13,8 +13,8 @@ const SOURCE = 'kattack';
 
 (async () => {
     // These are only used for limited scraping. If these are set, the urls are filtered
-    const feedIdsToScrape = []; // for feed races
-    const raceIdsToScrape = []; // for buoy races
+    const feedIdsToScrape = []; // for feed races. Example 1921
+    const raceIdsToScrape = []; // for buoy races. Example ac9a009f-7895-4fcd-8c9d-629d7ac074aa
     const skipFeedAndWordSearch =
         feedIdsToScrape.length > 0 || raceIdsToScrape.length > 0;
 

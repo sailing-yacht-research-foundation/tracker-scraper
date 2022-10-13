@@ -13,8 +13,8 @@ const { launchBrowser } = require('../utils/puppeteerLauncher');
 
 (async () => {
     // These are only used for limited scraping. If these are set, the urls are filtered
-    const eventUrlsToScrape = [];
-    const raceUrlsToScrape = [];
+    const eventUrlsToScrape = []; // Example https://www.tractrac.com/event-page/event_20221006_SwissSaili/2306
+    const raceUrlsToScrape = []; // Example https://live.tractrac.com/viewer/index.html?target=https://em.event3.tractrac.com/events/47120680-a698-013a-6364-342e996a9920/races/4425cea0-26e1-013b-bc44-342e996a9920.json
 
     const TRACTRAC_MOMENT_FORMAT = 'YYYY-MM-DD hh:mm:ss';
     const SOURCE = 'tractrac';
