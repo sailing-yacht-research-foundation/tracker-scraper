@@ -13,8 +13,8 @@ const SOURCE = 'kwindoo';
 
 (async () => {
     // These are only used for limited scraping. If these are set, the urls are filtered
-    const eventOriginalIdsToScrape = []; // event original id as integer
-    const raceOriginalIdsToScrape = []; // race original id as integer
+    const eventOriginalIdsToScrape = []; // event original id as integer. Example 31077
+    const raceOriginalIdsToScrape = []; // race original id as integer. Example 36726
 
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');

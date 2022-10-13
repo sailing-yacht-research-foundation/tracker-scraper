@@ -14,6 +14,7 @@ const LIMIT = 3000;
 const ESTELA_RACE_PAGE_URL = 'https://www.estela.co/en?page={$PAGENUM$}#races';
 const PAGENUM = '{$PAGENUM$}';
 
+// To test modify the variable counter on the loop on Line 75
 (async () => {
     const SOURCE = 'estela';
     const existingClubs = {};

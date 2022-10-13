@@ -16,7 +16,7 @@ const YB_WEB_URL = 'https://yb.tl';
 const YB_MOBILE_URL = 'https://app.yb.tl';
 
 (async () => {
-    const codesToScrape = []; // This is only used for limited scraping. If this is set, the getting of codes are skipped
+    const codesToScrape = []; // This is only used for limited scraping. If this is set, the getting of codes are skipped. Example 'duo2022'
     const USER_KEY = 'ca6f2ddda62a4bda5ba585597a4c7cd4b6554615';
     const UDID = 'F58731B3-E421-459B-BF02-0DED5F4B7490';
     let codes;
