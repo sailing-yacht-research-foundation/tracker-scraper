@@ -17,8 +17,8 @@ const SOURCE = 'metasail';
 
 (async () => {
     // These are only used for limited scraping. If these are set, the urls are filtered
-    const eventUrlsToScrape = [];
-    const raceOriginalIdsToScrape = []; // use race original id (as string) since url contains the token which changes
+    const eventUrlsToScrape = []; // Example https://www.metasail.it/past/343
+    const raceOriginalIdsToScrape = []; // use race original id (as string) since url contains the token which changes. Example '16999'
 
     if (!RAW_DATA_SERVER_API) {
         console.log('Please set environment variable RAW_DATA_SERVER_API');

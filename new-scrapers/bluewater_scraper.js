@@ -11,7 +11,7 @@ const {
 } = require('../utils/raw-data-server-utils');
 
 (async () => {
-    // This is only used for limited scraping. If these are set, the urls are filtered
+    // This is only used for limited scraping. If these are set, the urls are filtered. Example slug 'sopyc-night-race'
     const slugsToScrape = [];
 
     const SOURCE = 'bluewater';

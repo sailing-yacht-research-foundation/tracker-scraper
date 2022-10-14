@@ -12,8 +12,8 @@ const {
 
 (async () => {
     // These are only used for limited scraping. If these are set, the urls are filtered
-    const eventOriginalIdsToScrape = [];
-    const raceOriginalIdsToScrape = [];
+    const eventOriginalIdsToScrape = []; // Example 483
+    const raceOriginalIdsToScrape = []; // Example 1604
 
     const SOURCE = 'isail';
     const existingClasses = {};

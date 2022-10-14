@@ -18,6 +18,7 @@ const RACEQS = {
     DIVISION_PREFIX: 'raceqs-division-',
 };
 
+// To test modify the variable pageIndex on the loop on Line 69
 (async () => {
     axiosRetry(axios, {
         retryDelay: (retryCount) => {

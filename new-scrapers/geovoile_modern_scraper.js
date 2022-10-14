@@ -14,6 +14,8 @@ const { v4: uuidv4 } = require('uuid');
 const SOURCE = 'geovoile';
 const MORDERN_SCRAPER_MIN_YEAR = 2016;
 
+// To test for limited races you can edit function getScrapingUrls()
+
 async function getPageResponse(url) {
     const pageResponse = await axios.get(url);
     return pageResponse.data.toString();
